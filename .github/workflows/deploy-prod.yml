@@ -10,7 +10,7 @@ on:
 
 jobs:
   deploy-prod:
-    if: ${{ github.event.inputs.confirm_prod == 'DEPLOY_PROD' }}
+    if: ${{ github.ref_name == 'main' && github.event.inputs.confirm_prod == 'DEPLOY_PROD' }}
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 10
