@@ -3,13 +3,19 @@ name: Deploy Test
 on:
   push:
     branches:
-      - main
+      - qa
   workflow_dispatch:
+    inputs:
+      run_full_suite:
+        description: Ejecutar la suite completa de QA
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   deploy-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -40,7 +46,7 @@ jobs:
       - name: Push to Apps Script test
         run: npm run deploy:test:push
 
-      - name: Run headless Apps Script probe and tests
+      - name: Write QA runtime config
         env:
           QTAS_TEST_CONFIG_JSON: ${{ secrets.QTAS_TEST_CONFIG_JSON }}
           GOOGLE_AUTHORIZED_USER_JSON_TEST: ${{ secrets.GOOGLE_AUTHORIZED_USER_JSON_TEST }}
@@ -50,5 +56,31 @@ jobs:
             exit 0
           fi
           printf '%s' "$QTAS_TEST_CONFIG_JSON" > tests/qtas.test.config.json
-          GOOGLE_AUTHORIZED_USER_JSON="$GOOGLE_AUTHORIZED_USER_JSON_TEST" npm run test:qtas:probe -- --config tests/qtas.test.config.json
-          GOOGLE_AUTHORIZED_USER_JSON="$GOOGLE_AUTHORIZED_USER_JSON_TEST" npm run test:qtas -- --config tests/qtas.test.config.json
+
+      - name: Run headless Apps Script probe
+        env:
+          QTAS_TEST_CONFIG_JSON: ${{ secrets.QTAS_TEST_CONFIG_JSON }}
+          GOOGLE_AUTHORIZED_USER_JSON: ${{ secrets.GOOGLE_AUTHORIZED_USER_JSON_TEST }}
+        run: |
+          if [ -z "$QTAS_TEST_CONFIG_JSON" ] || [ -z "$GOOGLE_AUTHORIZED_USER_JSON" ]; then
+            echo "Skipping probe: faltan QTAS_TEST_CONFIG_JSON o GOOGLE_AUTHORIZED_USER_JSON_TEST."
+            exit 0
+          fi
+          npm run test:qtas:probe:qa
+
+      - name: Run headless Apps Script smoke suite
+        env:
+          QTAS_TEST_CONFIG_JSON: ${{ secrets.QTAS_TEST_CONFIG_JSON }}
+          GOOGLE_AUTHORIZED_USER_JSON: ${{ secrets.GOOGLE_AUTHORIZED_USER_JSON_TEST }}
+        run: |
+          if [ -z "$QTAS_TEST_CONFIG_JSON" ] || [ -z "$GOOGLE_AUTHORIZED_USER_JSON" ]; then
+            echo "Skipping smoke suite: faltan QTAS_TEST_CONFIG_JSON o GOOGLE_AUTHORIZED_USER_JSON_TEST."
+            exit 0
+          fi
+          npm run test:qtas:smoke:qa
+
+      - name: Run headless Apps Script full suite
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_full_suite == 'true' }}
+        env:
+          GOOGLE_AUTHORIZED_USER_JSON: ${{ secrets.GOOGLE_AUTHORIZED_USER_JSON_TEST }}
+        run: npm run test:qtas:full:qa

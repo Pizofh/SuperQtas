@@ -55,6 +55,16 @@ function compraLinea(tipoItem, item, cantidad, unidad, costoTotalLinea, impactaC
   };
 }
 
+function snapshotLigero(ctx, overrides = {}) {
+  return ctx.snapshot({
+    sheetNames: [],
+    includeDashboard: false,
+    includeCompras: false,
+    includeConfig: false,
+    ...overrides
+  });
+}
+
 export const SCENARIOS = [
   {
     id: 'producto_y_precio_nuevo',
@@ -85,7 +95,9 @@ export const SCENARIOS = [
       ctx.assert(encontrado, 'El producto nuevo debe aparecer en el catalogo de ventas.');
       ctx.equal(ctx.num(encontrado.precio), 12345, 'El precio configurado debe verse en el catalogo.');
 
-      const state = await ctx.snapshot();
+      const state = await snapshotLigero(ctx, {
+        sheetNames: ['Productos', 'Precios_Referencia']
+      });
       const productos = ctx.sheetRows(state, 'Productos');
       const precios = ctx.sheetRows(state, 'Precios_Referencia');
       ctx.assert(productos.some(row => row.Producto_Estandar === producto), 'La hoja Productos debe contener el producto nuevo.');
@@ -98,7 +110,7 @@ export const SCENARIOS = [
   {
     id: 'venta_con_deuda',
     title: 'Venta sin pago inicial',
-    tags: ['ventas', 'deuda'],
+    tags: ['ventas', 'deuda', 'smoke'],
     run: async ctx => {
       await ctx.reset();
 
@@ -112,7 +124,10 @@ export const SCENARIOS = [
       ctx.equal(ctx.num(resp.totalVenta), 20000, 'El total de la venta debe ser 20000.');
       ctx.equal(ctx.num(resp.saldo), 20000, 'El saldo debe quedar pendiente.');
 
-      const state = await ctx.snapshot();
+      const state = await snapshotLigero(ctx, {
+        sheetNames: ['Ventas', 'Venta_Detalle', 'Pagos', 'Distribucion_Ingresos'],
+        includeDashboard: true
+      });
       const venta = ctx.findRow(state, 'Ventas', row => ctx.num(row.Venta_ID) === ctx.num(resp.ventaId), 'No se encontro la venta guardada.');
       ctx.equal(ctx.num(venta.Total_Pagado), 0, 'La venta pendiente no debe registrar pago inicial.');
       ctx.equal(String(venta.Estado_Pago), 'Pendiente', 'La venta debe quedar pendiente.');
@@ -142,7 +157,10 @@ export const SCENARIOS = [
 
       ctx.equal(ctx.num(resp.saldo), 0, 'La venta pagada no debe dejar saldo.');
 
-      const state = await ctx.snapshot();
+      const state = await snapshotLigero(ctx, {
+        sheetNames: ['Ventas', 'Pagos', 'Distribucion_Ingresos'],
+        includeDashboard: true
+      });
       const venta = ctx.findRow(state, 'Ventas', row => ctx.num(row.Venta_ID) === ctx.num(resp.ventaId), 'No se encontro la venta pagada.');
       ctx.equal(String(venta.Estado_Pago), 'Pagado', 'La venta debe quedar pagada.');
       ctx.equal(ctx.sheetRows(state, 'Pagos').length, 1, 'Debe existir un pago inicial.');
@@ -170,7 +188,9 @@ export const SCENARIOS = [
 
       ctx.equal(String(venta.estadoEnvio), 'Pendiente', 'La venta debe quedar marcada como pendiente de envio.');
 
-      let state = await ctx.snapshot();
+      let state = await snapshotLigero(ctx, {
+        includeDashboard: true
+      });
       ctx.equal((state.dashboard.ventasPendientes || []).length, 0, 'La venta pagada no debe quedar como deuda.');
       ctx.equal((state.dashboard.enviosPendientes || []).length, 1, 'La venta debe aparecer en el panel de envios pendientes.');
 
@@ -181,7 +201,10 @@ export const SCENARIOS = [
         validarModelo: false
       });
 
-      state = await ctx.snapshot();
+      state = await snapshotLigero(ctx, {
+        sheetNames: ['Ventas_Envio'],
+        includeDashboard: true
+      });
       const envio = ctx.findRow(state, 'Ventas_Envio', row => ctx.num(row.Venta_ID) === ctx.num(venta.ventaId), 'No se encontro el registro de envio.');
       ctx.equal(String(envio.Estado_Envio), 'Enviado', 'El envio debe quedar marcado como enviado.');
       ctx.equal((state.dashboard.enviosPendientes || []).length, 0, 'La venta ya no debe quedar pendiente de envio.');
@@ -211,7 +234,9 @@ export const SCENARIOS = [
       ctx.equal(ctx.num(resp.totalPagado), 15000, 'El total pagado inicial debe ser 15000.');
       ctx.equal(ctx.num(resp.saldo), 20000, 'El saldo pendiente debe ser 20000.');
 
-      const state = await ctx.snapshot();
+      const state = await snapshotLigero(ctx, {
+        sheetNames: ['Ventas', 'Venta_Detalle', 'Pagos', 'Distribucion_Ingresos']
+      });
       const venta = ctx.findRow(state, 'Ventas', row => ctx.num(row.Venta_ID) === ctx.num(resp.ventaId), 'No se encontro la venta multi-linea.');
       const pagos = ctx.sheetRows(state, 'Pagos');
       ctx.equal(String(venta.Estado_Pago), 'Parcial', 'La venta debe quedar parcial.');
@@ -220,6 +245,55 @@ export const SCENARIOS = [
       ctx.equal(ctx.sheetRows(state, 'Distribucion_Ingresos').length, 3, 'Deben existir tres filas de distribucion.');
       ctx.assert(pagos.some(row => row.Medio_Pago === 'Efectivo'), 'Debe persistir el pago en efectivo.');
       ctx.assert(pagos.some(row => row.Medio_Pago === 'NequiSteve'), 'Debe persistir el pago en NequiSteve.');
+    }
+  },
+  {
+    id: 'venta_actualiza_analitica_incremental',
+    title: 'Venta actualiza Venta_Detalle_Costos_Calc sin reconstruccion manual',
+    tags: ['ventas', 'costos', 'analitica-incremental', 'smoke'],
+    run: async ctx => {
+      await ctx.reset();
+
+      const producto = 'ProdTestAuto';
+      await ctx.call('guardarProductoConfiguracionQTAS', {
+        producto,
+        unidad: 'und',
+        nota: 'Creado por test',
+        activo: true
+      });
+
+      await ctx.call('registrarCompraQTAS', compraPayloadBase({
+        proveedor: 'Proveedor Costo Test',
+        lineas: [
+          compraLinea('Producto', producto, 10, 'und', 100000, true, 'Costo incremental base')
+        ]
+      }));
+
+      const venta = await ctx.call('registrarVentaQTAS', ventaPayloadBase({
+        cliente: { nombre: 'Cliente Test' },
+        lineas: [
+          ventaLinea(producto, 1, 'und', 15000)
+        ]
+      }));
+
+      ctx.assert(venta.analiticaCostos && venta.analiticaCostos.ok === true, 'La venta debe devolver estado ok de analitica incremental.');
+      ctx.equal(ctx.num(venta.analiticaCostos.rows), 1, 'La analitica incremental debe procesar una sola linea.');
+      ctx.equal(ctx.num(venta.analiticaCostos.inserted), 1, 'La analitica incremental debe insertar una fila nueva.');
+
+      const state = await snapshotLigero(ctx, {
+        sheetNames: ['Venta_Detalle_Costos_Calc']
+      });
+      const costo = ctx.findRow(
+        state,
+        'Venta_Detalle_Costos_Calc',
+        row => ctx.num(row.Venta_ID) === ctx.num(venta.ventaId) && row.Producto_Estandar === producto,
+        'No se encontro la fila incremental de costo para la venta.'
+      );
+
+      ctx.equal(ctx.num(costo.Costo_Unitario_Usado), 10000, 'La venta debe usar el costo directo vigente del producto.');
+      ctx.equal(ctx.num(costo.Costo_Total_Estimado), 10000, 'El costo total estimado debe quedar sincronizado.');
+      ctx.equal(String(costo.Metodo_Costo), 'Costo directo', 'La fila incremental debe marcar costo directo.');
+      ctx.equal(String(costo.Estado_Costo), 'Directo', 'La fila incremental debe quedar en estado Directo.');
     }
   },
   {
@@ -251,7 +325,10 @@ export const SCENARIOS = [
 
       ctx.equal(ctx.num(pago.saldoRestante), 0, 'El pago pendiente debe completar la deuda.');
 
-      const state = await ctx.snapshot();
+      const state = await snapshotLigero(ctx, {
+        sheetNames: ['Ventas', 'Pagos', 'Distribucion_Ingresos'],
+        includeDashboard: true
+      });
       const ventaActualizada = ctx.findRow(state, 'Ventas', row => ctx.num(row.Venta_ID) === ctx.num(venta.ventaId), 'No se encontro la venta actualizada.');
       ctx.equal(String(ventaActualizada.Estado_Pago), 'Pagado', 'La venta debe terminar pagada.');
       ctx.equal(ctx.num(ventaActualizada.Saldo), 0, 'El saldo final debe ser cero.');
@@ -277,7 +354,10 @@ export const SCENARIOS = [
       ctx.equal(ctx.num(resp.totalCompra), 100000, 'El total de la compra debe coincidir.');
       ctx.equal(ctx.num(resp.costosActualizados), 1, 'La compra debe actualizar un costo.');
 
-      const state = await ctx.snapshot();
+      const state = await snapshotLigero(ctx, {
+        sheetNames: ['Costos_Referencia'],
+        includeCompras: true
+      });
       const costos = ctx.sheetRows(state, 'Costos_Referencia');
       ctx.equal(costos.length, 1, 'Debe existir una fila de costo historico.');
       ctx.equal(ctx.num(costos[0].Costo_Unitario), 10000, 'El costo unitario debe ser 10000.');
@@ -286,6 +366,44 @@ export const SCENARIOS = [
         (state.costosVigentes || []).some(row => row.item === 'AcSup' && ctx.num(row.costoUnitario) === 10000),
         'El costo vigente debe reflejar la compra.'
       );
+    }
+  },
+  {
+    id: 'compra_refresca_costo_producto_calc_incremental',
+    title: 'Compra refresca Costo_Producto_Calc sin reconstruccion manual',
+    tags: ['compras', 'costos', 'analitica-incremental', 'smoke'],
+    run: async ctx => {
+      await ctx.reset();
+
+      const resp = await ctx.call('registrarCompraQTAS', compraPayloadBase({
+        proveedor: 'Proveedor Costo Test',
+        lineas: [
+          compraLinea('Producto', 'AcSup', 10, 'g', 100000, true, 'Refresh incremental de costo producto')
+        ]
+      }));
+
+      ctx.assert(
+        resp.costoProductoCalculado && resp.costoProductoCalculado.ok === true,
+        'La compra debe devolver estado ok del refresh incremental de Costo_Producto_Calc.'
+      );
+      ctx.assert(
+        ctx.num(resp.costoProductoCalculado.rows) > 0,
+        'El refresh incremental debe recalcular al menos una fila de costo producto.'
+      );
+
+      const state = await snapshotLigero(ctx, {
+        sheetNames: ['Costo_Producto_Calc']
+      });
+      const costo = ctx.findRow(
+        state,
+        'Costo_Producto_Calc',
+        row => row.Producto_Estandar === 'AcSup' && row.Unidad_Venta === 'g',
+        'No se encontro la fila incremental en Costo_Producto_Calc.'
+      );
+
+      ctx.equal(ctx.num(costo.Costo_Unitario_Total), 10000, 'El snapshot incremental de costo producto debe reflejar el costo directo vigente.');
+      ctx.equal(String(costo.Metodo_Costo), 'Costo directo', 'El producto debe quedar costeado por costo directo.');
+      ctx.equal(String(costo.Estado_Costo), 'Directo', 'El estado del costo producto debe quedar Directo.');
     }
   },
   {
@@ -324,7 +442,9 @@ export const SCENARIOS = [
 
       ctx.equal(ctx.num(resp.costosActualizados), 0, 'Un gasto puro no debe actualizar costos.');
 
-      const state = await ctx.snapshot();
+      const state = await snapshotLigero(ctx, {
+        sheetNames: ['Compra_Detalle', 'Costos_Referencia']
+      });
       ctx.equal(ctx.sheetRows(state, 'Costos_Referencia').length, 0, 'No deben crearse costos historicos.');
       const detalle = ctx.findRow(state, 'Compra_Detalle', row => row.Item === 'Arriendo', 'No se encontro el detalle del gasto.');
       ctx.assert(
@@ -353,7 +473,10 @@ export const SCENARIOS = [
       ctx.equal(ctx.num(resp.totalCompra), 36000, 'La compra mixta debe sumar 36000.');
       ctx.equal(ctx.num(resp.costosActualizados), 2, 'Solo dos lineas deben actualizar costos.');
 
-      const state = await ctx.snapshot();
+      const state = await snapshotLigero(ctx, {
+        sheetNames: ['Compra_Detalle', 'Costos_Referencia'],
+        includeCompras: true
+      });
       ctx.equal(ctx.sheetRows(state, 'Compra_Detalle').length, 3, 'Deben escribirse tres lineas de detalle.');
       ctx.equal(ctx.sheetRows(state, 'Costos_Referencia').length, 2, 'Deben existir dos costos historicos.');
       ctx.assert(
@@ -432,12 +555,14 @@ export const SCENARIOS = [
         ]
       }));
 
-      await ctx.call('reconstruirAnaliticaCostosQTAS', {
+      await ctx.call('reconstruirCostoProductoCalculadoQTAS', {
         fechaBase: '2026-06-20',
         silent: true
       });
 
-      const state = await ctx.snapshot();
+      const state = await snapshotLigero(ctx, {
+        sheetNames: ['Costo_Producto_Calc', 'Venta_Detalle_Costos_Calc']
+      });
       const costosProducto = ctx.findRow(
         state,
         'Costo_Producto_Calc',
@@ -461,7 +586,7 @@ export const SCENARIOS = [
   {
     id: 'regla_distribucion_nueva_aplicada',
     title: 'Nueva regla de distribucion aplicada en ventas posteriores',
-    tags: ['admin', 'distribucion', 'ventas'],
+    tags: ['admin', 'distribucion', 'ventas', 'smoke'],
     run: async ctx => {
       await ctx.reset();
 
@@ -486,7 +611,9 @@ export const SCENARIOS = [
         ]
       }));
 
-      const state = await ctx.snapshot();
+      const state = await snapshotLigero(ctx, {
+        sheetNames: ['Distribucion_Reglas', 'Ventas', 'Distribucion_Ingresos']
+      });
       const reglas = ctx.sheetRows(state, 'Distribucion_Reglas');
       const ventaRow = ctx.findRow(state, 'Ventas', row => ctx.num(row.Venta_ID) === ctx.num(venta.ventaId), 'No se encontro la venta bajo nueva regla.');
       const dist = ctx.findRow(state, 'Distribucion_Ingresos', row => String(row.Fuente_Tipo) === 'Venta', 'No se encontro la distribucion de la venta.');
@@ -540,7 +667,9 @@ export const SCENARIOS = [
         'no esta disponible'
       );
 
-      const state = await ctx.snapshot();
+      const state = await snapshotLigero(ctx, {
+        includeConfig: true
+      });
       const medioRow = (state.configuracionAvanzada.mediosPago || []).find(row => row.medioPago === medio);
       ctx.assert(medioRow, 'El medio creado debe seguir existiendo en configuracion.');
       ctx.assert(

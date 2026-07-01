@@ -2,9 +2,15 @@ name: Deploy Production
 
 on:
   workflow_dispatch:
+    inputs:
+      confirm_prod:
+        description: Escribe DEPLOY_PROD para habilitar el despliegue
+        required: true
+        type: string
 
 jobs:
   deploy-prod:
+    if: ${{ github.event.inputs.confirm_prod == 'DEPLOY_PROD' }}
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 10
