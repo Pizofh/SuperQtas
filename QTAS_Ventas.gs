@@ -201,6 +201,30 @@ function registrarVentaQTAS(payload) {
         });
       });
 
+      let analiticaCostos = null;
+      analiticaCostos = medirBloqueRendimientoQTAS_(performance, 'analiticaCostos', () => {
+        try {
+          return sincronizarVentaDetalleCostosLoteQTAS_(
+            lineasPreparadas.map(item => item.row),
+            {
+              ss: ss,
+              ahora: ahora
+            }
+          );
+        } catch (error) {
+          Logger.log(`No se pudo sincronizar Venta_Detalle_Costos_Calc para Venta ${ventaId}: ${error.message}`);
+          return {
+            ok: false,
+            skipped: true,
+            reason: error.message,
+            rows: 0,
+            inserted: 0,
+            updated: 0,
+            stale: 0
+          };
+        }
+      });
+
       let estadoEnvio = '';
       if (payload && payload.pendienteEnvio === true) {
         estadoEnvio = medirBloqueRendimientoQTAS_(performance, 'registrarEnvioPendiente', () => {
@@ -234,6 +258,7 @@ function registrarVentaQTAS(payload) {
         estadoPago,
         estadoEnvio,
         productosResumen,
+        analiticaCostos,
         dashboard,
         performance: finalizarPerfilRendimientoQTAS_(performance, { ventaId: ventaId })
       };

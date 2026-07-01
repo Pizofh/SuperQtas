@@ -245,64 +245,18 @@ function reconstruirCostoProductoCalculadoQTAS(payload) {
     silent: false
   }, payload || {});
   asegurarModeloOperativoQTAS_();
-
-  const ss = SpreadsheetApp.getActive();
-  const productosSheet = ss.getSheetByName(QTAS.sheets.productos);
-  const outputSheet = ss.getSheetByName(QTAS.sheets.costoProductoCalculado);
-  const outputHeaders = getHeaders_(outputSheet);
-  const fechaBase = resolverFechaOperacion_(settings.fechaBase, new Date());
-  const ahora = new Date();
-  const costosCache = cargarCostosEnMemoria_();
-  const componentes = leerComponentesProductoActivosQTAS_();
-  const reglas = leerReglasCostoProductoActivasQTAS_();
-
-  const rows = leerObjetos_(productosSheet)
-    .filter(row => estaActivo_(row.Activo))
-    .map(row => {
-      const producto = texto_(row.Producto_Estandar);
-      const unidadVenta = normalizarUnidadCanonicaQTAS_(row.Unidad_Default);
-      const costo = calcularCostoProductoEnFechaQTAS_(producto, unidadVenta, fechaBase, {
-        cantidadVenta: 1,
-        incluirReglasPorLinea: false,
-        incluirReglasPorUnidad: true,
-        costosCache: costosCache,
-        componentes: componentes,
-        reglas: reglas
-      });
-      return {
-        Costo_Producto_ID: `CP-${normalizarClaveProductoQTAS_(producto, unidadVenta)}`,
-        Fecha_Calculo: ahora,
-        Producto_Estandar: producto,
-        Unidad_Venta: unidadVenta,
-        Metodo_Costo: costo.metodoCosto,
-        Costo_Unitario_Total: costo.costoUnitarioTotal,
-        Costo_Unitario_Componentes: costo.costoUnitarioComponentes,
-        Componentes_Activos: costo.componentesActivos,
-        Componentes_Con_Costo: costo.componentesConCosto,
-        Componentes_Sin_Costo: costo.componentesSinCosto,
-        Cobertura_Costo_Pct: costo.coberturaCostoPct,
-        Estado_Costo: costo.estadoCosto,
-        Nota: costo.nota
-      };
-    });
-
-  const upsert = upsertObjetosPorIdQTAS_(outputSheet, outputHeaders, rows, 'Costo_Producto_ID');
+  const result = reconstruirCostoProductoCalculadoInternoQTAS_(settings);
 
   if (!settings.silent) {
     maybeAlert_(
-      `Costo_Producto_Calc sincronizada con ${rows.length} fila(s). ` +
-      `Nuevas=${upsert.inserted}, actualizadas=${upsert.updated}.`
+      result.skipped
+        ? `Costo_Producto_Calc omitida: ${texto_(result.reason)}`
+        : `Costo_Producto_Calc sincronizada con ${result.rows} fila(s). ` +
+          `Nuevas=${result.inserted}, actualizadas=${result.updated}.`
     );
   }
 
-  return {
-    ok: true,
-    rows: rows.length,
-    inserted: upsert.inserted,
-    updated: upsert.updated,
-    stale: upsert.stale,
-    fechaBase: fechaInput_(fechaBase)
-  };
+  return result;
 }
 
 function reconstruirVentaDetalleCostosCalculadoQTAS(payload) {
@@ -310,87 +264,18 @@ function reconstruirVentaDetalleCostosCalculadoQTAS(payload) {
     silent: false
   }, payload || {});
   asegurarModeloOperativoQTAS_();
-
-  const ss = SpreadsheetApp.getActive();
-  const detalleSheet = ss.getSheetByName(QTAS.sheets.detalle);
-  const outputSheet = ss.getSheetByName(QTAS.sheets.ventaDetalleCostosCalculado);
-  const outputHeaders = getHeaders_(outputSheet);
-  const costosCache = cargarCostosEnMemoria_();
-  const componentes = leerComponentesProductoActivosQTAS_();
-  const reglas = leerReglasCostoProductoActivasQTAS_();
-  const ahora = new Date();
-
-  const rows = leerObjetos_(detalleSheet)
-    .filter(row => texto_(row.Detalle_ID))
-    .map(row => {
-      const fechaVenta = valorFechaVentaCanonicaQTAS_(row, ahora);
-      const contextoCosto = resolverContextoCostoVentaLegacyQTAS_(row);
-      const producto = contextoCosto.producto;
-      const unidad = contextoCosto.unidad;
-      const cantidad = contextoCosto.cantidad;
-      const subtotalNeto = redondear_(numero_(row.Subtotal_Neto));
-      let costo = contextoCosto.excluirCosto
-        ? construirResultadoCostoNoCosteableQTAS_(contextoCosto.motivoExclusion)
-        : calcularCostoProductoEnFechaQTAS_(producto, unidad, fechaVenta, {
-          cantidadVenta: cantidad,
-          incluirReglasPorLinea: true,
-          incluirReglasPorUnidad: true,
-          costosCache: costosCache,
-          componentes: componentes,
-          reglas: reglas
-        });
-      if (contextoCosto.notaNormalizacion) {
-        costo = Object.assign({}, costo, {
-          nota: unirUnicos_([contextoCosto.notaNormalizacion, costo.nota])
-        });
-      }
-      const costoTotal = redondear_(costo.costoTotalLineaUsado);
-      const margenBruto = redondear_(subtotalNeto - costoTotal);
-      const margenPct = subtotalNeto > 0
-        ? redondear_(margenBruto * 100 / subtotalNeto)
-        : 0;
-
-      return {
-        Detalle_Costo_ID: `VDC-${texto_(row.Detalle_ID)}`,
-        Detalle_ID: texto_(row.Detalle_ID),
-        Venta_ID: numero_(row.Venta_ID),
-        Fecha_Venta: fechaVenta,
-        Cliente_ID: texto_(row.Cliente_ID),
-        Nombre: texto_(row.Nombre),
-        Producto_Estandar: producto,
-        Cantidad: cantidad,
-        Unidad: unidad,
-        Subtotal_Neto: subtotalNeto,
-        Costo_Unitario_Usado: costo.costoUnitarioTotal,
-        Costo_Total_Estimado: costoTotal,
-        Margen_Bruto_Estimado: margenBruto,
-        Margen_Porcentaje_Estimado: margenPct,
-        Metodo_Costo: costo.metodoCosto,
-        Componentes_Con_Costo: costo.componentesConCosto,
-        Componentes_Sin_Costo: costo.componentesSinCosto,
-        Cobertura_Costo_Pct: costo.coberturaCostoPct,
-        Estado_Costo: costo.estadoCosto,
-        Actualizado_En: ahora,
-        Nota: costo.nota
-      };
-    });
-
-  const upsert = upsertObjetosPorIdQTAS_(outputSheet, outputHeaders, rows, 'Detalle_Costo_ID');
+  const result = reconstruirVentaDetalleCostosCalculadoInternoQTAS_(settings);
 
   if (!settings.silent) {
     maybeAlert_(
-      `Venta_Detalle_Costos_Calc sincronizada con ${rows.length} fila(s). ` +
-      `Nuevas=${upsert.inserted}, actualizadas=${upsert.updated}.`
+      result.skipped
+        ? `Venta_Detalle_Costos_Calc omitida: ${texto_(result.reason)}`
+        : `Venta_Detalle_Costos_Calc sincronizada con ${result.rows} fila(s). ` +
+          `Nuevas=${result.inserted}, actualizadas=${result.updated}.`
     );
   }
 
-  return {
-    ok: true,
-    rows: rows.length,
-    inserted: upsert.inserted,
-    updated: upsert.updated,
-    stale: upsert.stale
-  };
+  return result;
 }
 
 function reconstruirAnaliticaCostosQTAS(payload) {
@@ -398,14 +283,24 @@ function reconstruirAnaliticaCostosQTAS(payload) {
     fechaBase: new Date(),
     silent: false
   }, payload || {});
+  asegurarModeloOperativoQTAS_();
 
-  const costoProducto = reconstruirCostoProductoCalculadoQTAS({
+  const ss = SpreadsheetApp.getActive();
+  const ahora = new Date();
+  const costosCache = cargarCostosEnMemoria_();
+  const componentes = leerComponentesProductoActivosQTAS_();
+  const reglas = leerReglasCostoProductoActivasQTAS_();
+  const shared = {
+    ss: ss,
     fechaBase: settings.fechaBase,
-    silent: true
-  });
-  const ventaDetalle = reconstruirVentaDetalleCostosCalculadoQTAS({
-    silent: true
-  });
+    ahora: ahora,
+    costosCache: costosCache,
+    componentes: componentes,
+    reglas: reglas
+  };
+
+  const costoProducto = reconstruirCostoProductoCalculadoInternoQTAS_(shared);
+  const ventaDetalle = reconstruirVentaDetalleCostosCalculadoInternoQTAS_(shared);
 
   if (!settings.silent) {
     maybeAlert_(
@@ -426,6 +321,264 @@ function reconstruirAnaliticaCostosQTAS_Log() {
   const result = reconstruirAnaliticaCostosQTAS({ silent: true });
   Logger.log(JSON.stringify(result, null, 2));
   return result;
+}
+
+function reconstruirCostoProductoCalculadoInternoQTAS_(payload) {
+  const settings = Object.assign({
+    fechaBase: new Date(),
+    ss: SpreadsheetApp.getActive()
+  }, payload || {});
+  const ss = settings.ss || SpreadsheetApp.getActive();
+  const productosRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.productos);
+  const outputRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.costoProductoCalculado);
+  if (!productosRef.ok || !outputRef.ok) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: unirUnicos_([productosRef.reason, outputRef.reason]),
+      rows: 0,
+      inserted: 0,
+      updated: 0,
+      stale: 0,
+      fechaBase: fechaInput_(settings.fechaBase)
+    };
+  }
+
+  const contexto = construirContextoAnaliticaCostosQTAS_(settings);
+  const rows = leerObjetos_(productosRef.sheet)
+    .filter(row => estaActivo_(row.Activo))
+    .map(row => construirFilaCostoProductoCalculadoQTAS_(row, contexto));
+  const upsert = upsertObjetosPorIdQTAS_(
+    outputRef.sheet,
+    outputRef.headers,
+    rows,
+    'Costo_Producto_ID'
+  );
+
+  return {
+    ok: true,
+    skipped: false,
+    rows: rows.length,
+    inserted: upsert.inserted,
+    updated: upsert.updated,
+    stale: upsert.stale,
+    fechaBase: fechaInput_(contexto.fechaBase)
+  };
+}
+
+function reconstruirVentaDetalleCostosCalculadoInternoQTAS_(payload) {
+  const settings = Object.assign({
+    ss: SpreadsheetApp.getActive()
+  }, payload || {});
+  const ss = settings.ss || SpreadsheetApp.getActive();
+  const detalleRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.detalle);
+  const outputRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.ventaDetalleCostosCalculado);
+  if (!detalleRef.ok || !outputRef.ok) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: unirUnicos_([detalleRef.reason, outputRef.reason]),
+      rows: 0,
+      inserted: 0,
+      updated: 0,
+      stale: 0
+    };
+  }
+
+  const contexto = construirContextoAnaliticaCostosQTAS_(settings);
+  const rows = leerObjetos_(detalleRef.sheet)
+    .filter(row => texto_(row.Detalle_ID))
+    .map(row => construirFilaVentaDetalleCostoCalculadoQTAS_(row, contexto));
+  const upsert = upsertObjetosPorIdQTAS_(
+    outputRef.sheet,
+    outputRef.headers,
+    rows,
+    'Detalle_Costo_ID'
+  );
+
+  return {
+    ok: true,
+    skipped: false,
+    rows: rows.length,
+    inserted: upsert.inserted,
+    updated: upsert.updated,
+    stale: upsert.stale
+  };
+}
+
+function sincronizarVentaDetalleCostosLoteQTAS_(detalleRows, payload) {
+  const settings = Object.assign({
+    ss: SpreadsheetApp.getActive()
+  }, payload || {});
+  const rowsFuente = (detalleRows || []).filter(row => texto_(row && row.Detalle_ID));
+  if (!rowsFuente.length) {
+    return {
+      ok: true,
+      skipped: false,
+      rows: 0,
+      inserted: 0,
+      updated: 0,
+      stale: 0
+    };
+  }
+
+  const ss = settings.ss || SpreadsheetApp.getActive();
+  const outputRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.ventaDetalleCostosCalculado);
+  if (!outputRef.ok) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: outputRef.reason,
+      rows: 0,
+      inserted: 0,
+      updated: 0,
+      stale: 0
+    };
+  }
+
+  const contexto = construirContextoAnaliticaCostosQTAS_(settings);
+  const rows = rowsFuente.map(row => construirFilaVentaDetalleCostoCalculadoQTAS_(row, contexto));
+  const upsert = upsertObjetosLotePorIdQTAS_(
+    outputRef.sheet,
+    outputRef.headers,
+    rows,
+    'Detalle_Costo_ID'
+  );
+
+  return {
+    ok: true,
+    skipped: false,
+    rows: rows.length,
+    inserted: upsert.inserted,
+    updated: upsert.updated,
+    stale: upsert.stale
+  };
+}
+
+function construirContextoAnaliticaCostosQTAS_(payload) {
+  const settings = Object.assign({
+    fechaBase: new Date(),
+    ahora: new Date()
+  }, payload || {});
+  return {
+    fechaBase: resolverFechaOperacion_(settings.fechaBase, new Date()),
+    ahora: settings.ahora instanceof Date ? settings.ahora : new Date(),
+    costosCache: settings.costosCache || cargarCostosEnMemoria_(),
+    componentes: settings.componentes || leerComponentesProductoActivosQTAS_(),
+    reglas: settings.reglas || leerReglasCostoProductoActivasQTAS_()
+  };
+}
+
+function construirFilaCostoProductoCalculadoQTAS_(row, context) {
+  const producto = texto_(row && row.Producto_Estandar);
+  const unidadVenta = normalizarUnidadCanonicaQTAS_(row && row.Unidad_Default);
+  const costo = calcularCostoProductoEnFechaQTAS_(producto, unidadVenta, context.fechaBase, {
+    cantidadVenta: 1,
+    incluirReglasPorLinea: false,
+    incluirReglasPorUnidad: true,
+    costosCache: context.costosCache,
+    componentes: context.componentes,
+    reglas: context.reglas
+  });
+
+  return {
+    Costo_Producto_ID: `CP-${normalizarClaveProductoQTAS_(producto, unidadVenta)}`,
+    Fecha_Calculo: context.ahora,
+    Producto_Estandar: producto,
+    Unidad_Venta: unidadVenta,
+    Metodo_Costo: costo.metodoCosto,
+    Costo_Unitario_Total: costo.costoUnitarioTotal,
+    Costo_Unitario_Componentes: costo.costoUnitarioComponentes,
+    Componentes_Activos: costo.componentesActivos,
+    Componentes_Con_Costo: costo.componentesConCosto,
+    Componentes_Sin_Costo: costo.componentesSinCosto,
+    Cobertura_Costo_Pct: costo.coberturaCostoPct,
+    Estado_Costo: costo.estadoCosto,
+    Nota: costo.nota
+  };
+}
+
+function construirFilaVentaDetalleCostoCalculadoQTAS_(row, context) {
+  const fechaVenta = valorFechaVentaCanonicaQTAS_(row, context.ahora);
+  const contextoCosto = resolverContextoCostoVentaLegacyQTAS_(row);
+  const producto = contextoCosto.producto;
+  const unidad = contextoCosto.unidad;
+  const cantidad = contextoCosto.cantidad;
+  const subtotalNeto = redondear_(numero_(row.Subtotal_Neto));
+  let costo = contextoCosto.excluirCosto
+    ? construirResultadoCostoNoCosteableQTAS_(contextoCosto.motivoExclusion)
+    : calcularCostoProductoEnFechaQTAS_(producto, unidad, fechaVenta, {
+      cantidadVenta: cantidad,
+      incluirReglasPorLinea: true,
+      incluirReglasPorUnidad: true,
+      costosCache: context.costosCache,
+      componentes: context.componentes,
+      reglas: context.reglas
+    });
+  if (contextoCosto.notaNormalizacion) {
+    costo = Object.assign({}, costo, {
+      nota: unirUnicos_([contextoCosto.notaNormalizacion, costo.nota])
+    });
+  }
+  const costoTotal = redondear_(costo.costoTotalLineaUsado);
+  const margenBruto = redondear_(subtotalNeto - costoTotal);
+  const margenPct = subtotalNeto > 0
+    ? redondear_(margenBruto * 100 / subtotalNeto)
+    : 0;
+
+  return {
+    Detalle_Costo_ID: `VDC-${texto_(row.Detalle_ID)}`,
+    Detalle_ID: texto_(row.Detalle_ID),
+    Venta_ID: numero_(row.Venta_ID),
+    Fecha_Venta: fechaVenta,
+    Cliente_ID: texto_(row.Cliente_ID),
+    Nombre: texto_(row.Nombre),
+    Producto_Estandar: producto,
+    Cantidad: cantidad,
+    Unidad: unidad,
+    Subtotal_Neto: subtotalNeto,
+    Costo_Unitario_Usado: costo.costoUnitarioTotal,
+    Costo_Total_Estimado: costoTotal,
+    Margen_Bruto_Estimado: margenBruto,
+    Margen_Porcentaje_Estimado: margenPct,
+    Metodo_Costo: costo.metodoCosto,
+    Componentes_Con_Costo: costo.componentesConCosto,
+    Componentes_Sin_Costo: costo.componentesSinCosto,
+    Cobertura_Costo_Pct: costo.coberturaCostoPct,
+    Estado_Costo: costo.estadoCosto,
+    Actualizado_En: context.ahora,
+    Nota: costo.nota
+  };
+}
+
+function resolverHojaCanonicaOperativaQTAS_(ss, sheetName) {
+  const spreadsheet = ss || SpreadsheetApp.getActive();
+  const sheet = spreadsheet.getSheetByName(sheetName);
+  if (!sheet) {
+    return {
+      ok: false,
+      sheet: null,
+      headers: [],
+      reason: `Falta la hoja ${sheetName}.`
+    };
+  }
+
+  const headers = getHeaders_(sheet);
+  if (!headersIguales_(headers, QTAS.schemas[sheetName])) {
+    return {
+      ok: false,
+      sheet: sheet,
+      headers: headers,
+      reason: `La hoja ${sheetName} no coincide con la estructura esperada.`
+    };
+  }
+
+  return {
+    ok: true,
+    sheet: sheet,
+    headers: headers,
+    reason: ''
+  };
 }
 
 function resolverContextoCostoVentaLegacyQTAS_(row) {
@@ -925,6 +1078,47 @@ function upsertObjetosPorIdQTAS_(sheet, headers, objects, idHeader) {
     inserted: inserted,
     updated: updated,
     stale: stale
+  };
+}
+
+function upsertObjetosLotePorIdQTAS_(sheet, headers, objects, idHeader) {
+  const rowsExistentes = leerObjetosConMeta_(sheet);
+  const existentesPorId = {};
+  rowsExistentes.forEach(row => {
+    const id = texto_(row[idHeader]);
+    if (!id || existentesPorId[id]) return;
+    existentesPorId[id] = row;
+  });
+
+  const nuevos = [];
+  const procesados = {};
+  let inserted = 0;
+  let updated = 0;
+
+  (objects || []).forEach(obj => {
+    const id = texto_(obj && obj[idHeader]);
+    if (!id || procesados[id]) return;
+    procesados[id] = true;
+
+    const existente = existentesPorId[id];
+    if (existente) {
+      actualizarFilaObjeto_(sheet, existente.__rowNumber, headers, Object.assign({}, existente, obj));
+      updated++;
+      return;
+    }
+
+    nuevos.push(filaDesdeHeaders_(headers, obj));
+    inserted++;
+  });
+
+  if (nuevos.length) {
+    escribirFilas_(sheet, nuevos);
+  }
+
+  return {
+    inserted: inserted,
+    updated: updated,
+    stale: 0
   };
 }
 

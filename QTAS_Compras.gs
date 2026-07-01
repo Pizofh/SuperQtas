@@ -92,13 +92,35 @@ function registrarCompraQTAS(payload) {
       lineas: lineasPreparadas
     });
 
+    let costoProductoCalculado = null;
+    try {
+      costoProductoCalculado = reconstruirCostoProductoCalculadoInternoQTAS_({
+        ss: ss,
+        fechaBase: new Date(),
+        ahora: ahora
+      });
+    } catch (error) {
+      Logger.log(`No se pudo refrescar Costo_Producto_Calc tras Compra ${compraId}: ${error.message}`);
+      costoProductoCalculado = {
+        ok: false,
+        skipped: true,
+        reason: error.message,
+        rows: 0,
+        inserted: 0,
+        updated: 0,
+        stale: 0,
+        fechaBase: fechaInput_(new Date())
+      };
+    }
+
     return {
       ok: true,
       compraId: compraId,
       totalCompra: totalCompra,
       lineas: lineasPreparadas.length,
       costosActualizados: costosActualizados,
-      itemsResumen: itemsResumen
+      itemsResumen: itemsResumen,
+      costoProductoCalculado: costoProductoCalculado
     };
   });
 }
