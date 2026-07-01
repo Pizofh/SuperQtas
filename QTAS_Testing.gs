@@ -260,13 +260,17 @@ function testResetEntornoQTAS(payload) {
   assertOperacionDestructivaPermitidaQTAS_('testResetEntornoQTAS');
 
   const settings = Object.assign({
-    aplicarFormatos: false
+    aplicarFormatos: false,
+    includeSnapshot: true,
+    asegurarModelo: true
   }, payload || {});
 
   return withScriptLock_('test reset entorno', () => {
-    const ss = asegurarModeloOperativoQTAS_({
-      aplicarFormatos: Boolean(settings.aplicarFormatos)
-    });
+    const ss = settings.asegurarModelo === false
+      ? SpreadsheetApp.getActive()
+      : asegurarModeloOperativoQTAS_({
+        aplicarFormatos: Boolean(settings.aplicarFormatos)
+      });
     const configSheet = materializarConfigMediosPagoQTAS_();
     const sheetNames = testHojasSoportadasQTAS_()
       .concat([configSheet.getName()])
@@ -290,6 +294,15 @@ function testResetEntornoQTAS(payload) {
 
     if (settings.aplicarFormatos) {
       aplicarFormatosModeloQTAS_(ss);
+    }
+
+    if (settings.includeSnapshot === false) {
+      return testSerializarValorQTAS_({
+        ok: true,
+        spreadsheetId: ss.getId(),
+        spreadsheetName: ss.getName(),
+        reset: true
+      });
     }
 
     return testSnapshotQTAS({

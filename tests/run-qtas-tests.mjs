@@ -193,14 +193,17 @@ function createScenarioContext(config, scriptClient) {
     async call(functionName, ...parameters) {
       let response;
       try {
-        response = await scriptClient.scripts.run({
-          scriptId: executionTargetId,
-          requestBody: {
-            function: functionName,
-            parameters,
-            devMode: Boolean(config.devMode)
-          }
-        });
+        response = await ejecutarConReintentoApiGoogle_(
+          `Apps Script run ${functionName}`,
+          () => scriptClient.scripts.run({
+            scriptId: executionTargetId,
+            requestBody: {
+              function: functionName,
+              parameters,
+              devMode: Boolean(config.devMode)
+            }
+          })
+        );
       } catch (error) {
         throw createAppsScriptTransportError(functionName, error, config);
       }
@@ -232,7 +235,11 @@ function createScenarioContext(config, scriptClient) {
     },
 
     async reset(options = {}) {
-      return this.call('testResetEntornoQTAS', options);
+      return this.call('testResetEntornoQTAS', {
+        includeSnapshot: false,
+        asegurarModelo: false,
+        ...options
+      });
     },
 
     async snapshot(options = {}) {
@@ -251,9 +258,12 @@ function createScenarioContext(config, scriptClient) {
 
       if (config.scriptProjectId) {
         try {
-          const project = await scriptClient.projects.get({
-            scriptId: config.scriptProjectId
-          });
+          const project = await ejecutarConReintentoApiGoogle_(
+            'Apps Script project.get',
+            () => scriptClient.projects.get({
+              scriptId: config.scriptProjectId
+            })
+          );
           report.checks.project = {
             ok: true,
             title: project.data?.title || '',
@@ -269,10 +279,13 @@ function createScenarioContext(config, scriptClient) {
         }
 
         try {
-          const deployment = await scriptClient.projects.deployments.get({
-            scriptId: config.scriptProjectId,
-            deploymentId: config.deploymentId
-          });
+          const deployment = await ejecutarConReintentoApiGoogle_(
+            'Apps Script deployments.get',
+            () => scriptClient.projects.deployments.get({
+              scriptId: config.scriptProjectId,
+              deploymentId: config.deploymentId
+            })
+          );
           report.checks.deployment = {
             ok: true,
             deploymentId: deployment.data?.deploymentId || '',
@@ -524,6 +537,57 @@ function resolveExecutionScriptId_(config) {
 
 function unirValoresUnicos_(values) {
   return [...new Set((values || []).filter(Boolean))];
+}
+
+async function ejecutarConReintentoApiGoogle_(label, operation, options = {}) {
+  const settings = {
+    maxAttempts: 3,
+    baseDelayMs: 1500,
+    ...options
+  };
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= settings.maxAttempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt >= settings.maxAttempts || !esErrorTransienteApiGoogle_(error)) {
+        throw error;
+      }
+
+      const waitMs = settings.baseDelayMs * attempt;
+      console.warn(
+        `[WARN] ${label} fallo por error transiente (${resumirErrorApiGoogle_(error).message}). ` +
+        `Reintentando ${attempt}/${settings.maxAttempts - 1} en ${waitMs} ms...`
+      );
+      await dormirMs_(waitMs);
+    }
+  }
+
+  throw lastError;
+}
+
+function esErrorTransienteApiGoogle_(error) {
+  const status = error?.response?.status || error?.status || error?.code || null;
+  const message = String(error?.message || '').toUpperCase();
+
+  if (typeof status === 'number') {
+    return status === 408 || status === 429 || status >= 500;
+  }
+
+  return [
+    'ECONNRESET',
+    'ENOTFOUND',
+    'EAI_AGAIN',
+    'ETIMEDOUT',
+    'ECONNABORTED',
+    'SOCKET HANG UP'
+  ].some(token => message.includes(token));
+}
+
+function dormirMs_(ms) {
+  return new Promise(resolve => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
 }
 
 main().catch(error => {
