@@ -7,6 +7,7 @@ node_modules/
 # Local Apps Script config
 .clasp.json
 .clasp.test.json
+.clasp.prod-build.json
 
 # Environment / auth / secrets
 .env
@@ -29,6 +30,7 @@ tests/token.json
 exports/
 QTAS_Exports/
 libro/
+dist/
 00_RESUMEN_EXPORT.md
 *.csv
 *.tsv
