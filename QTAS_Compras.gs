@@ -20,7 +20,7 @@ function getCatalogoComprasQTAS() {
     hoy: fechaInput_(new Date()),
     mediosPago: mediosPago,
     productos: productos,
-    itemsSugeridos: construirItemsSugeridosComprasQTAS_(productos, costosVigentes),
+    itemsSugeridos: construirItemsSugeridosComprasQTAS_(productos, costosVigentes, { ss: ss }),
     costosVigentes: costosVigentes,
     comprasRecientes: comprasRecientes,
     proveedores: proveedores
@@ -53,7 +53,11 @@ function registrarCompraQTAS(payload) {
     const fechaCompra = combinarFechaYHora_(fechaCompraBase, ahora);
     const proveedor = texto_(payload.proveedor);
     const comentarioCompra = texto_(payload.comentarioCompra);
-    const productosActivosIndex = construirIndiceProductosCompraQTAS_(leerProductosActivosCompraQTAS_(ss));
+    const productosActivos = leerProductosActivosCompraQTAS_(ss);
+    const productosActivosIndex = construirIndiceProductosCompraQTAS_(productosActivos);
+    const itemsCatalogoIndex = construirIndiceItemsSugeridosCompraQTAS_(
+      construirItemsSugeridosComprasQTAS_(productosActivos, listarCostosVigentesQTAS_(), { ss: ss })
+    );
 
     const lineasPreparadas = (payload.lineas || []).map((linea, index) =>
       prepararLineaCompraQTAS_({
@@ -62,7 +66,8 @@ function registrarCompraQTAS(payload) {
         proveedor: proveedor,
         linea: linea,
         index: index,
-        productosActivosIndex: productosActivosIndex
+        productosActivosIndex: productosActivosIndex,
+        itemsCatalogoIndex: itemsCatalogoIndex
       })
     );
 
@@ -132,8 +137,14 @@ function prepararLineaCompraQTAS_(context) {
     context && context.productosActivosIndex,
     linea.item
   );
-  const item = referenciaProducto ? referenciaProducto.item : texto_(linea.item);
-  const unidadBase = texto_(linea.unidad) || (referenciaProducto ? texto_(referenciaProducto.unidad) : 'und') || 'und';
+  const referenciaItem = resolverItemCanonicoCompraQTAS_(
+    context && context.itemsCatalogoIndex,
+    tipoItem,
+    linea.item
+  );
+  const referenciaCanonica = referenciaProducto || referenciaItem;
+  const item = referenciaCanonica ? referenciaCanonica.item : texto_(linea.item);
+  const unidadBase = texto_(linea.unidad) || (referenciaCanonica ? texto_(referenciaCanonica.unidad) : 'und') || 'und';
   const medida = normalizarCantidadUnidadQTAS_(linea.cantidad, unidadBase);
   const cantidad = medida.cantidad;
   const unidad = medida.unidad || normalizarUnidadCanonicaQTAS_(unidadBase) || 'und';
@@ -247,6 +258,22 @@ function resolverProductoCanonicoCompraQTAS_(productosActivosIndex, item) {
   const key = normalizarClaveTexto_(item);
   if (!key || !productosActivosIndex) return null;
   return productosActivosIndex[key] || null;
+}
+
+function construirIndiceItemsSugeridosCompraQTAS_(items) {
+  return (items || []).reduce((acc, row) => {
+    const key = claveItemSugeridoCompraQTAS_(row && row.tipoItem, row && row.item);
+    if (key && !acc[key]) {
+      acc[key] = row;
+    }
+    return acc;
+  }, {});
+}
+
+function resolverItemCanonicoCompraQTAS_(itemsCatalogoIndex, tipoItem, item) {
+  const key = claveItemSugeridoCompraQTAS_(tipoItem, item);
+  if (!key || !itemsCatalogoIndex) return null;
+  return itemsCatalogoIndex[key] || null;
 }
 
 function leerCostosHistoricosQTAS_() {
@@ -391,50 +418,158 @@ function listarComprasRecientesQTAS_() {
     }));
 }
 
-function construirItemsSugeridosComprasQTAS_(productos, costosVigentes) {
+function construirItemsSugeridosComprasQTAS_(productos, costosVigentes, options) {
+  const settings = options || {};
+  const ss = settings.ss || SpreadsheetApp.getActive();
   const mapa = {};
 
   (productos || []).forEach(row => {
-    const key = [
-      normalizarClaveTexto_(row.tipoItem || 'Producto'),
-      normalizarClaveTexto_(row.item)
-    ].join('|');
-    if (!key) return;
-    mapa[key] = {
-      item: row.item,
-      unidad: row.unidad,
-      tipoItem: row.tipoItem,
-      costoUnitario: 0,
-      fechaDesde: ''
-    };
+    registrarItemSugeridoCompraQTAS_(mapa, row, {
+      prioridad: 400,
+      origenCatalogo: 'Productos activos'
+    });
+  });
+
+  leerItemsCosteoCompraQTAS_(ss).forEach(row => {
+    registrarItemSugeridoCompraQTAS_(mapa, row, {
+      prioridad: 300,
+      origenCatalogo: 'Plantilla costeo'
+    });
   });
 
   (costosVigentes || []).forEach(row => {
-    const key = [
-      normalizarClaveTexto_(row.tipoItem || 'Insumo'),
-      normalizarClaveTexto_(row.item)
-    ].join('|');
-    if (!key) return;
+    registrarItemSugeridoCompraQTAS_(mapa, row, {
+      prioridad: 350,
+      origenCatalogo: 'Costos vigentes',
+      proveedor: row.proveedor,
+      fechaDesde: row.fechaDesde
+    });
+  });
 
-    if (!mapa[key]) {
-      mapa[key] = {
-        item: row.item,
-        unidad: row.unidad,
-        tipoItem: row.tipoItem || 'Insumo',
-        costoUnitario: row.costoUnitario,
-        fechaDesde: row.fechaDesde
-      };
-      return;
-    }
-
-    mapa[key].costoUnitario = row.costoUnitario;
-    mapa[key].fechaDesde = row.fechaDesde;
-    if (!mapa[key].unidad) mapa[key].unidad = row.unidad;
+  leerItemsHistoricosCompraQTAS_(ss).forEach(row => {
+    registrarItemSugeridoCompraQTAS_(mapa, row, {
+      prioridad: 200,
+      origenCatalogo: 'Historial compras',
+      proveedor: row.proveedor,
+      fechaDesde: row.fechaDesde,
+      sumarUso: true
+    });
   });
 
   return Object.keys(mapa)
-    .map(key => mapa[key])
+    .map(key => {
+      const item = Object.assign({}, mapa[key]);
+      delete item._prioridad;
+      delete item._ultimaFechaComparable;
+      return item;
+    })
     .sort((a, b) => a.item.localeCompare(b.item));
+}
+
+function leerItemsHistoricosCompraQTAS_(ss) {
+  const spreadsheet = ss || SpreadsheetApp.getActive();
+  const sheet = spreadsheet.getSheetByName(QTAS.sheets.compraDetalle);
+
+  return leerObjetos_(sheet)
+    .filter(row => !esRegistroAnulado_(row.Estado_Registro))
+    .map(row => ({
+      item: texto_(row.Item),
+      unidad: normalizarUnidadCanonicaQTAS_(row.Unidad),
+      tipoItem: normalizarTipoCompraItemQTAS_(row.Tipo_Item),
+      costoUnitario: redondear_(numero_(row.Costo_Unitario)),
+      proveedor: texto_(row.Proveedor),
+      fechaDesde: row.Fecha_Compra ? fechaInput_(row.Fecha_Compra) : ''
+    }))
+    .filter(row => row.item && row.unidad);
+}
+
+function leerItemsCosteoCompraQTAS_(ss) {
+  const spreadsheet = ss || SpreadsheetApp.getActive();
+  const componentes = leerObjetos_(spreadsheet.getSheetByName(QTAS.sheets.productoComponentes))
+    .filter(row => estaActivo_(row.Activo))
+    .map(row => ({
+      item: texto_(row.Item_Componente),
+      unidad: normalizarUnidadCanonicaQTAS_(row.Unidad_Componente),
+      tipoItem: normalizarTipoCompraItemQTAS_(row.Tipo_Componente)
+    }));
+  const reglas = leerObjetos_(spreadsheet.getSheetByName(QTAS.sheets.productoReglasCosto))
+    .filter(row => estaActivo_(row.Activo))
+    .map(row => ({
+      item: texto_(row.Item_Componente),
+      unidad: normalizarUnidadCanonicaQTAS_(row.Unidad_Componente),
+      tipoItem: normalizarTipoCompraItemQTAS_(row.Tipo_Componente)
+    }));
+
+  return componentes
+    .concat(reglas)
+    .filter(row => row.item && row.unidad);
+}
+
+function registrarItemSugeridoCompraQTAS_(mapa, row, options) {
+  const settings = options || {};
+  const tipoItem = normalizarTipoCompraItemQTAS_(row && row.tipoItem);
+  const item = texto_(row && row.item);
+  const unidad = normalizarUnidadCanonicaQTAS_(row && row.unidad);
+  const key = claveItemSugeridoCompraQTAS_(tipoItem, item);
+
+  if (!key || !unidad) return;
+
+  const prioridad = Math.max(0, numero_(settings.prioridad));
+  if (!mapa[key]) {
+    mapa[key] = {
+      item: item,
+      unidad: unidad,
+      tipoItem: tipoItem,
+      costoUnitario: 0,
+      fechaDesde: '',
+      proveedor: '',
+      origenCatalogo: texto_(settings.origenCatalogo),
+      usos: 0,
+      ultimaFecha: '',
+      _prioridad: prioridad,
+      _ultimaFechaComparable: ''
+    };
+  }
+
+  const target = mapa[key];
+  const fechaDesde = fechaTextoCatalogoCompraQTAS_(settings.fechaDesde || row.fechaDesde);
+  const costoUnitario = redondear_(numero_(row && row.costoUnitario));
+
+  if (prioridad > numero_(target._prioridad)) {
+    target.item = item;
+    target.unidad = unidad;
+    target.tipoItem = tipoItem;
+    target.origenCatalogo = texto_(settings.origenCatalogo) || target.origenCatalogo;
+    target._prioridad = prioridad;
+  } else if (!target.unidad) {
+    target.unidad = unidad;
+  }
+
+  if (costoUnitario > 0 && (!target.costoUnitario || fechaDesde >= texto_(target.fechaDesde))) {
+    target.costoUnitario = costoUnitario;
+    target.fechaDesde = fechaDesde;
+    target.proveedor = texto_(settings.proveedor || row.proveedor);
+  }
+
+  if (settings.sumarUso) {
+    target.usos = numero_(target.usos) + 1;
+  }
+
+  if (fechaDesde && fechaDesde >= texto_(target._ultimaFechaComparable)) {
+    target.ultimaFecha = fechaDesde;
+    target._ultimaFechaComparable = fechaDesde;
+  }
+}
+
+function claveItemSugeridoCompraQTAS_(tipoItem, item) {
+  const tipoKey = normalizarClaveTexto_(tipoItem || 'Insumo');
+  const itemKey = normalizarClaveTexto_(item);
+  if (!tipoKey || !itemKey) return '';
+  return [tipoKey, itemKey].join('|');
+}
+
+function fechaTextoCatalogoCompraQTAS_(value) {
+  return value ? fechaInput_(value) : '';
 }
 
 function actualizarCostosDesdeCompraQTAS_(context) {
