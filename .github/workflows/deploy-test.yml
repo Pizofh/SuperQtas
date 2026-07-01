@@ -80,7 +80,7 @@ jobs:
           npm run test:qtas:smoke:qa
 
       - name: Run headless Apps Script full suite
-        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_full_suite == 'true' }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full_suite == 'true') || (github.event_name == 'push' && vars.QTAS_RUN_FULL_SUITE_ON_QA_PUSH == 'true') }}
         env:
           GOOGLE_AUTHORIZED_USER_JSON: ${{ secrets.GOOGLE_AUTHORIZED_USER_JSON_TEST }}
         run: npm run test:qtas:full:qa
