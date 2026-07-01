@@ -486,6 +486,45 @@ export const SCENARIOS = [
     }
   },
   {
+    id: 'compra_estandariza_item_catalogo',
+    title: 'Compra reutiliza items conocidos y los deja sugeridos en catalogo',
+    tags: ['compras', 'catalogo', 'smoke'],
+    run: async ctx => {
+      await ctx.reset();
+
+      await ctx.call('registrarCompraQTAS', compraPayloadBase({
+        proveedor: 'Proveedor Catalogo Test',
+        lineas: [
+          compraLinea('Insumo', 'BolsaCatalogo', 10, 'und', 5000, true, 'Alta catalogo')
+        ]
+      }));
+
+      const catalogo = await ctx.call('getCatalogoComprasQTAS');
+      const sugerencia = (catalogo.itemsSugeridos || []).find(row =>
+        row.tipoItem === 'Insumo' && row.item === 'BolsaCatalogo'
+      );
+
+      ctx.assert(sugerencia, 'El item comprado debe quedar sugerido en el catalogo de compras.');
+      ctx.equal(ctx.num(sugerencia.costoUnitario), 500, 'El catalogo debe recordar el ultimo costo unitario conocido.');
+      ctx.equal(String(sugerencia.unidad), 'und', 'El catalogo debe conservar la unidad del item.');
+
+      await ctx.call('registrarCompraQTAS', compraPayloadBase({
+        proveedor: 'Proveedor Catalogo Test 2',
+        lineas: [
+          compraLinea('Insumo', 'bolsacatalogo', 6, 'und', 3600, true, 'Reuso catalogo')
+        ]
+      }));
+
+      const state = await snapshotLigero(ctx, {
+        sheetNames: ['Compra_Detalle']
+      });
+      const detallesCanonicos = ctx.sheetRows(state, 'Compra_Detalle')
+        .filter(row => row.Item === 'BolsaCatalogo');
+
+      ctx.equal(detallesCanonicos.length, 2, 'Las compras repetidas deben quedar canonizadas con el mismo nombre de item.');
+    }
+  },
+  {
     id: 'costo_producto_por_componentes',
     title: 'Costo de producto compuesto y margen por venta',
     tags: ['costos', 'receta', 'ventas'],

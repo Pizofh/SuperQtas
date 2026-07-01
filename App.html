@@ -2649,6 +2649,17 @@
         mensajes.push(`Quedara guardado a ${moneda_(costoUnitario)} por ${unidad || 'unidad'}.`);
       }
 
+      if (tipoItem !== 'Producto') {
+        if (referencia.sugerencia) {
+          const origenCatalogo = referencia.sugerencia.origenCatalogo
+            ? ` desde ${referencia.sugerencia.origenCatalogo.toLowerCase()}`
+            : '';
+          mensajes.push(`Item reconocido del catalogo${origenCatalogo}.`);
+        } else {
+          mensajes.push('Item nuevo. Si guardas esta compra, quedara sugerido para futuras compras.');
+        }
+      }
+
       if (impacto && tipoItem === 'Producto') {
         if (!referencia.productoCanonicoValido) {
           mensajes.push('Para impactar costo como Producto debes elegir un producto canonico existente.');
