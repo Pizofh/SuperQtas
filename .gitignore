@@ -21,6 +21,8 @@ tests/.artifacts/
 tests/qtas.config.json
 tests/qtas.test.config.json
 tests/*.credentials.json
+tests/*.authorized-user.json
+tests/*service-account*.json
 tests/token.json
 
 # Generated exports / workbook dumps

@@ -9,6 +9,44 @@ function testPingQTAS() {
   });
 }
 
+function habilitarOperacionesDestructivasQAQTAS() {
+  PropertiesService.getScriptProperties().setProperty('QTAS_ALLOW_DESTRUCTIVE', 'true');
+  return estadoOperacionesDestructivasQAQTAS();
+}
+
+function habilitarOperacionesDestructivasQAQTAS_Log() {
+  const result = habilitarOperacionesDestructivasQAQTAS();
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+function bloquearOperacionesDestructivasQAQTAS() {
+  PropertiesService.getScriptProperties().deleteProperty('QTAS_ALLOW_DESTRUCTIVE');
+  return estadoOperacionesDestructivasQAQTAS();
+}
+
+function bloquearOperacionesDestructivasQAQTAS_Log() {
+  const result = bloquearOperacionesDestructivasQAQTAS();
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+function estadoOperacionesDestructivasQAQTAS() {
+  const ss = SpreadsheetApp.getActive();
+  return testSerializarValorQTAS_({
+    ok: true,
+    spreadsheetId: ss.getId(),
+    spreadsheetName: ss.getName(),
+    allowDestructive: operacionesDestructivasPermitidasQTAS_()
+  });
+}
+
+function estadoOperacionesDestructivasQAQTAS_Log() {
+  const result = estadoOperacionesDestructivasQAQTAS();
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
 function testLimpiarRegistrosPruebaQTAS(payload) {
   assertOperacionDestructivaPermitidaQTAS_('testLimpiarRegistrosPruebaQTAS');
 

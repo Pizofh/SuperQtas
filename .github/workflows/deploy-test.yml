@@ -1,0 +1,54 @@
+name: Deploy Test
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Write clasp credentials
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          CLASP_JSON_TEST: ${{ secrets.CLASP_JSON_TEST }}
+        run: |
+          test -n "$CLASPRC_JSON"
+          test -n "$CLASP_JSON_TEST"
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          printf '%s' "$CLASP_JSON_TEST" > .clasp.test.json
+
+      - name: Validate harness loads
+        run: npm run test:qtas:list
+
+      - name: Push to Apps Script test
+        run: npm run deploy:test:push
+
+      - name: Run headless Apps Script probe and tests
+        env:
+          QTAS_TEST_CONFIG_JSON: ${{ secrets.QTAS_TEST_CONFIG_JSON }}
+          GOOGLE_AUTHORIZED_USER_JSON_TEST: ${{ secrets.GOOGLE_AUTHORIZED_USER_JSON_TEST }}
+        run: |
+          if [ -z "$QTAS_TEST_CONFIG_JSON" ] || [ -z "$GOOGLE_AUTHORIZED_USER_JSON_TEST" ]; then
+            echo "Skipping headless tests: faltan QTAS_TEST_CONFIG_JSON o GOOGLE_AUTHORIZED_USER_JSON_TEST."
+            exit 0
+          fi
+          printf '%s' "$QTAS_TEST_CONFIG_JSON" > tests/qtas.test.config.json
+          GOOGLE_AUTHORIZED_USER_JSON="$GOOGLE_AUTHORIZED_USER_JSON_TEST" npm run test:qtas:probe -- --config tests/qtas.test.config.json
+          GOOGLE_AUTHORIZED_USER_JSON="$GOOGLE_AUTHORIZED_USER_JSON_TEST" npm run test:qtas -- --config tests/qtas.test.config.json

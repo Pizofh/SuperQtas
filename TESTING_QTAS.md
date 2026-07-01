@@ -98,6 +98,52 @@ Referencia oficial:
 - Apps Script API `scripts.run`: https://developers.google.com/apps-script/api/how-tos/execute
 - `clasp`: https://developers.google.com/apps-script/guides/clasp
 
+## Autenticacion interactiva vs headless
+
+Hasta ahora el runner usaba `@google-cloud/local-auth`, que abre navegador para que inicies sesion.
+
+Eso sirve bien en tu maquina, pero no sirve bien en CI porque GitHub Actions no puede abrir ese login interactivo.
+
+Ahora el runner soporta tres modos:
+
+- `authMode: "auto"`
+  - primero intenta `authorizedUserPath`
+  - luego `serviceAccountPath`
+  - si no encuentra nada, cae a login interactivo con `credentialsPath`
+- `authMode: "authorized_user"`
+  - usa una credencial OAuth reutilizable con refresh token
+  - es la mejor opcion para trabajar comodo y para CI
+- `authMode: "service_account"`
+  - util si quieres un robot dedicado, pero requiere compartir script y spreadsheet con esa cuenta
+
+### Bootstrap recomendado para modo headless
+
+Genera una vez el archivo reutilizable:
+
+```powershell
+npm.cmd run auth:qtas:bootstrap
+```
+
+Eso crea:
+
+- `tests/google-oauth.authorized-user.json`
+
+Luego en tu config de pruebas puedes dejar:
+
+```json
+{
+  "deploymentId": "YOUR_TEST_API_EXECUTABLE_DEPLOYMENT_ID",
+  "scriptProjectId": "YOUR_TEST_APPS_SCRIPT_PROJECT_ID",
+  "claspProjectFile": "./.clasp.test.json",
+  "credentialsPath": "./tests/google-oauth.credentials.json",
+  "authorizedUserPath": "./tests/google-oauth.authorized-user.json",
+  "authMode": "auto",
+  "devMode": true
+}
+```
+
+Con eso, los siguientes `npm run test:qtas` y `npm run test:qtas:probe` ya no deberian pedir navegador cada vez.
+
 ### 4. Crear configuracion local
 
 Copia `tests/qtas.test.config.example.json` a `tests/qtas.test.config.json`.
@@ -148,6 +194,50 @@ Ese probe revisa:
 - si el `scriptProjectId` responde
 - si el `deploymentId` existe dentro de ese proyecto
 - si `testPingQTAS()` realmente ejecuta
+
+## CI/CD recomendado
+
+El repo ya puede quedar con flujo de despliegue por GitHub Actions sin volver a copiar codigo manualmente al editor web.
+
+Flujo sugerido:
+
+1. Trabajar cambios en git.
+2. Hacer merge a `main`.
+3. GitHub Actions hace `push` al Apps Script de pruebas.
+4. Validar pruebas funcionales contra la hoja de pruebas.
+5. Lanzar deploy manual a produccion.
+
+Workflows incluidos:
+
+- `.github/workflows/deploy-test.yml`
+  - corre en `push` a `main` y tambien manualmente
+  - instala dependencias
+  - escribe `.clasprc.json` y `.clasp.test.json` desde secrets
+  - hace `push` al proyecto de pruebas
+  - si tambien existen secrets de auth/config de pruebas, corre `probe` y suite E2E en modo headless
+- `.github/workflows/deploy-prod.yml`
+  - corre solo manualmente
+  - usa el environment `production`
+  - hace `push` al proyecto de produccion
+
+Secrets esperados en GitHub:
+
+- `CLASPRC_JSON`
+- `CLASP_JSON_TEST`
+- `CLASP_JSON_PROD`
+- `QTAS_TEST_CONFIG_JSON`
+- `GOOGLE_AUTHORIZED_USER_JSON_TEST`
+
+### Limite actual importante
+
+El modo interactivo sigue existiendo como fallback.
+
+Pero si quieres verdadera comodidad:
+
+- local: usa `authorized_user`
+- CI: usa el secret `GOOGLE_AUTHORIZED_USER_JSON_TEST`
+
+Asi el deploy y las pruebas funcionales ya pueden correr sin abrir navegador.
 
 Correr un escenario puntual:
 

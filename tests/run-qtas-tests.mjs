@@ -1,21 +1,18 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
-import { authenticate } from '@google-cloud/local-auth';
 import { google } from 'googleapis';
 import { SCENARIOS } from './scenarios.mjs';
+import { createGoogleAuthClient, DEFAULT_GOOGLE_SCOPES } from './google-auth.mjs';
 
 const DEFAULT_CONFIG = {
   credentialsPath: './tests/google-oauth.credentials.json',
+  authorizedUserPath: '',
+  serviceAccountPath: '',
+  authMode: 'auto',
   devMode: true,
   failureArtifactPath: './tests/.artifacts/last-failure.json',
-  scopes: [
-    'https://www.googleapis.com/auth/script.projects',
-    'https://www.googleapis.com/auth/script.deployments.readonly',
-    'https://www.googleapis.com/auth/spreadsheets',
-    'https://www.googleapis.com/auth/drive',
-    'https://www.googleapis.com/auth/userinfo.email'
-  ]
+  scopes: DEFAULT_GOOGLE_SCOPES.slice()
 };
 
 async function main() {
@@ -28,10 +25,7 @@ async function main() {
   }
 
   const config = await loadConfig(args.configPath);
-  const auth = await authenticate({
-    scopes: config.scopes,
-    keyfilePath: config.credentialsPath
-  });
+  const auth = await createGoogleAuthClient(config);
   const scriptClient = google.script({ version: 'v1', auth });
   const context = createScenarioContext(config, scriptClient);
 
@@ -153,6 +147,12 @@ async function loadConfig(configPath) {
   }
 
   merged.credentialsPath = resolveProjectPath(merged.credentialsPath);
+  merged.authorizedUserPath = merged.authorizedUserPath
+    ? resolveProjectPath(merged.authorizedUserPath)
+    : '';
+  merged.serviceAccountPath = merged.serviceAccountPath
+    ? resolveProjectPath(merged.serviceAccountPath)
+    : '';
   merged.failureArtifactPath = resolveProjectPath(merged.failureArtifactPath);
   return merged;
 }

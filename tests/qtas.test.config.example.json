@@ -3,6 +3,8 @@
   "scriptProjectId": "YOUR_TEST_APPS_SCRIPT_PROJECT_ID",
   "claspProjectFile": "./.clasp.test.json",
   "credentialsPath": "./tests/google-oauth.credentials.json",
+  "authorizedUserPath": "./tests/google-oauth.authorized-user.json",
+  "authMode": "auto",
   "devMode": true,
   "scopes": [
     "https://www.googleapis.com/auth/script.projects",

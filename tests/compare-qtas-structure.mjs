@@ -1,16 +1,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
-import { authenticate } from '@google-cloud/local-auth';
 import { google } from 'googleapis';
+import { createGoogleAuthClient, DEFAULT_GOOGLE_SCOPES } from './google-auth.mjs';
 
-const DEFAULT_SCOPES = [
-  'https://www.googleapis.com/auth/script.projects',
-  'https://www.googleapis.com/auth/script.deployments.readonly',
-  'https://www.googleapis.com/auth/spreadsheets',
-  'https://www.googleapis.com/auth/drive',
-  'https://www.googleapis.com/auth/userinfo.email'
-];
+const DEFAULT_SCOPES = DEFAULT_GOOGLE_SCOPES.slice();
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -20,13 +14,16 @@ async function main() {
 
   const leftConfig = await loadConfig(args.left);
   const rightConfig = await loadConfig(args.right);
-  const auth = await authenticate({
+  const auth = await createGoogleAuthClient({
+    authMode: leftConfig.authMode || rightConfig.authMode || 'auto',
+    credentialsPath: leftConfig.credentialsPath,
+    authorizedUserPath: leftConfig.authorizedUserPath || rightConfig.authorizedUserPath || '',
+    serviceAccountPath: leftConfig.serviceAccountPath || rightConfig.serviceAccountPath || '',
     scopes: unirValoresUnicos_([
       ...(leftConfig.scopes || []),
       ...(rightConfig.scopes || []),
       ...DEFAULT_SCOPES
-    ]),
-    keyfilePath: leftConfig.credentialsPath
+    ])
   });
   const scriptClient = google.script({ version: 'v1', auth });
 
@@ -83,6 +80,13 @@ async function loadConfig(configPath) {
   return {
     scopes: unirValoresUnicos_([...(userConfig.scopes || []), ...DEFAULT_SCOPES]),
     credentialsPath: resolveProjectPath(userConfig.credentialsPath || './tests/google-oauth.credentials.json'),
+    authorizedUserPath: userConfig.authorizedUserPath
+      ? resolveProjectPath(userConfig.authorizedUserPath)
+      : '',
+    serviceAccountPath: userConfig.serviceAccountPath
+      ? resolveProjectPath(userConfig.serviceAccountPath)
+      : '',
+    authMode: userConfig.authMode || 'auto',
     deploymentId: userConfig.deploymentId || '',
     scriptProjectId: userConfig.scriptProjectId || userConfig.scriptId || claspConfig.scriptId || ''
   };

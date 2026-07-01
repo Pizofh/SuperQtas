@@ -2,6 +2,8 @@
   "deploymentId": "YOUR_API_EXECUTABLE_DEPLOYMENT_ID",
   "scriptProjectId": "OPTIONAL_SCRIPT_ID_IF_YOU_DONT_USE_.CLASP.JSON",
   "credentialsPath": "./tests/google-oauth.credentials.json",
+  "authorizedUserPath": "./tests/google-oauth.authorized-user.json",
+  "authMode": "auto",
   "spreadsheetId": "OPTIONAL_GOOGLE_SHEETS_ID",
   "spreadsheetName": "OPTIONAL_EXACT_SPREADSHEET_NAME",
   "exportPath": "./exports",
