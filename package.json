@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "auth:qtas:bootstrap": "node tests/bootstrap-qtas-auth.mjs",
+    "build:gas:prod": "node scripts/build-gas-bundle.mjs --target prod",
     "test:qtas": "node tests/run-qtas-tests.mjs",
     "test:qtas:full": "npm run test:qtas",
     "test:qtas:probe": "node tests/run-qtas-tests.mjs --probe",
@@ -21,7 +22,7 @@
     "deploy:prod:push": "npm run push:gas:prod",
     "deploy:safe": "npm run deploy:test && npm run deploy:prod",
     "push:gas": "npx clasp push -f",
-    "push:gas:prod": "npx clasp push -f",
+    "push:gas:prod": "npm run build:gas:prod && npx clasp push -f --project .clasp.prod-build.json",
     "push:gas:test": "npx clasp push -f --project .clasp.test.json",
     "pull:gas": "npx clasp pull",
     "pull:gas:prod": "npx clasp pull",
