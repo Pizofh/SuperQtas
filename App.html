@@ -2406,20 +2406,94 @@
     }
 
     function renderItemsCompraList() {
-      ['Producto', 'Insumo', 'Gasto'].forEach(tipoItem => {
-        const listId = `itemsCompraList${tipoItem}`;
-        document.getElementById(listId).innerHTML = obtenerItemsSugeridosCompraPorTipo_(tipoItem)
-          .map(item => `<option value="${escapeHtml(item.item)}"></option>`)
-          .join('');
-      });
-
-      document.querySelectorAll('.compra-linea').forEach(card => sincronizarDatalistItemCompra_(card));
+      document.querySelectorAll('.compra-linea').forEach(card => sincronizarSelectorItemCompra_(card));
     }
 
     function obtenerItemsSugeridosCompraPorTipo_(tipoItem) {
       return (catalogoCompras.itemsSugeridos || [])
         .filter(item => String(item.tipoItem || '').trim() === tipoItem)
         .sort((a, b) => String(a.item || '').localeCompare(String(b.item || ''), undefined, { numeric: true, sensitivity: 'base' }));
+    }
+
+    function construirOpcionesItemsCompraHTML_(tipoItem, selectedValue) {
+      if (tipoItem === 'Producto') {
+        return construirOpcionesProductosCompraHTML_(selectedValue);
+      }
+
+      const options = ['<option value="">Seleccionar item...</option>'];
+      const grupos = {};
+      const ordenGrupos = {
+        'Costos vigentes': 1,
+        'Historial compras': 2,
+        'Plantilla costeo': 3
+      };
+
+      obtenerItemsSugeridosCompraPorTipo_(tipoItem).forEach(item => {
+        const grupo = String(item.origenCatalogo || 'Catalogo actual').trim() || 'Catalogo actual';
+        if (!grupos[grupo]) grupos[grupo] = [];
+        grupos[grupo].push(item);
+      });
+
+      Object.keys(grupos)
+        .sort((a, b) => {
+          const ordenA = ordenGrupos[a] || 99;
+          const ordenB = ordenGrupos[b] || 99;
+          if (ordenA !== ordenB) return ordenA - ordenB;
+          return a.localeCompare(b, undefined, { sensitivity: 'base' });
+        })
+        .forEach(grupo => {
+          options.push(`<optgroup label="${escapeHtml(grupo)}">`);
+          grupos[grupo].forEach(item => {
+            const selected = selectedValue && selectedValue === item.item ? ' selected' : '';
+            options.push(
+              `<option value="${escapeHtml(item.item)}"${selected}>${escapeHtml(item.item)}</option>`
+            );
+          });
+          options.push('</optgroup>');
+        });
+
+      const customSelected = selectedValue === '__custom__' ? ' selected' : '';
+      options.push(`<option value="__custom__"${customSelected}>Otro / escribir nuevo...</option>`);
+      return options.join('');
+    }
+
+    function construirOpcionesProductosCompraHTML_(selectedValue) {
+      const options = ['<option value="">Seleccionar producto...</option>'];
+      const grupos = {};
+      const ordenGrupos = {
+        'Bases en gramos': 1,
+        'Capsulas / mg': 2,
+        Extractos: 3,
+        Polvos: 4,
+        Unidades: 5,
+        Otros: 6
+      };
+
+      (catalogoCompras.productos || []).forEach(producto => {
+        const grupo = obtenerGrupoVisualProducto_({
+          producto: producto.item,
+          unidad: producto.unidad
+        });
+        if (!grupos[grupo]) grupos[grupo] = [];
+        grupos[grupo].push(producto);
+      });
+
+      Object.keys(grupos)
+        .sort((a, b) => (ordenGrupos[a] || 99) - (ordenGrupos[b] || 99))
+        .forEach(grupo => {
+          options.push(`<optgroup label="${escapeHtml(grupo)}">`);
+          grupos[grupo]
+            .sort((a, b) => String(a.item || '').localeCompare(String(b.item || ''), undefined, { numeric: true, sensitivity: 'base' }))
+            .forEach(producto => {
+              const selected = selectedValue && selectedValue === producto.item ? ' selected' : '';
+              options.push(
+                `<option value="${escapeHtml(producto.item)}"${selected}>${escapeHtml(producto.item)}</option>`
+              );
+            });
+          options.push('</optgroup>');
+        });
+
+      return options.join('');
     }
 
     function actualizarOpcionesMedioPagoCompra() {
@@ -2455,7 +2529,12 @@
           </div>
           <div>
             <label>Item</label>
-            <input class="item" list="itemsCompraListInsumo" placeholder="Ej: AcMed, frasco, sticker..." oninput="sincronizarItemCompra(this)" onblur="normalizarItemCompra(this)">
+            <select class="itemSelect" onchange="actualizarSeleccionItemCompra(this)">
+              ${construirOpcionesItemsCompraHTML_('Insumo', '')}
+            </select>
+            <div class="itemCustomWrap hidden" style="margin-top:8px;">
+              <input class="itemCustom" placeholder="Escribe un item nuevo..." oninput="sincronizarItemCompra(this)" onblur="normalizarItemCompra(this)">
+            </div>
           </div>
           <div>
             <label>Cantidad</label>
@@ -2499,24 +2578,45 @@
       `;
 
       cont.appendChild(card);
-      sincronizarDatalistItemCompra_(card);
+      sincronizarSelectorItemCompra_(card);
       recalcularCompra();
     }
 
     function actualizarTipoCompra(select) {
       const card = select.closest('.compra-linea');
       const impacta = card.querySelector('.impactaCosto');
+      const itemActual = obtenerValorItemCompra_(card);
       impacta.value = select.value === 'Gasto' ? 'false' : 'true';
-      sincronizarDatalistItemCompra_(card);
-      sincronizarItemCompra(card.querySelector('.item'));
+      sincronizarSelectorItemCompra_(card, itemActual);
+      sincronizarItemCompra(card);
       recalcularCompra();
     }
 
-    function sincronizarItemCompra(input) {
-      const card = input.closest('.compra-linea');
+    function actualizarSeleccionItemCompra(select) {
+      const card = select.closest('.compra-linea');
+      const customWrap = card.querySelector('.itemCustomWrap');
+      const customInput = card.querySelector('.itemCustom');
       const tipoItem = card.querySelector('.tipoItem').value;
-      const sugerencia = buscarItemSugeridoCompra_(input.value, tipoItem);
-      const productoCanonico = tipoItem === 'Producto' ? buscarProductoCanonicoCompra_(input.value) : null;
+
+      if (tipoItem !== 'Producto' && select.value === '__custom__') {
+        customWrap.classList.remove('hidden');
+        customInput.focus();
+      } else {
+        customWrap.classList.add('hidden');
+        if (select.value !== '__custom__') {
+          customInput.value = '';
+        }
+      }
+
+      sincronizarItemCompra(card);
+    }
+
+    function sincronizarItemCompra(source) {
+      const card = source.closest ? source.closest('.compra-linea') : source;
+      const item = obtenerValorItemCompra_(card);
+      const tipoItem = card.querySelector('.tipoItem').value;
+      const sugerencia = buscarItemSugeridoCompra_(item, tipoItem);
+      const productoCanonico = tipoItem === 'Producto' ? buscarProductoCanonicoCompra_(item) : null;
 
       if (productoCanonico) {
         card.querySelector('.unidad').value = productoCanonico.unidad || card.querySelector('.unidad').value || 'und';
@@ -2529,21 +2629,68 @@
 
     function normalizarItemCompra(input) {
       const card = input.closest('.compra-linea');
+      const item = obtenerValorItemCompra_(card);
       const tipoItem = card.querySelector('.tipoItem').value;
-      const sugerencia = buscarItemSugeridoCompra_(input.value, tipoItem);
-      const productoCanonico = tipoItem === 'Producto' ? buscarProductoCanonicoCompra_(input.value) : null;
+      const sugerencia = buscarItemSugeridoCompra_(item, tipoItem);
+      const productoCanonico = tipoItem === 'Producto' ? buscarProductoCanonicoCompra_(item) : null;
       const referencia = productoCanonico || sugerencia;
       if (referencia && referencia.item) {
-        input.value = referencia.item;
+        sincronizarSelectorItemCompra_(card, referencia.item);
+      } else {
+        sincronizarSelectorItemCompra_(card, item);
       }
-      sincronizarItemCompra(input);
+      sincronizarItemCompra(card);
     }
 
-    function sincronizarDatalistItemCompra_(card) {
+    function sincronizarSelectorItemCompra_(card, preferredValue) {
       if (!card) return;
+      const itemActual = preferredValue !== undefined ? preferredValue : obtenerValorItemCompra_(card);
       const tipoItem = card.querySelector('.tipoItem').value || 'Insumo';
-      const input = card.querySelector('.item');
-      input.setAttribute('list', `itemsCompraList${tipoItem}`);
+      const select = card.querySelector('.itemSelect');
+      const customWrap = card.querySelector('.itemCustomWrap');
+      const customInput = card.querySelector('.itemCustom');
+      const productoCanonico = tipoItem === 'Producto' ? buscarProductoCanonicoCompra_(itemActual) : null;
+      const sugerencia = tipoItem !== 'Producto' ? buscarItemSugeridoCompra_(itemActual, tipoItem) : null;
+
+      select.innerHTML = construirOpcionesItemsCompraHTML_(tipoItem, '');
+
+      if (tipoItem === 'Producto') {
+        select.value = productoCanonico ? productoCanonico.item : '';
+        customWrap.classList.add('hidden');
+        customInput.value = '';
+        return;
+      }
+
+      if (sugerencia) {
+        select.value = sugerencia.item;
+        customWrap.classList.add('hidden');
+        customInput.value = '';
+        return;
+      }
+
+      if (itemActual) {
+        select.value = '__custom__';
+        customWrap.classList.remove('hidden');
+        customInput.value = itemActual;
+        return;
+      }
+
+      select.value = '';
+      customWrap.classList.add('hidden');
+      customInput.value = '';
+    }
+
+    function obtenerValorItemCompra_(card) {
+      if (!card) return '';
+      const tipoItem = card.querySelector('.tipoItem').value || 'Insumo';
+      const select = card.querySelector('.itemSelect');
+      const customInput = card.querySelector('.itemCustom');
+
+      if (tipoItem !== 'Producto' && select && select.value === '__custom__') {
+        return String(customInput && customInput.value || '').trim();
+      }
+
+      return String(select && select.value || '').trim();
     }
 
     function buscarItemSugeridoCompra_(valor, tipoItem) {
@@ -2562,7 +2709,7 @@
     }
 
     function resolverReferenciaCostoCompraLocal_(card) {
-      const item = card.querySelector('.item').value.trim();
+      const item = obtenerValorItemCompra_(card);
       const tipoItem = card.querySelector('.tipoItem').value;
       const unidad = card.querySelector('.unidad').value.trim();
       const impacto = card.querySelector('.impactaCosto').value === 'true';
@@ -2594,7 +2741,7 @@
       let hayError = false;
 
       document.querySelectorAll('.compra-linea').forEach(card => {
-        const item = card.querySelector('.item').value.trim();
+        const item = obtenerValorItemCompra_(card);
         const tipoItem = card.querySelector('.tipoItem').value;
         const cantidad = numero_(card.querySelector('.cantidad').value);
         const unidad = card.querySelector('.unidad').value.trim();
@@ -2637,7 +2784,9 @@
       const impacto = referencia.impacto;
 
       if (!item) {
-        hint.innerText = 'Escribe el item para registrar la linea.';
+        hint.innerText = tipoItem === 'Producto'
+          ? 'Selecciona un producto para registrar la linea.'
+          : 'Selecciona un item del catalogo o elige "Otro / escribir nuevo...".';
         return;
       }
 
@@ -2687,7 +2836,7 @@
       };
 
       document.querySelectorAll('.compra-linea').forEach(card => {
-        const item = card.querySelector('.item').value.trim();
+        const item = obtenerValorItemCompra_(card);
         const cantidad = numero_(card.querySelector('.cantidad').value);
         const unidad = card.querySelector('.unidad').value.trim() || 'und';
         const costoTotalLinea = numero_(card.querySelector('.costoTotalLinea').value);
