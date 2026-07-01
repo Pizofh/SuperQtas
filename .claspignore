@@ -1,0 +1,11 @@
+node_modules/**
+tests/**
+*.md
+package.json
+package-lock.json
+.git/**
+.gitignore
+.clasp.json
+.clasp.json.example
+.clasp.test.json
+.clasp.test.json.example

@@ -1,0 +1,13 @@
+{
+  "deploymentId": "YOUR_TEST_API_EXECUTABLE_DEPLOYMENT_ID",
+  "scriptProjectId": "YOUR_TEST_APPS_SCRIPT_PROJECT_ID",
+  "claspProjectFile": "./.clasp.test.json",
+  "credentialsPath": "./tests/google-oauth.credentials.json",
+  "devMode": true,
+  "scopes": [
+    "https://www.googleapis.com/auth/script.projects",
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+  ],
+  "failureArtifactPath": "./tests/.artifacts/last-failure.json"
+}

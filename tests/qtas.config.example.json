@@ -1,0 +1,16 @@
+{
+  "deploymentId": "YOUR_API_EXECUTABLE_DEPLOYMENT_ID",
+  "scriptProjectId": "OPTIONAL_SCRIPT_ID_IF_YOU_DONT_USE_.CLASP.JSON",
+  "credentialsPath": "./tests/google-oauth.credentials.json",
+  "spreadsheetId": "OPTIONAL_GOOGLE_SHEETS_ID",
+  "spreadsheetName": "OPTIONAL_EXACT_SPREADSHEET_NAME",
+  "exportPath": "./exports",
+  "previewRows": 8,
+  "devMode": true,
+  "scopes": [
+    "https://www.googleapis.com/auth/script.projects",
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+  ],
+  "failureArtifactPath": "./tests/.artifacts/last-failure.json"
+}

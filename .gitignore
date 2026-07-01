@@ -1,0 +1,38 @@
+node_modules/
+
+# Local agent/editor metadata
+.agents/
+.codex/
+
+# Local Apps Script config
+.clasp.json
+.clasp.test.json
+
+# Environment / auth / secrets
+.env
+.env.*
+*.local
+*.local.json
+*.credentials.json
+token.json
+
+# Test-only local config / artifacts
+tests/.artifacts/
+tests/qtas.config.json
+tests/qtas.test.config.json
+tests/*.credentials.json
+tests/token.json
+
+# Generated exports / workbook dumps
+exports/
+QTAS_Exports/
+libro/
+00_RESUMEN_EXPORT.md
+*.csv
+*.tsv
+*.zip
+*.xlsx
+
+# OS noise
+.DS_Store
+Thumbs.db

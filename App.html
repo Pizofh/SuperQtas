@@ -1,0 +1,3396 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --bg-a: #f6e8d7;
+      --bg-b: #f4f0df;
+      --bg-c: #dce8d1;
+      --ink: #231f20;
+      --ink-soft: #5a5153;
+      --muted: #7b7473;
+      --card: rgba(255, 250, 242, 0.9);
+      --card-strong: #fffaf2;
+      --line: rgba(35, 31, 32, 0.09);
+      --gold: #e7b84c;
+      --leaf: #8eb389;
+      --leaf-deep: #45694b;
+      --clay: #bf6c43;
+      --ok: #2f7a49;
+      --warn: #aa5e25;
+      --bad: #b53c2f;
+      --shadow: 0 18px 40px rgba(35, 31, 32, 0.12);
+      --shadow-soft: 0 10px 22px rgba(35, 31, 32, 0.08);
+      --radius: 26px;
+      --radius-small: 18px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: Verdana, Geneva, sans-serif;
+      background:
+        radial-gradient(circle at 8% 12%, rgba(231, 184, 76, 0.18) 0 9%, transparent 10%),
+        radial-gradient(circle at 88% 10%, rgba(142, 179, 137, 0.18) 0 11%, transparent 12%),
+        radial-gradient(circle at 18% 90%, rgba(191, 108, 67, 0.12) 0 8%, transparent 9%),
+        linear-gradient(135deg, var(--bg-a), var(--bg-b) 52%, var(--bg-c));
+      padding: 18px;
+    }
+
+    .app {
+      max-width: 1320px;
+      margin: 0 auto;
+    }
+
+    .hero,
+    .card {
+      margin-bottom: 16px;
+      padding: 18px;
+      border-radius: 26px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(8px);
+    }
+
+    .hero {
+      padding: 20px 22px;
+      border-radius: 30px;
+      background:
+        linear-gradient(135deg, rgba(255, 250, 242, 0.96), rgba(220, 232, 209, 0.7));
+    }
+
+    .brand {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+    }
+
+    .brand-copy {
+      display: flex;
+      gap: 18px;
+      align-items: center;
+    }
+
+    .brand-mark {
+      width: 78px;
+      height: 78px;
+      border-radius: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px;
+      background: rgba(255, 250, 242, 0.96);
+      box-shadow: 0 14px 28px rgba(35, 31, 32, 0.12);
+      overflow: hidden;
+      flex: 0 0 auto;
+    }
+
+    .brand-mark img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    .hero-tools,
+    .hero-actions,
+    .app-nav,
+    .admin-tabs,
+    .tag-row,
+    .admin-actions,
+    .form-actions,
+    .mini-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .hero-tools {
+      display: grid;
+      gap: 10px;
+      width: min(100%, 420px);
+      justify-items: stretch;
+    }
+
+    .hero-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .app-nav {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .eyebrow {
+      margin: 0 0 4px;
+      font-size: 12px;
+      font-weight: bold;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: var(--leaf-deep);
+    }
+
+    h1, h2, h3 {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      letter-spacing: -0.5px;
+    }
+
+    h1 {
+      font-size: clamp(30px, 4.5vw, 46px);
+      line-height: 1.02;
+    }
+
+    h2 {
+      font-size: 24px;
+    }
+
+    h3 {
+      font-size: 18px;
+    }
+
+    .admin-note,
+    .helper {
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1.55fr 0.9fr;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .layout > * {
+      min-width: 0;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: bold;
+      white-space: nowrap;
+    }
+
+    .tag {
+      background: rgba(35, 31, 32, 0.08);
+      color: var(--ink-soft);
+    }
+
+    .tag.ok,
+    .status-ok {
+      background: rgba(47, 122, 73, 0.14);
+      color: var(--ok);
+    }
+
+    .tag.warn,
+    .status-warn {
+      background: rgba(170, 94, 37, 0.14);
+      color: var(--warn);
+    }
+
+    .tag.bad,
+    .status-bad {
+      background: rgba(181, 60, 47, 0.14);
+      color: var(--bad);
+    }
+
+    .grid-2,
+    .grid-3,
+    .grid-4 {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .grid-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .grid-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .grid-4 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 12px;
+      font-weight: bold;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    input,
+    select,
+    textarea,
+    button {
+      font: inherit;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      border: 1px solid rgba(35, 31, 32, 0.12);
+      border-radius: 16px;
+      padding: 12px 13px;
+      background: var(--card-strong);
+      color: var(--ink);
+      outline: none;
+      transition: border-color 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 88px;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: rgba(69, 105, 75, 0.45);
+      box-shadow: 0 0 0 4px rgba(142, 179, 137, 0.22);
+    }
+
+    .readonly {
+      background: rgba(231, 184, 76, 0.14);
+      color: var(--ink-soft);
+    }
+
+    .btn {
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-weight: bold;
+      color: var(--ink);
+      background: linear-gradient(135deg, var(--gold), #efcf7b);
+      box-shadow: 0 8px 18px rgba(198, 142, 28, 0.22);
+      transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+    }
+
+    .btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 24px rgba(35, 31, 32, 0.14);
+    }
+
+    .btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+      box-shadow: none;
+    }
+
+    .btn.secondary,
+    .app-nav-btn.active,
+    .admin-tab.active {
+      background: linear-gradient(135deg, var(--leaf), #b7d6b3);
+      color: #18311e;
+      box-shadow: 0 8px 18px rgba(69, 105, 75, 0.18);
+    }
+
+    .btn.ghost {
+      background: rgba(255, 250, 242, 0.72);
+      border: 1px solid rgba(35, 31, 32, 0.08);
+      box-shadow: none;
+      color: var(--ink-soft);
+    }
+
+    .btn.danger {
+      background: rgba(191, 108, 67, 0.15);
+      color: var(--clay);
+      box-shadow: none;
+    }
+
+    .btn.full {
+      width: 100%;
+      padding: 15px 18px;
+      font-size: 17px;
+    }
+
+    .app-nav-btn,
+    .hero-action-btn {
+      width: 100%;
+      min-height: 46px;
+      padding-inline: 18px;
+    }
+
+    .app-nav-btn.icon-only {
+      padding-inline: 12px;
+    }
+
+    .app-nav-icon {
+      width: 18px;
+      height: 18px;
+      display: block;
+      fill: currentColor;
+    }
+
+    .line-card,
+    .panel-card {
+      padding: 14px;
+      border-radius: 22px;
+      background:
+        linear-gradient(135deg, rgba(255, 250, 242, 0.96), rgba(220, 232, 209, 0.52));
+      border: 1px solid rgba(35, 31, 32, 0.06);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .line-card {
+      margin-bottom: 12px;
+    }
+
+    .line-card.invalid {
+      border-color: rgba(181, 60, 47, 0.32);
+      box-shadow: 0 0 0 3px rgba(181, 60, 47, 0.08);
+    }
+
+    .line-hint {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .inline-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0;
+      font-size: 13px;
+      color: var(--ink-soft);
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
+    .inline-toggle input {
+      width: auto;
+      margin: 0;
+      accent-color: var(--leaf-deep);
+    }
+
+    .metrics {
+      display: grid;
+      gap: 10px;
+    }
+
+    .metric {
+      padding: 14px;
+      border-radius: 20px;
+      background: rgba(255, 250, 242, 0.92);
+      border: 1px solid rgba(35, 31, 32, 0.07);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .metric.primary {
+      background: linear-gradient(145deg, rgba(231, 184, 76, 0.9), rgba(142, 179, 137, 0.88));
+    }
+
+    .metric-label {
+      margin-bottom: 4px;
+      font-size: 12px;
+      font-weight: bold;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    .metric.primary .metric-label {
+      color: rgba(35, 31, 32, 0.72);
+    }
+
+    .metric-value {
+      font-size: 27px;
+      font-weight: 900;
+      letter-spacing: -0.5px;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 8px;
+      padding: 9px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: bold;
+      background: rgba(35, 31, 32, 0.08);
+      color: var(--ink-soft);
+    }
+
+    .status-box,
+    .helper-box,
+    .admin-empty {
+      padding: 12px 14px;
+      border-radius: 18px;
+      background: rgba(255, 250, 242, 0.78);
+      border: 1px solid rgba(35, 31, 32, 0.08);
+      color: var(--ink-soft);
+      line-height: 1.45;
+    }
+
+    .status-box {
+      min-height: 46px;
+      margin-top: 10px;
+    }
+
+    .field-feedback {
+      margin-top: 10px;
+      padding: 9px 12px;
+      border-radius: 14px;
+      background: rgba(255, 250, 242, 0.72);
+      border: 1px solid rgba(35, 31, 32, 0.08);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .admin-empty {
+      border-style: dashed;
+      color: var(--muted);
+    }
+
+    .helper {
+      margin: 8px 0 0;
+      font-size: 12px;
+    }
+
+    .list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .list-scroll {
+      max-height: 520px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .list-item {
+      padding: 12px;
+      border-radius: 18px;
+      background:
+        linear-gradient(135deg, rgba(142, 179, 137, 0.22), rgba(255, 250, 242, 0.92));
+      border: 1px solid rgba(35, 31, 32, 0.06);
+    }
+
+    .list-item strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .list-item-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .admin-layout {
+      display: grid;
+      grid-template-columns: 0.92fr 1.08fr;
+      gap: 14px;
+      align-items: start;
+    }
+
+    .app-view {
+      animation: fadeIn 0.18s ease;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 980px) {
+      .layout,
+      .admin-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .section-head,
+      .brand {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .hero-tools {
+        width: 100%;
+      }
+    }
+
+    @media (max-width: 720px) {
+      body {
+        padding: 10px;
+      }
+
+      .hero,
+      .card {
+        padding: 16px;
+        border-radius: 22px;
+      }
+
+      .brand-copy {
+        align-items: flex-start;
+      }
+
+      .brand-mark {
+        width: 64px;
+        height: 64px;
+        border-radius: 20px;
+      }
+
+      .grid-2,
+      .grid-3,
+      .grid-4 {
+        grid-template-columns: 1fr;
+      }
+
+      .app-nav,
+      .hero-actions {
+        grid-template-columns: 1fr;
+      }
+
+      .metric-value {
+        font-size: 23px;
+      }
+    }
+  </style>
+</head>
+<body data-initial-view="<?= vistaInicial ?>">
+  <div class="app">
+    <section class="hero">
+      <div class="brand">
+        <div class="brand-copy">
+          <div class="brand-mark">
+            <img
+              src="https://drive.google.com/thumbnail?id=1nD_6JiZwnUd7HK2JjJxVTI7w5_jXwy_a&sz=w1000"
+              alt="Logo SuperQTAS"
+            >
+          </div>
+          <div>
+            <p id="appEyebrow" class="eyebrow">Mini ERP operativo</p>
+            <h1 id="appTitle">Ventas claras. Analisis limpio.</h1>
+          </div>
+        </div>
+
+        <div class="hero-tools">
+          <div class="app-nav">
+            <button class="btn ghost app-nav-btn" type="button" data-view="ventas" onclick="mostrarVistaApp('ventas')">
+              Ventas
+            </button>
+            <button class="btn ghost app-nav-btn" type="button" data-view="compras" onclick="mostrarVistaApp('compras')">
+              Compras
+            </button>
+            <button
+              class="btn ghost app-nav-btn icon-only"
+              type="button"
+              data-view="config"
+              onclick="mostrarVistaApp('config')"
+              aria-label="Configuracion"
+              title="Configuracion"
+            >
+              <svg class="app-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.34 7.34 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.58.23-1.12.55-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.69 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.6.22l2.39-.96c.5.39 1.05.71 1.63.94l.36 2.54c.04.24.25.42.5.42h3.84c.25 0 .46-.18.5-.42l.36-2.54c.58-.23 1.12-.55 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Z"></path>
+              </svg>
+            </button>
+          </div>
+
+          <div class="hero-actions">
+            <button class="btn ghost hero-action-btn" type="button" onclick="recargarVistaActualApp()">Recargar</button>
+            <button class="btn secondary hero-action-btn" type="button" onclick="cerrarAppQTAS()">Cerrar</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="app-view hidden" data-view="ventas">
+      <div class="layout">
+        <main>
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <h2>Datos de la venta</h2>
+              </div>
+            </div>
+
+            <input id="clienteId" type="hidden">
+            <datalist id="clientesList"></datalist>
+
+            <div class="grid-2">
+              <div>
+                <label>Fecha de venta</label>
+                <input id="fechaVenta" type="date" onchange="cargarCatalogo()">
+              </div>
+              <div>
+                <label>Nombre del cliente</label>
+                <input
+                  id="nombre"
+                  list="clientesList"
+                  placeholder="Ej: Laura, Dani, Juan..."
+                  oninput="limpiarClienteSeleccionado(); sincronizarClienteExistente()"
+                  onblur="sincronizarClienteExistente()"
+                >
+                <div id="clienteRegistradoEstado" class="field-feedback">Escribe el nombre para validar si ya existe un cliente registrado.</div>
+              </div>
+            </div>
+
+            <div>
+              <label>Logistica</label>
+              <div class="status-box">
+                <label class="inline-toggle">
+                  <input id="pendienteEnvioVenta" type="checkbox" onchange="actualizarResumenEnvioVenta()">
+                  Marcar venta como pendiente de envio
+                </label>
+                <div id="pendienteEnvioVentaTexto" class="helper">La venta no se agregara al panel de envios salvo que la marques aqui.</div>
+              </div>
+            </div>
+
+            <div>
+              <label>Comentario general</label>
+              <input id="comentarioVenta" placeholder="Entrega, promo, nota, recordatorio...">
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <h2>Productos</h2>
+              </div>
+              <button id="btnAgregarProducto" class="btn secondary" type="button" onclick="agregarProducto()">+ Agregar producto</button>
+            </div>
+
+            <div id="productos"></div>
+          </section>
+
+          <button id="guardarVentaBtn" class="btn full" type="button" onclick="guardarVenta()">Guardar venta</button>
+          <div id="estado" class="status-box">Listo para registrar.</div>
+        </main>
+
+        <aside>
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <h2>Totales</h2>
+              </div>
+            </div>
+
+            <div class="metrics">
+              <div class="metric">
+                <div class="metric-label">Subtotal lista</div>
+                <div class="metric-value" id="subtotalLista">$0</div>
+              </div>
+
+              <div class="metric">
+                <div class="metric-label">Subtotal bruto vendido</div>
+                <div class="metric-value" id="subtotalBruto">$0</div>
+              </div>
+
+              <div class="metric">
+                <div class="metric-label">Descuento total</div>
+                <div class="metric-value" id="descuentoTotal">$0</div>
+              </div>
+
+              <div class="metric primary">
+                <div class="metric-label">Total venta neta</div>
+                <div class="metric-value" id="totalVenta">$0</div>
+              </div>
+
+              <div class="metric">
+                <div class="metric-label">Total pagado</div>
+                <div class="metric-value" id="totalPagado">$0</div>
+              </div>
+
+              <div class="metric">
+                <div class="metric-label">Saldo</div>
+                <div class="metric-value" id="saldo">$0</div>
+                <div id="estadoPago" class="status-pill">Pendiente</div>
+                <div class="mini-actions">
+                  <button class="btn ghost" type="button" onclick="pagarTotal()">Completar total con primer medio</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <h2>Pago inicial</h2>
+              </div>
+              <button class="btn secondary" type="button" onclick="agregarPago()">+ Agregar pago</button>
+            </div>
+
+            <div id="pagos"></div>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <h2>Pago a venta pendiente</h2>
+              </div>
+              <button class="btn ghost" type="button" onclick="cargarPaneles()">Recargar</button>
+            </div>
+
+            <div>
+              <label>Venta pendiente</label>
+              <select id="ventaPendiente" onchange="actualizarResumenVentaPendiente()">
+                <option value="">Seleccionar venta...</option>
+              </select>
+            </div>
+
+            <div id="ventaPendienteInfo" class="status-box">No hay venta seleccionada.</div>
+
+            <div class="grid-2">
+              <div>
+                <label>Fecha del pago</label>
+                <input id="fechaPagoPendiente" type="date">
+              </div>
+              <div>
+                <label>Medio de pago</label>
+                <select id="medioPagoPendiente"></select>
+              </div>
+            </div>
+
+            <div class="grid-2">
+              <div>
+                <label>Monto</label>
+                <input id="montoPagoPendiente" type="number" step="1" placeholder="0" oninput="actualizarResumenVentaPendiente()">
+              </div>
+              <div>
+                <label>Comentario pago</label>
+                <input id="comentarioPagoPendiente" placeholder="Opcional">
+              </div>
+            </div>
+
+            <button id="guardarPagoPendienteBtn" class="btn full" type="button" onclick="guardarPagoPendiente()">
+              Registrar pago
+            </button>
+            <div id="estadoPagoPendiente" class="status-box">Selecciona una venta con saldo pendiente.</div>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <h2>Deudores</h2>
+              </div>
+              <button class="btn ghost" type="button" onclick="cargarPaneles()">Recargar</button>
+            </div>
+
+            <div id="deudores" class="list">
+              <div class="muted">Cargando...</div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <h2>Pendientes de envio</h2>
+              </div>
+              <button class="btn ghost" type="button" onclick="cargarPaneles()">Recargar</button>
+            </div>
+
+            <div id="enviosPendientes" class="list">
+              <div class="muted">Cargando...</div>
+            </div>
+            <div id="estadoEnviosPendientes" class="status-box">Marca una venta como pendiente de envio para verla aqui.</div>
+          </section>
+        </aside>
+      </div>
+    </section>
+
+    <section class="app-view hidden" data-view="compras">
+      <div class="layout">
+        <main>
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <h2>Datos de la compra</h2>
+              </div>
+            </div>
+
+            <datalist id="proveedoresList"></datalist>
+            <datalist id="itemsCompraListProducto"></datalist>
+            <datalist id="itemsCompraListInsumo"></datalist>
+            <datalist id="itemsCompraListGasto"></datalist>
+
+            <div class="grid-2">
+              <div>
+                <label>Fecha de compra</label>
+                <input id="fechaCompra" type="date">
+              </div>
+              <div>
+                <label>Medio de pago</label>
+                <select id="medioPagoCompra"></select>
+              </div>
+            </div>
+
+            <div class="grid-2">
+              <div>
+                <label>Proveedor</label>
+                <input id="proveedorCompra" list="proveedoresList" placeholder="Ej: tienda, laboratorio, distribuidor...">
+              </div>
+              <div>
+                <label>Comentario general</label>
+                <input id="comentarioCompra" placeholder="Lote, promo, observacion...">
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <h2>Lineas de compra</h2>
+              </div>
+              <button class="btn secondary" type="button" onclick="agregarLineaCompra()">+ Agregar linea</button>
+            </div>
+
+            <div id="lineasCompra"></div>
+          </section>
+
+          <button id="guardarCompraBtn" class="btn full" type="button" onclick="guardarCompra()">Guardar compra</button>
+          <div id="estadoCompra" class="status-box">Listo para registrar compra.</div>
+        </main>
+
+        <aside>
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <h2>Totales</h2>
+              </div>
+            </div>
+
+            <div class="metrics">
+              <div class="metric primary">
+                <div class="metric-label">Total compra</div>
+                <div class="metric-value" id="totalCompra">$0</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Lineas validas</div>
+                <div class="metric-value" id="lineasValidas">0</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Actualizan costo</div>
+                <div class="metric-value" id="lineasImpactanCosto">0</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <h2>Compras recientes</h2>
+              </div>
+              <button class="btn ghost" type="button" onclick="cargarCatalogoCompras(false)">Recargar</button>
+            </div>
+
+            <div id="comprasRecientes" class="list">
+              <div class="muted">Cargando...</div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <h2>Costos vigentes</h2>
+              </div>
+            </div>
+
+            <div id="costosVigentes" class="list">
+              <div class="muted">Cargando...</div>
+            </div>
+          </section>
+        </aside>
+      </div>
+    </section>
+
+    <section class="app-view hidden" data-view="config">
+      <section class="card">
+        <div class="section-head">
+          <div>
+            <h2>Configuracion</h2>
+          </div>
+        </div>
+
+        <div class="admin-tabs">
+          <button class="btn ghost admin-tab" type="button" data-tab="productos" onclick="mostrarAdminTab('productos')">
+            Productos
+          </button>
+          <button class="btn ghost admin-tab" type="button" data-tab="precios" onclick="mostrarAdminTab('precios')">
+            Precios
+          </button>
+          <button class="btn ghost admin-tab" type="button" data-tab="medios" onclick="mostrarAdminTab('medios')">
+            Medios de pago
+          </button>
+          <button class="btn ghost admin-tab" type="button" data-tab="distribucion" onclick="mostrarAdminTab('distribucion')">
+            Distribucion
+          </button>
+        </div>
+
+        <div class="admin-panel" data-tab="productos">
+          <div class="admin-layout">
+            <div class="panel-card">
+              <h3>Producto</h3>
+
+              <input id="adminProductoOriginal" type="hidden">
+
+              <div class="grid-2">
+                <div>
+                  <label>Producto</label>
+                  <input id="adminProductoNombre" placeholder="Ej: AcMed 3g">
+                </div>
+                <div>
+                  <label>Unidad default</label>
+                  <input id="adminProductoUnidad" placeholder="g, und, ml...">
+                </div>
+              </div>
+
+              <div class="grid-2">
+                <div>
+                  <label>Estado</label>
+                  <select id="adminProductoActivo">
+                    <option value="true">Activo</option>
+                    <option value="false">Inactivo</option>
+                  </select>
+                </div>
+                <div>
+                  <label>Nota</label>
+                  <input id="adminProductoNota" placeholder="Opcional">
+                </div>
+              </div>
+
+              <div class="form-actions">
+                <button class="btn" type="button" onclick="guardarProductoAdmin()">Guardar producto</button>
+                <button class="btn ghost" type="button" onclick="restablecerProductoAdmin()">Nuevo</button>
+              </div>
+            </div>
+
+            <div>
+              <div id="adminProductosResumen" class="tag-row"></div>
+              <div id="adminProductosLista" class="list list-scroll">
+                <div class="admin-empty">Cargando productos...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="admin-panel hidden" data-tab="precios">
+          <div class="admin-layout">
+            <div class="panel-card">
+              <h3>Nuevo precio</h3>
+
+              <div class="grid-2">
+                <div>
+                  <label>Producto</label>
+                  <select id="adminPrecioProducto" onchange="actualizarUnidadPrecioAdmin()"></select>
+                </div>
+                <div>
+                  <label>Unidad</label>
+                  <input id="adminPrecioUnidad" class="readonly" readonly>
+                </div>
+              </div>
+
+              <div class="grid-2">
+                <div>
+                  <label>Precio</label>
+                  <input id="adminPrecioValor" type="number" step="1" placeholder="0">
+                </div>
+                <div>
+                  <label>Fecha desde</label>
+                  <input id="adminPrecioFechaDesde" type="date">
+                </div>
+              </div>
+
+              <div>
+                <label>Nota</label>
+                <input id="adminPrecioNota" placeholder="Compra nueva, ajuste, promo...">
+              </div>
+
+              <div class="form-actions">
+                <button class="btn" type="button" onclick="guardarCambioPrecioAdmin()">Guardar precio</button>
+                <button class="btn ghost" type="button" onclick="restablecerPrecioAdmin()">Limpiar</button>
+              </div>
+            </div>
+
+            <div>
+              <h3>Precios vigentes</h3>
+              <div id="adminPreciosResumen" class="tag-row"></div>
+              <div id="adminPreciosVigentes" class="list list-scroll">
+                <div class="admin-empty">Cargando precios...</div>
+              </div>
+
+              <h3 style="margin-top:16px;">Historial reciente</h3>
+              <div id="adminPreciosHistorial" class="list">
+                <div class="admin-empty">Cargando historial...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="admin-panel hidden" data-tab="medios">
+          <div class="admin-layout">
+            <div class="panel-card">
+              <h3>Medio de pago</h3>
+
+              <input id="adminMedioOriginal" type="hidden">
+
+              <div class="grid-2">
+                <div>
+                  <label>Nombre</label>
+                  <input id="adminMedioNombre" placeholder="Efectivo, Nequi, Transferencia...">
+                </div>
+                <div>
+                  <label>Estado</label>
+                  <select id="adminMedioActivo">
+                    <option value="true">Activo</option>
+                    <option value="false">Inactivo</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label>Nota</label>
+                <input id="adminMedioNota" placeholder="Opcional">
+              </div>
+
+              <div class="form-actions">
+                <button class="btn" type="button" onclick="guardarMedioPagoAdmin()">Guardar medio</button>
+                <button class="btn ghost" type="button" onclick="restablecerMedioPagoAdmin()">Nuevo</button>
+              </div>
+            </div>
+
+            <div>
+              <div id="adminMediosResumen" class="tag-row"></div>
+              <div id="adminMediosLista" class="list">
+                <div class="admin-empty">Cargando medios de pago...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="admin-panel hidden" data-tab="distribucion">
+          <div class="admin-layout">
+            <div class="panel-card">
+              <h3>Nueva regla</h3>
+              <div class="grid-2">
+                <div>
+                  <label>Fecha desde</label>
+                  <input id="adminReglaFechaDesde" type="date" onchange="actualizarResumenReglaAdmin_()">
+                </div>
+                <div>
+                  <label>Nota</label>
+                  <input id="adminReglaNota" placeholder="Cambio de reparto, acuerdo nuevo...">
+                </div>
+              </div>
+
+              <div class="grid-3">
+                <div>
+                  <label>Steve %</label>
+                  <input id="adminReglaSteve" type="number" step="0.01" placeholder="0" oninput="actualizarResumenReglaAdmin_()">
+                </div>
+                <div>
+                  <label>Majo %</label>
+                  <input id="adminReglaMajo" type="number" step="0.01" placeholder="0" oninput="actualizarResumenReglaAdmin_()">
+                </div>
+                <div>
+                  <label>Mush %</label>
+                  <input id="adminReglaMush" type="number" step="0.01" placeholder="0" oninput="actualizarResumenReglaAdmin_()">
+                </div>
+              </div>
+
+              <div id="adminReglaResumen" class="helper-box">La suma debe dar 100%.</div>
+
+              <div class="form-actions">
+                <button class="btn" type="button" onclick="guardarReglaDistribucionAdmin()">Guardar regla</button>
+                <button class="btn ghost" type="button" onclick="restablecerReglaAdmin()">Usar sugerencia</button>
+              </div>
+            </div>
+
+            <div>
+              <div id="adminReglasResumen" class="tag-row"></div>
+              <div id="adminReglasLista" class="list list-scroll">
+                <div class="admin-empty">Cargando reglas...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="estadoAdmin" class="status-box">Cargando configuracion avanzada...</div>
+      </section>
+    </section>
+  </div>
+
+  <script>
+    const APP_VIEWS = {
+      ventas: {
+        eyebrow: 'Mini ERP operativo',
+        title: 'Ventas claras. Analisis limpio.'
+      },
+      compras: {
+        eyebrow: 'Compras y costos',
+        title: 'Compras claras. Costos historicos.'
+      },
+      config: {
+        eyebrow: 'Configuracion avanzada',
+        title: 'Catalogo limpio. Reglas claras.'
+      }
+    };
+
+    const appState = {
+      currentView: '',
+      started: {
+        ventas: false,
+        compras: false,
+        config: false
+      }
+    };
+
+    function initApp() {
+      const initial = normalizarVistaApp_(document.body.dataset.initialView || 'ventas');
+      mostrarVistaApp(initial, { inicial: true });
+    }
+
+    function normalizarVistaApp_(value) {
+      const key = String(value || '').toLowerCase().trim();
+      return APP_VIEWS[key] ? key : 'ventas';
+    }
+
+    function actualizarHeroApp_(view) {
+      const copy = APP_VIEWS[view] || APP_VIEWS.ventas;
+      document.getElementById('appEyebrow').innerText = copy.eyebrow;
+      document.getElementById('appTitle').innerText = copy.title;
+    }
+
+    function mostrarVistaApp(view, options) {
+      const nextView = normalizarVistaApp_(view);
+      appState.currentView = nextView;
+
+      document.querySelectorAll('.app-view').forEach(section => {
+        section.classList.toggle('hidden', section.dataset.view !== nextView);
+      });
+
+      document.querySelectorAll('.app-nav-btn').forEach(button => {
+        button.classList.toggle('active', button.dataset.view === nextView);
+      });
+
+      actualizarHeroApp_(nextView);
+
+      if (!appState.started[nextView]) {
+        if (nextView === 'ventas') initVentas();
+        if (nextView === 'compras') initCompras();
+        if (nextView === 'config') initConfig();
+        appState.started[nextView] = true;
+      }
+
+      if (!(options && options.inicial)) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }
+
+    function recargarVistaActualApp() {
+      if (appState.currentView === 'ventas') {
+        cargarCatalogo(false);
+        cargarPaneles();
+        return;
+      }
+
+      if (appState.currentView === 'compras') {
+        cargarCatalogoCompras(false);
+        return;
+      }
+
+      if (appState.currentView === 'config') {
+        cargarConfiguracionAvanzada(false);
+      }
+    }
+
+    function cerrarAppQTAS() {
+      if (typeof google === 'undefined' || !google.script || !google.script.host || !google.script.host.close) return;
+      google.script.host.close();
+    }
+
+    let catalogo = {
+      productos: [],
+      mediosPago: [],
+      clientes: [],
+      hoy: ''
+    };
+
+    const PERF_SOLICITAR_DASHBOARD_EN_GUARDADO = false;
+    const PERF_SOLICITAR_DASHBOARD_EN_PAGO_PENDIENTE = false;
+    let ventasPendientes = [];
+    let enviosPendientes = [];
+
+    function initVentas() {
+      document.getElementById('fechaVenta').value = '';
+      document.getElementById('fechaPagoPendiente').value = '';
+      actualizarResumenEnvioVenta();
+      cargarCatalogo(true);
+    }
+
+    function cargarCatalogo(inicial) {
+      const fechaVenta = document.getElementById('fechaVenta').value || '';
+      const estado = document.getElementById('estado');
+      const botonAgregarProducto = document.getElementById('btnAgregarProducto');
+
+      estado.innerText = 'Cargando productos...';
+      if (botonAgregarProducto) botonAgregarProducto.disabled = true;
+
+      google.script.run
+        .withSuccessHandler(data => {
+          catalogo = data || { productos: [], mediosPago: [], clientes: [], hoy: fechaVenta };
+          catalogo.productos = normalizarCatalogoProductosVentas_(catalogo.productos || []);
+          estado.innerText = 'Listo para registrar.';
+          if (botonAgregarProducto) botonAgregarProducto.disabled = false;
+
+          if (!document.getElementById('fechaVenta').value) {
+            document.getElementById('fechaVenta').value = catalogo.hoy || fechaVenta;
+          }
+
+          if (!document.getElementById('fechaPagoPendiente').value) {
+            document.getElementById('fechaPagoPendiente').value = catalogo.hoy || fechaHoyLocal_();
+          }
+
+          renderClientesList();
+          actualizarOpcionesProductosExistentes();
+          actualizarOpcionesPagosExistentes();
+          actualizarOpcionesPagoPendiente();
+
+          if (inicial) {
+            if (!document.querySelector('.producto-linea')) agregarProducto();
+            if (!document.querySelector('.pago-linea')) agregarPago();
+          }
+
+          sincronizarClienteExistente();
+          actualizarResumenEnvioVenta();
+          recalcular();
+
+          if (inicial) {
+            cargarPaneles();
+          }
+        })
+        .withFailureHandler(err => {
+          if (botonAgregarProducto) botonAgregarProducto.disabled = false;
+          estado.innerText = 'Error cargando catalogo: ' + err.message;
+        })
+        .getCatalogoQTAS(fechaVenta);
+    }
+
+    function cargarPaneles() {
+      google.script.run
+        .withSuccessHandler(data => {
+          aplicarDashboardVentas_(data || {});
+        })
+        .withFailureHandler(err => {
+          const mensaje = 'No se pudo recargar el panel: ' + err.message;
+          document.getElementById('estadoPagoPendiente').innerText = mensaje;
+
+          const deudores = document.getElementById('deudores');
+          if (!deudores.textContent.trim() || /cargando/i.test(deudores.textContent)) {
+            deudores.innerHTML = '<div class="muted">No se pudieron cargar deudores.</div>';
+          }
+
+          const envios = document.getElementById('enviosPendientes');
+          if (!envios.textContent.trim() || /cargando/i.test(envios.textContent)) {
+            envios.innerHTML = '<div class="muted">No se pudieron cargar envios pendientes.</div>';
+          }
+
+          document.getElementById('estadoEnviosPendientes').innerText = `${mensaje} Se conserva lo ultimo visible.`;
+        })
+        .getDashboardQTAS();
+    }
+
+    function aplicarDashboardVentas_(info) {
+      const dashboard = normalizarDashboardVentasLocal_(info || {});
+      ventasPendientes = dashboard.ventasPendientes;
+      enviosPendientes = dashboard.enviosPendientes;
+      renderVentasPendientes();
+      renderDeudores(dashboard.deudores);
+      renderEnviosPendientes();
+    }
+
+    function normalizarDashboardVentasLocal_(info) {
+      const pendientes = normalizarVentasPendientesLocales_(info.ventasPendientes || []);
+      const envios = normalizarEnviosPendientesLocales_(info.enviosPendientes || []);
+      const deudores = (info.deudores && info.deudores.length)
+        ? normalizarDeudoresLocales_(info.deudores)
+        : reconstruirDeudoresDesdeVentasPendientes_(pendientes);
+
+      return {
+        ventasPendientes: pendientes,
+        deudores: deudores,
+        enviosPendientes: envios
+      };
+    }
+
+    function construirDashboardLocalTrasVenta_(resp) {
+      const pendientes = (ventasPendientes || [])
+        .map(item => Object.assign({}, item))
+        .filter(item => String(item.ventaId) !== String(resp.ventaId));
+
+      if (numero_(resp.saldo) > 0.009) {
+        pendientes.push({
+          ventaId: numero_(resp.ventaId),
+          nombre: resp.nombre || '',
+          clienteId: resp.clienteId || '',
+          fechaVenta: normalizarFechaPendienteLocal_(resp.fechaVenta) ||
+            normalizarFechaPendienteLocal_(document.getElementById('fechaVenta').value) ||
+            catalogo.hoy ||
+            fechaHoyLocal_(),
+          saldo: redondearNumero_(resp.saldo),
+          productos: resp.productosResumen || ''
+        });
+      }
+
+      const envios = (enviosPendientes || [])
+        .map(item => Object.assign({}, item))
+        .filter(item => String(item.ventaId) !== String(resp.ventaId));
+
+      if (String(resp.estadoEnvio || '').trim() === 'Pendiente') {
+        envios.push({
+          ventaId: numero_(resp.ventaId),
+          nombre: resp.nombre || '',
+          clienteId: resp.clienteId || '',
+          fechaVenta: normalizarFechaPendienteLocal_(resp.fechaVenta) || fechaHoyLocal_(),
+          fechaPendienteEnvio: normalizarFechaPendienteLocal_(resp.fechaVenta) || fechaHoyLocal_(),
+          estadoPago: resp.estadoPago || '',
+          saldo: redondearNumero_(resp.saldo),
+          productos: resp.productosResumen || '',
+          comentarioEnvio: ''
+        });
+      }
+
+      return construirDashboardDesdePendientesLocales_(pendientes, { enviosPendientes: envios });
+    }
+
+    function construirDashboardLocalTrasPago_(resp) {
+      const saldoRestante = redondearNumero_(resp.saldoRestante);
+      const pendientes = (ventasPendientes || [])
+        .map(item => Object.assign({}, item))
+        .reduce((acc, item) => {
+          if (String(item.ventaId) !== String(resp.ventaId)) {
+            acc.push(item);
+            return acc;
+          }
+
+          if (saldoRestante > 0.009) {
+            item.saldo = saldoRestante;
+            acc.push(item);
+          }
+
+          return acc;
+        }, []);
+
+      return construirDashboardDesdePendientesLocales_(pendientes, { enviosPendientes: enviosPendientes });
+    }
+
+    function construirDashboardLocalTrasCambioEnvio_(resp) {
+      const envios = (enviosPendientes || [])
+        .map(item => Object.assign({}, item))
+        .filter(item => String(item.ventaId) !== String(resp.ventaId));
+
+      return construirDashboardDesdePendientesLocales_(ventasPendientes, { enviosPendientes: envios });
+    }
+
+    function construirDashboardDesdePendientesLocales_(rows, options) {
+      const pendientes = normalizarVentasPendientesLocales_(rows || []);
+      const envios = normalizarEnviosPendientesLocales_(
+        options && Object.prototype.hasOwnProperty.call(options, 'enviosPendientes')
+          ? options.enviosPendientes
+          : enviosPendientes
+      );
+      return {
+        ventasPendientes: pendientes,
+        deudores: reconstruirDeudoresDesdeVentasPendientes_(pendientes),
+        enviosPendientes: envios
+      };
+    }
+
+    function normalizarVentasPendientesLocales_(rows) {
+      return (rows || [])
+        .map(normalizarVentaPendienteLocal_)
+        .filter(item => item.ventaId > 0 && item.saldo > 0.009)
+        .sort(compararVentasPendientes_);
+    }
+
+    function normalizarVentaPendienteLocal_(item) {
+      const venta = {
+        ventaId: numero_(item.ventaId),
+        nombre: String(item.nombre || '').trim(),
+        clienteId: String(item.clienteId || '').trim(),
+        fechaVenta: normalizarFechaPendienteLocal_(item.fechaVenta),
+        saldo: redondearNumero_(item.saldo),
+        productos: String(item.productos || '').trim()
+      };
+      venta.label = construirLabelVentaPendiente_(venta);
+      return venta;
+    }
+
+    function normalizarFechaPendienteLocal_(value) {
+      if (!value) return '';
+      if (value instanceof Date) {
+        const year = value.getFullYear();
+        const month = String(value.getMonth() + 1).padStart(2, '0');
+        const day = String(value.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+
+      return String(value).slice(0, 10);
+    }
+
+    function construirLabelVentaPendiente_(venta) {
+      return `V${venta.ventaId} | ${venta.nombre} | ${moneda_(venta.saldo)} | ${venta.fechaVenta}`;
+    }
+
+    function compararVentasPendientes_(a, b) {
+      const fechaA = normalizarFechaPendienteLocal_(a.fechaVenta);
+      const fechaB = normalizarFechaPendienteLocal_(b.fechaVenta);
+      if (fechaA !== fechaB) return fechaA.localeCompare(fechaB);
+      return numero_(a.ventaId) - numero_(b.ventaId);
+    }
+
+    function normalizarEnviosPendientesLocales_(rows) {
+      return (rows || [])
+        .map(row => ({
+          ventaId: numero_(row.ventaId),
+          nombre: String(row.nombre || '').trim(),
+          clienteId: String(row.clienteId || '').trim(),
+          fechaVenta: normalizarFechaPendienteLocal_(row.fechaVenta),
+          fechaPendienteEnvio: normalizarFechaPendienteLocal_(row.fechaPendienteEnvio || row.fechaVenta),
+          estadoPago: String(row.estadoPago || '').trim(),
+          saldo: redondearNumero_(row.saldo),
+          productos: String(row.productos || '').trim(),
+          comentarioEnvio: String(row.comentarioEnvio || '').trim()
+        }))
+        .filter(item => item.ventaId > 0)
+        .sort((a, b) => {
+          const fechaA = normalizarFechaPendienteLocal_(a.fechaPendienteEnvio || a.fechaVenta);
+          const fechaB = normalizarFechaPendienteLocal_(b.fechaPendienteEnvio || b.fechaVenta);
+          if (fechaA !== fechaB) return fechaA.localeCompare(fechaB);
+          return numero_(a.ventaId) - numero_(b.ventaId);
+        });
+    }
+
+    function reconstruirDeudoresDesdeVentasPendientes_(rows) {
+      const grouped = {};
+
+      (rows || []).forEach(item => {
+        const key = item.clienteId || normalizarClave_(item.nombre);
+        if (!key) return;
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(item);
+      });
+
+      return Object.keys(grouped)
+        .map(key => {
+          const ventasCliente = grouped[key].slice().sort(compararVentasPendientes_);
+          const primera = ventasCliente[0] || {};
+          const saldoTotal = redondearNumero_(
+            ventasCliente.reduce((total, item) => total + numero_(item.saldo), 0)
+          );
+          const ultimaFecha = ventasCliente
+            .map(item => normalizarFechaPendienteLocal_(item.fechaVenta))
+            .sort()
+            .slice(-1)[0] || '';
+          const detalle = ventasCliente
+            .map(item => `V${item.ventaId}: ${moneda_(item.saldo)} - ${item.productos || ''}`)
+            .join(' | ');
+
+          return {
+            Cliente_ID: primera.clienteId || '',
+            Nombre: primera.nombre || '',
+            Saldo_Total: saldoTotal,
+            Ventas_Pendientes: ventasCliente.length,
+            Ultima_Fecha: ultimaFecha,
+            Detalle_Ventas: detalle
+          };
+        })
+        .sort((a, b) => numero_(b.Saldo_Total) - numero_(a.Saldo_Total));
+    }
+
+    function normalizarDeudoresLocales_(rows) {
+      return (rows || [])
+        .map(row => ({
+          Cliente_ID: String(row.Cliente_ID || '').trim(),
+          Nombre: String(row.Nombre || '').trim(),
+          Saldo_Total: redondearNumero_(row.Saldo_Total),
+          Ventas_Pendientes: numero_(row.Ventas_Pendientes),
+          Ultima_Fecha: normalizarFechaPendienteLocal_(row.Ultima_Fecha),
+          Detalle_Ventas: String(row.Detalle_Ventas || '').trim()
+        }))
+        .sort((a, b) => numero_(b.Saldo_Total) - numero_(a.Saldo_Total));
+    }
+
+    function formatearRendimientoOperacion_(performance) {
+      if (!performance || !performance.summary) return '';
+      return `Rendimiento: ${performance.summary}`;
+    }
+
+    function normalizarCatalogoProductosVentas_(rows) {
+      const ordenGrupos = {
+        'Bases en gramos': 1,
+        'Capsulas / mg': 2,
+        Extractos: 3,
+        Polvos: 4,
+        Unidades: 5,
+        Otros: 6
+      };
+
+      return (rows || [])
+        .map(row => ({
+          producto: String(row.producto || '').trim(),
+          unidad: String(row.unidad || '').trim(),
+          precio: redondearNumero_(row.precio),
+          grupoVisual: obtenerGrupoVisualProducto_(row)
+        }))
+        .filter(row => row.producto)
+        .sort((a, b) => {
+          const grupoA = ordenGrupos[a.grupoVisual] || 99;
+          const grupoB = ordenGrupos[b.grupoVisual] || 99;
+          if (grupoA !== grupoB) return grupoA - grupoB;
+          return a.producto.localeCompare(b.producto, undefined, { numeric: true, sensitivity: 'base' });
+        });
+    }
+
+    function obtenerGrupoVisualProducto_(producto) {
+      const nombre = String(producto && producto.producto || '').trim();
+      const unidad = normalizarClave_(producto && producto.unidad || '');
+
+      if (/^\d+\s*mg$/i.test(nombre)) return 'Capsulas / mg';
+      if (/ext$/i.test(nombre)) return 'Extractos';
+      if (/pow$/i.test(nombre)) return 'Polvos';
+      if (unidad === 'g') return 'Bases en gramos';
+      if (unidad === 'und') return 'Unidades';
+      return 'Otros';
+    }
+
+    function renderClientesList() {
+      const datalist = document.getElementById('clientesList');
+      datalist.innerHTML = [...new Set(catalogo.clientes.map(cliente => cliente.nombre).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b))
+        .map(value => `<option value="${escapeHtml(value)}"></option>`)
+        .join('');
+    }
+
+    function limpiarClienteSeleccionado() {
+      document.getElementById('clienteId').value = '';
+    }
+
+    function sincronizarClienteExistente() {
+      const nombreInput = document.getElementById('nombre');
+      const cliente = buscarClienteCoincidente(nombreInput.value);
+
+      if (!cliente) {
+        document.getElementById('clienteId').value = '';
+        actualizarEstadoClienteRegistrado_(null, nombreInput.value);
+        return;
+      }
+
+      document.getElementById('clienteId').value = cliente.clienteId || '';
+      actualizarEstadoClienteRegistrado_(cliente, nombreInput.value);
+    }
+
+    function buscarClienteCoincidente(valor) {
+      const clave = normalizarClave_(valor);
+      if (!clave) return null;
+
+      return catalogo.clientes.find(cliente => normalizarClave_(cliente.nombre) === clave) || null;
+    }
+
+    function sincronizarClienteCatalogoLocal_(clienteId, nombre) {
+      const clienteIdLimpio = String(clienteId || '').trim();
+      const nombreLimpio = String(nombre || '').trim();
+      if (!clienteIdLimpio && !nombreLimpio) return;
+
+      if (!Array.isArray(catalogo.clientes)) {
+        catalogo.clientes = [];
+      }
+
+      const claveNombre = normalizarClave_(nombreLimpio);
+      const existente = catalogo.clientes.find(cliente =>
+        (clienteIdLimpio && String(cliente.clienteId || '').trim() === clienteIdLimpio) ||
+        (claveNombre && normalizarClave_(cliente.nombre) === claveNombre)
+      );
+
+      if (existente) {
+        if (clienteIdLimpio) existente.clienteId = clienteIdLimpio;
+        if (nombreLimpio) existente.nombre = nombreLimpio;
+      } else {
+        catalogo.clientes.push({
+          clienteId: clienteIdLimpio,
+          nombre: nombreLimpio
+        });
+      }
+
+      renderClientesList();
+      sincronizarClienteExistente();
+    }
+
+    function actualizarEstadoClienteRegistrado_(cliente, nombreDigitado) {
+      const estado = document.getElementById('clienteRegistradoEstado');
+      if (!estado) return;
+
+      estado.className = 'field-feedback';
+      const nombre = String(nombreDigitado || '').trim();
+      if (!nombre) {
+        estado.innerText = 'Escribe el nombre para validar si ya existe un cliente registrado.';
+        return;
+      }
+
+      if (cliente && cliente.clienteId) {
+        estado.classList.add('status-ok');
+        estado.innerHTML = [
+          `Cliente detectado: <strong>${escapeHtml(cliente.nombre || nombre)}</strong>.`,
+          `ID: <strong>${escapeHtml(cliente.clienteId || '')}</strong>.`
+        ].join(' ');
+        return;
+      }
+
+      estado.classList.add('status-warn');
+      estado.innerText = 'No coincide con un cliente registrado. Si guardas la venta, se creara uno nuevo.';
+    }
+
+    function actualizarResumenEnvioVenta() {
+      const checkbox = document.getElementById('pendienteEnvioVenta');
+      const helper = document.getElementById('pendienteEnvioVentaTexto');
+      if (!checkbox || !helper) return;
+      helper.innerText = checkbox.checked
+        ? 'La venta quedara visible en el panel de envios hasta marcarla como enviada.'
+        : 'La venta se guardara normalmente, pero no quedara en seguimiento de envios.';
+    }
+
+    function actualizarOpcionesProductosExistentes() {
+      document.querySelectorAll('.producto-linea .producto').forEach(select => {
+        const currentValue = select.value;
+        select.innerHTML = construirOpcionesProductosHTML_(currentValue);
+        if (currentValue) select.value = currentValue;
+        actualizarProducto(select, false);
+      });
+    }
+
+    function actualizarOpcionesPagosExistentes() {
+      document.querySelectorAll('.pago-linea .medio').forEach(select => {
+        const currentValue = select.value;
+        select.innerHTML = construirOpcionesMediosHTML_(currentValue);
+        if (currentValue) select.value = currentValue;
+      });
+    }
+
+    function actualizarOpcionesPagoPendiente() {
+      const select = document.getElementById('medioPagoPendiente');
+      const selected = select.value;
+      select.innerHTML = construirOpcionesMediosHTML_(selected);
+      if (selected) select.value = selected;
+    }
+
+    function agregarProducto() {
+      const cont = document.getElementById('productos');
+      const card = document.createElement('div');
+      card.className = 'line-card producto-linea';
+
+      card.innerHTML = `
+        <div class="grid-3">
+          <div>
+            <label>Producto</label>
+            <select class="producto" onchange="actualizarProducto(this, true)">
+              ${construirOpcionesProductosHTML_('')}
+            </select>
+          </div>
+          <div>
+            <label>Cantidad</label>
+            <input class="cantidad" type="number" step="1" inputmode="decimal" value="1" oninput="recalcular()">
+          </div>
+          <div>
+            <label>Unidad</label>
+            <input class="unidad readonly" readonly>
+          </div>
+        </div>
+
+        <div class="grid-3">
+          <div>
+            <label>Precio lista</label>
+            <input class="precioLista readonly" readonly>
+          </div>
+          <div>
+            <label>Precio vendido</label>
+            <input class="precioVendidoUnitario" type="number" step="1" oninput="marcarPrecioManual(this); recalcular()">
+          </div>
+          <div>
+            <label>Descuento linea</label>
+            <input class="descuentoLinea" type="number" step="1" value="0" oninput="recalcular()">
+          </div>
+        </div>
+
+        <div class="grid-4">
+          <div>
+            <label>Subtotal bruto</label>
+            <input class="subtotalBruto readonly" readonly>
+          </div>
+          <div>
+            <label>Subtotal neto</label>
+            <input class="subtotalNeto readonly" readonly>
+          </div>
+          <div>
+            <label>Comentario linea</label>
+            <input class="comentarioLinea" placeholder="Promo, nota, ajuste...">
+          </div>
+          <div style="display:flex; align-items:end;">
+            <button class="btn danger" type="button" onclick="this.closest('.producto-linea').remove(); recalcular();">
+              Quitar
+            </button>
+          </div>
+        </div>
+
+        <div class="line-hint"></div>
+      `;
+
+      cont.appendChild(card);
+      recalcular();
+    }
+
+    function construirOpcionesProductosHTML_(selectedValue) {
+      const options = ['<option value="">Seleccionar producto...</option>'];
+      const grupos = {};
+
+      (catalogo.productos || []).forEach(producto => {
+        const grupo = producto.grupoVisual || 'Otros';
+        if (!grupos[grupo]) grupos[grupo] = [];
+        grupos[grupo].push(producto);
+      });
+
+      Object.keys(grupos).forEach(grupo => {
+        options.push(`<optgroup label="${escapeHtml(grupo)}">`);
+        grupos[grupo].forEach(producto => {
+          const selected = selectedValue && selectedValue === producto.producto ? ' selected' : '';
+          options.push(
+            `<option value="${escapeHtml(producto.producto)}"${selected}>${escapeHtml(producto.producto)}</option>`
+          );
+        });
+        options.push('</optgroup>');
+      });
+
+      return options.join('');
+    }
+
+    function construirOpcionesMediosHTML_(selectedValue) {
+      return catalogo.mediosPago
+        .map(medio => {
+          const selected = selectedValue && selectedValue === medio ? ' selected' : '';
+          return `<option value="${escapeHtml(medio)}"${selected}>${escapeHtml(medio)}</option>`;
+        })
+        .join('');
+    }
+
+    function actualizarProducto(select, forzarPrecioVenta) {
+      const card = select.closest('.producto-linea');
+      const producto = catalogo.productos.find(item => item.producto === select.value);
+      const unidadInput = card.querySelector('.unidad');
+      const precioListaInput = card.querySelector('.precioLista');
+      const precioVendidoInput = card.querySelector('.precioVendidoUnitario');
+      const precioListaAnterior = numero_(precioListaInput.value);
+
+      if (!producto) {
+        unidadInput.value = '';
+        precioListaInput.value = '';
+        if (!precioVendidoInput.dataset.manual) precioVendidoInput.value = '';
+        recalcular();
+        return;
+      }
+
+      unidadInput.value = producto.unidad || '';
+      precioListaInput.value = redondearNumero_(producto.precio || 0);
+
+      const fueManual = precioVendidoInput.dataset.manual === 'true';
+      const precioActual = numero_(precioVendidoInput.value);
+
+      if (
+        forzarPrecioVenta ||
+        !precioVendidoInput.value ||
+        !fueManual ||
+        Math.abs(precioActual - precioListaAnterior) < 0.009
+      ) {
+        precioVendidoInput.value = redondearNumero_(producto.precio || 0);
+        precioVendidoInput.dataset.manual = 'false';
+      }
+
+      recalcular();
+    }
+
+    function marcarPrecioManual(input) {
+      input.dataset.manual = 'true';
+    }
+
+    function agregarPago() {
+      const cont = document.getElementById('pagos');
+      const card = document.createElement('div');
+      card.className = 'line-card pago-linea';
+
+      card.innerHTML = `
+        <div class="grid-4">
+          <div>
+            <label>Medio de pago</label>
+            <select class="medio" onchange="recalcular()">
+              ${construirOpcionesMediosHTML_('')}
+            </select>
+          </div>
+          <div>
+            <label>Monto</label>
+            <input class="monto" type="number" step="1" placeholder="0" oninput="recalcular()">
+          </div>
+          <div>
+            <label>Comentario pago</label>
+            <input class="comentarioPago" placeholder="Opcional">
+          </div>
+          <div style="display:flex; align-items:end;">
+            <button class="btn danger" type="button" onclick="this.closest('.pago-linea').remove(); recalcular();">
+              Quitar
+            </button>
+          </div>
+        </div>
+      `;
+
+      cont.appendChild(card);
+      recalcular();
+    }
+
+    function recalcular() {
+      let subtotalLista = 0;
+      let subtotalBruto = 0;
+      let descuentoTotal = 0;
+      let totalVenta = 0;
+      let totalPagado = 0;
+      let hayError = false;
+
+      document.querySelectorAll('.producto-linea').forEach(card => {
+        const producto = card.querySelector('.producto').value;
+        const cantidad = numero_(card.querySelector('.cantidad').value);
+        const precioLista = numero_(card.querySelector('.precioLista').value);
+        const precioVendido = numero_(card.querySelector('.precioVendidoUnitario').value);
+        const descuento = numero_(card.querySelector('.descuentoLinea').value);
+        const subtotalBrutoLinea = redondearNumero_(cantidad * precioVendido);
+        const subtotalNetoLinea = redondearNumero_(subtotalBrutoLinea - descuento);
+
+        card.querySelector('.subtotalBruto').value = subtotalBrutoLinea > 0 ? subtotalBrutoLinea : '';
+        card.querySelector('.subtotalNeto').value = subtotalNetoLinea > 0 || descuento > 0 ? subtotalNetoLinea : '';
+
+        const invalida = (
+          (producto && cantidad <= 0) ||
+          (producto && precioVendido <= 0) ||
+          descuento < 0 ||
+          descuento > subtotalBrutoLinea + 0.009 ||
+          subtotalNetoLinea < -0.009
+        );
+
+        card.classList.toggle('invalid', invalida);
+        actualizarHintLinea_(card, precioLista, precioVendido, descuento, producto);
+        hayError = hayError || invalida;
+
+        subtotalLista += redondearNumero_(cantidad * precioLista);
+        subtotalBruto += subtotalBrutoLinea;
+        descuentoTotal += descuento;
+        totalVenta += subtotalNetoLinea;
+      });
+
+      document.querySelectorAll('.pago-linea').forEach(card => {
+        totalPagado += numero_(card.querySelector('.monto').value);
+      });
+
+      subtotalLista = redondearNumero_(subtotalLista);
+      subtotalBruto = redondearNumero_(subtotalBruto);
+      descuentoTotal = redondearNumero_(descuentoTotal);
+      totalVenta = redondearNumero_(totalVenta);
+      totalPagado = redondearNumero_(totalPagado);
+
+      const saldo = redondearNumero_(Math.max(totalVenta - totalPagado, 0));
+      const haySobrepago = totalPagado > totalVenta + 0.009;
+
+      document.getElementById('subtotalLista').innerText = moneda_(subtotalLista);
+      document.getElementById('subtotalBruto').innerText = moneda_(subtotalBruto);
+      document.getElementById('descuentoTotal').innerText = moneda_(descuentoTotal);
+      document.getElementById('totalVenta').innerText = moneda_(totalVenta);
+      document.getElementById('totalPagado').innerText = moneda_(totalPagado);
+      document.getElementById('saldo').innerText = moneda_(saldo);
+
+      const estadoPago = document.getElementById('estadoPago');
+      estadoPago.className = 'status-pill';
+
+      if (totalVenta <= 0) {
+        estadoPago.innerText = 'Sin productos';
+        estadoPago.classList.add('status-warn');
+      } else if (hayError) {
+        estadoPago.innerText = 'Revisar lineas';
+        estadoPago.classList.add('status-bad');
+      } else if (haySobrepago) {
+        estadoPago.innerText = 'Pago mayor al total';
+        estadoPago.classList.add('status-bad');
+      } else if (saldo <= 0.009) {
+        estadoPago.innerText = 'Pagado';
+        estadoPago.classList.add('status-ok');
+      } else if (totalPagado > 0) {
+        estadoPago.innerText = 'Parcial';
+        estadoPago.classList.add('status-warn');
+      } else {
+        estadoPago.innerText = 'Pendiente';
+        estadoPago.classList.add('status-warn');
+      }
+
+      document.getElementById('guardarVentaBtn').disabled = (
+        totalVenta <= 0 ||
+        hayError ||
+        haySobrepago
+      );
+    }
+
+    function actualizarHintLinea_(card, precioLista, precioVendido, descuento, producto) {
+      const hint = card.querySelector('.line-hint');
+      const mensajes = [];
+
+      if (!producto) {
+        hint.innerText = 'Selecciona un producto para calcular la linea.';
+        return;
+      }
+
+      if (precioLista <= 0) {
+        mensajes.push('Sin precio de referencia para la fecha seleccionada.');
+      }
+
+      if (precioVendido <= 0) {
+        mensajes.push('Debes indicar un precio vendido mayor a cero.');
+      }
+
+      if (Math.abs(precioVendido - precioLista) > 0.009) {
+        mensajes.push('Quedara guardado como precio vendido especial.');
+      }
+
+      if (descuento > 0) {
+        mensajes.push('Quedara guardado con descuento por linea.');
+      }
+
+      if (!mensajes.length) {
+        mensajes.push('Linea lista para guardar con precio normal.');
+      }
+
+      hint.innerText = mensajes.join(' ');
+    }
+
+    function pagarTotal() {
+      const totalVenta = numeroDesdeTextoMoneda_(document.getElementById('totalVenta').innerText);
+
+      if (totalVenta <= 0) {
+        alert('Primero agrega productos validos.');
+        return;
+      }
+
+      let primerPago = document.querySelector('.pago-linea');
+      if (!primerPago) {
+        agregarPago();
+        primerPago = document.querySelector('.pago-linea');
+      }
+
+      document.querySelectorAll('.pago-linea .monto').forEach((input, index) => {
+        input.value = index === 0 ? totalVenta : '';
+      });
+
+      recalcular();
+    }
+
+    function guardarVenta() {
+      const clienteCoincidente = buscarClienteCoincidente(document.getElementById('nombre').value.trim());
+      if (clienteCoincidente && clienteCoincidente.clienteId) {
+        document.getElementById('clienteId').value = clienteCoincidente.clienteId;
+      }
+
+      const cliente = {
+        clienteId: document.getElementById('clienteId').value,
+        nombre: document.getElementById('nombre').value.trim(),
+        confirmadoCatalogo: Boolean(clienteCoincidente && clienteCoincidente.clienteId)
+      };
+
+      if (!cliente.nombre) {
+        alert('Falta el nombre del cliente.');
+        return;
+      }
+
+      const lineas = [];
+      let totalVenta = 0;
+
+      document.querySelectorAll('.producto-linea').forEach(card => {
+        const producto = card.querySelector('.producto').value;
+        if (!producto) return;
+
+        const cantidad = numero_(card.querySelector('.cantidad').value);
+        const precioVendidoUnitario = numero_(card.querySelector('.precioVendidoUnitario').value);
+        const descuentoLinea = numero_(card.querySelector('.descuentoLinea').value);
+        const subtotalBruto = redondearNumero_(cantidad * precioVendidoUnitario);
+
+        if (cantidad <= 0 || precioVendidoUnitario <= 0 || descuentoLinea < 0 || descuentoLinea > subtotalBruto + 0.009) {
+          return;
+        }
+
+        lineas.push({
+          producto: producto,
+          cantidad: cantidad,
+          unidad: card.querySelector('.unidad').value,
+          precioVendidoUnitario: precioVendidoUnitario,
+          descuentoLinea: descuentoLinea,
+          comentarioLinea: card.querySelector('.comentarioLinea').value
+        });
+
+        totalVenta += subtotalBruto - descuentoLinea;
+      });
+
+      if (!lineas.length) {
+        alert('Agrega al menos un producto valido.');
+        return;
+      }
+
+      const pagos = [];
+      let totalPagado = 0;
+
+      document.querySelectorAll('.pago-linea').forEach(card => {
+        const monto = numero_(card.querySelector('.monto').value);
+        if (monto <= 0) return;
+
+        pagos.push({
+          medio: card.querySelector('.medio').value,
+          monto: monto,
+          comentarioPago: card.querySelector('.comentarioPago').value
+        });
+
+        totalPagado += monto;
+      });
+
+      totalVenta = redondearNumero_(totalVenta);
+      totalPagado = redondearNumero_(totalPagado);
+
+      if (totalPagado > totalVenta + 0.009) {
+        alert('El pago inicial no puede ser mayor al total de la venta.');
+        return;
+      }
+
+      const payload = {
+        fechaVenta: document.getElementById('fechaVenta').value,
+        cliente: cliente,
+        comentarioVenta: document.getElementById('comentarioVenta').value,
+        pendienteEnvio: document.getElementById('pendienteEnvioVenta').checked,
+        lineas: lineas,
+        pagos: pagos,
+        devolverDashboard: PERF_SOLICITAR_DASHBOARD_EN_GUARDADO,
+        validarModelo: false
+      };
+
+      document.getElementById('estado').innerText = 'Guardando venta...';
+
+      google.script.run
+        .withSuccessHandler(resp => {
+          sincronizarClienteCatalogoLocal_(resp.clienteId, resp.nombre);
+          const dashboard = resp.dashboard || construirDashboardLocalTrasVenta_(resp);
+          document.getElementById('estado').innerText = [
+            `Venta ${resp.ventaId} guardada. Total: ${moneda_(resp.totalVenta)}. Saldo: ${moneda_(resp.saldo)}.` +
+              (resp.estadoEnvio === 'Pendiente' ? ' Quedo marcada como pendiente de envio.' : ''),
+            formatearRendimientoOperacion_(resp.performance)
+          ].filter(Boolean).join('\n');
+          if (resp.performance && typeof console !== 'undefined' && console.log) {
+            console.log('registrarVentaQTAS', resp.performance);
+          }
+          limpiarFormulario();
+          aplicarDashboardVentas_(dashboard);
+        })
+        .withFailureHandler(err => {
+          document.getElementById('estado').innerText = 'Error guardando venta: ' + err.message;
+        })
+        .registrarVentaQTAS(payload);
+    }
+
+    function limpiarFormulario() {
+      document.getElementById('clienteId').value = '';
+      document.getElementById('nombre').value = '';
+      document.getElementById('comentarioVenta').value = '';
+      document.getElementById('pendienteEnvioVenta').checked = false;
+      document.getElementById('fechaVenta').value = catalogo.hoy || fechaHoyLocal_();
+      document.getElementById('productos').innerHTML = '';
+      document.getElementById('pagos').innerHTML = '';
+      actualizarResumenEnvioVenta();
+      actualizarEstadoClienteRegistrado_(null, '');
+      agregarProducto();
+      agregarPago();
+      recalcular();
+    }
+
+    function renderVentasPendientes() {
+      const select = document.getElementById('ventaPendiente');
+      const selected = select.value;
+
+      select.innerHTML = ['<option value="">Seleccionar venta...</option>']
+        .concat(ventasPendientes.map(item =>
+          `<option value="${item.ventaId}">${escapeHtml(item.label)}</option>`
+        ))
+        .join('');
+
+      if (selected && ventasPendientes.some(item => String(item.ventaId) === selected)) {
+        select.value = selected;
+      } else if (ventasPendientes.length === 1) {
+        select.value = String(ventasPendientes[0].ventaId);
+      }
+
+      actualizarResumenVentaPendiente();
+    }
+
+    function actualizarResumenVentaPendiente() {
+      const select = document.getElementById('ventaPendiente');
+      const info = document.getElementById('ventaPendienteInfo');
+      const estado = document.getElementById('estadoPagoPendiente');
+      const boton = document.getElementById('guardarPagoPendienteBtn');
+      const montoInput = document.getElementById('montoPagoPendiente');
+      const venta = ventasPendientes.find(item => String(item.ventaId) === select.value);
+
+      if (!venta) {
+        info.innerText = 'No hay venta seleccionada.';
+        estado.innerText = 'Selecciona una venta con saldo pendiente.';
+        boton.disabled = true;
+        montoInput.dataset.ventaId = '';
+        return;
+      }
+
+      if (montoInput.dataset.ventaId !== String(venta.ventaId)) {
+        montoInput.value = venta.saldo;
+        montoInput.dataset.ventaId = String(venta.ventaId);
+      }
+
+      const monto = numero_(montoInput.value);
+      const excede = monto > venta.saldo + 0.009;
+
+      info.innerHTML = `
+        <strong>V${escapeHtml(String(venta.ventaId))} - ${escapeHtml(venta.nombre)}</strong><br>
+        Fecha: ${escapeHtml(venta.fechaVenta)}<br>
+        Saldo: <strong>${escapeHtml(moneda_(venta.saldo))}</strong><br>
+        ${escapeHtml(venta.productos || '')}
+      `;
+
+      if (monto <= 0) {
+        estado.innerText = 'Ingresa un monto mayor a cero.';
+        boton.disabled = true;
+      } else if (excede) {
+        estado.innerText = 'El monto excede el saldo pendiente.';
+        boton.disabled = true;
+      } else {
+        estado.innerText = `Se registrara un pago de ${moneda_(monto)} para esa venta.`;
+        boton.disabled = false;
+      }
+    }
+
+    function guardarPagoPendiente() {
+      const ventaId = document.getElementById('ventaPendiente').value;
+      const monto = numero_(document.getElementById('montoPagoPendiente').value);
+      const medio = document.getElementById('medioPagoPendiente').value;
+
+      if (!ventaId) {
+        alert('Selecciona una venta pendiente.');
+        return;
+      }
+
+      if (monto <= 0) {
+        alert('El monto debe ser mayor a cero.');
+        return;
+      }
+
+      const venta = ventasPendientes.find(item => String(item.ventaId) === ventaId);
+      if (venta && monto > venta.saldo + 0.009) {
+        alert('El monto excede el saldo pendiente.');
+        return;
+      }
+
+      document.getElementById('estadoPagoPendiente').innerText = 'Guardando pago...';
+
+      google.script.run
+        .withSuccessHandler(resp => {
+          const dashboard = resp.dashboard || construirDashboardLocalTrasPago_(resp);
+          document.getElementById('estadoPagoPendiente').innerText = [
+            `Pago registrado. Saldo restante: ${moneda_(resp.saldoRestante)}.`,
+            formatearRendimientoOperacion_(resp.performance)
+          ].filter(Boolean).join('\n');
+          if (resp.performance && typeof console !== 'undefined' && console.log) {
+            console.log('registrarPagoPendienteQTAS', resp.performance);
+          }
+          document.getElementById('montoPagoPendiente').value = '';
+          document.getElementById('montoPagoPendiente').dataset.ventaId = '';
+          document.getElementById('comentarioPagoPendiente').value = '';
+          aplicarDashboardVentas_(dashboard);
+          recalcular();
+        })
+        .withFailureHandler(err => {
+          document.getElementById('estadoPagoPendiente').innerText = 'Error guardando pago: ' + err.message;
+        })
+        .registrarPagoPendienteQTAS({
+          ventaId: ventaId,
+          fechaPago: document.getElementById('fechaPagoPendiente').value,
+          medio: medio,
+          monto: monto,
+          comentarioPago: document.getElementById('comentarioPagoPendiente').value,
+          devolverDashboard: PERF_SOLICITAR_DASHBOARD_EN_PAGO_PENDIENTE,
+          validarModelo: false
+        });
+    }
+
+    function renderDeudores(rows) {
+      const cont = document.getElementById('deudores');
+
+      if (!rows || !rows.length) {
+        cont.innerHTML = '<div class="muted">No hay deudores.</div>';
+        return;
+      }
+
+      cont.innerHTML = rows.slice(0, 10).map(row => `
+        <div class="list-item">
+          <strong>${escapeHtml(row.Nombre || '')}</strong>
+          <div>Debe: <b>${escapeHtml(moneda_(row.Saldo_Total || 0))}</b></div>
+          <div class="muted">${escapeHtml(String(row.Ventas_Pendientes || 0))} venta(s) pendiente(s)</div>
+        </div>
+      `).join('');
+    }
+
+    function renderEnviosPendientes() {
+      const cont = document.getElementById('enviosPendientes');
+      const estado = document.getElementById('estadoEnviosPendientes');
+      const rows = enviosPendientes || [];
+
+      if (!rows.length) {
+        cont.innerHTML = '<div class="muted">No hay ventas pendientes de envio.</div>';
+        estado.innerText = 'No hay envios pendientes.';
+        return;
+      }
+
+      cont.innerHTML = rows.slice(0, 12).map(row => `
+        <div class="list-item">
+          <strong>V${escapeHtml(String(row.ventaId))} · ${escapeHtml(row.nombre || '')}</strong>
+          <div>${escapeHtml(row.fechaVenta || '')} · Estado de pago: <b>${escapeHtml(row.estadoPago || 'Pendiente')}</b></div>
+          <div>${escapeHtml(row.productos || '')}</div>
+          <div class="helper">
+            Marcada para envio: ${escapeHtml(row.fechaPendienteEnvio || row.fechaVenta || '')}
+            ${row.saldo > 0.009 ? ` · Saldo: ${escapeHtml(moneda_(row.saldo || 0))}` : ''}
+          </div>
+          <div class="list-item-actions">
+            <button class="btn secondary" type="button" onclick="marcarVentaEnviada(${row.ventaId})">Marcar enviada</button>
+          </div>
+        </div>
+      `).join('');
+      estado.innerText = `${rows.length} venta(s) pendiente(s) de envio visibles en este panel.`;
+    }
+
+    function marcarVentaEnviada(ventaId) {
+      const venta = (enviosPendientes || []).find(item => String(item.ventaId) === String(ventaId));
+      if (!venta) {
+        document.getElementById('estadoEnviosPendientes').innerText = 'La venta ya no aparece como pendiente de envio.';
+        return;
+      }
+
+      document.getElementById('estadoEnviosPendientes').innerText = `Marcando V${ventaId} como enviada...`;
+
+      google.script.run
+        .withSuccessHandler(resp => {
+          const dashboard = resp.dashboard || construirDashboardLocalTrasCambioEnvio_(resp);
+          document.getElementById('estadoEnviosPendientes').innerText = [
+            `Venta ${ventaId} marcada como enviada.`,
+            formatearRendimientoOperacion_(resp.performance)
+          ].filter(Boolean).join('\n');
+          aplicarDashboardVentas_(dashboard);
+        })
+        .withFailureHandler(err => {
+          document.getElementById('estadoEnviosPendientes').innerText = 'No se pudo actualizar el envio: ' + err.message;
+        })
+        .actualizarEstadoEnvioVentaQTAS({
+          ventaId: ventaId,
+          estadoEnvio: 'Enviado',
+          devolverDashboard: false,
+          validarModelo: false
+        });
+    }
+
+    let catalogoCompras = {
+      hoy: '',
+      mediosPago: [],
+      productos: [],
+      itemsSugeridos: [],
+      costosVigentes: [],
+      comprasRecientes: [],
+      proveedores: []
+    };
+
+    function initCompras() {
+      document.getElementById('fechaCompra').value = '';
+      cargarCatalogoCompras(true);
+    }
+
+    function cargarCatalogoCompras(inicial) {
+      google.script.run
+        .withSuccessHandler(data => {
+          catalogoCompras = data || {
+            hoy: fechaHoyLocal_(),
+            mediosPago: [],
+            productos: [],
+            itemsSugeridos: [],
+            costosVigentes: [],
+            comprasRecientes: [],
+            proveedores: []
+          };
+
+          if (!document.getElementById('fechaCompra').value) {
+            document.getElementById('fechaCompra').value = catalogoCompras.hoy || fechaHoyLocal_();
+          }
+
+          renderProveedoresList();
+          renderItemsCompraList();
+          actualizarOpcionesMedioPagoCompra();
+          renderComprasRecientes();
+          renderCostosVigentes();
+
+          if (inicial) {
+            document.getElementById('lineasCompra').innerHTML = '';
+            agregarLineaCompra();
+          }
+
+          recalcularCompra();
+        })
+        .withFailureHandler(err => {
+          document.getElementById('estadoCompra').innerText = 'Error cargando catalogo de compras: ' + err.message;
+        })
+        .getCatalogoComprasQTAS();
+    }
+
+    function renderProveedoresList() {
+      document.getElementById('proveedoresList').innerHTML = (catalogoCompras.proveedores || [])
+        .map(value => `<option value="${escapeHtml(value)}"></option>`)
+        .join('');
+    }
+
+    function renderItemsCompraList() {
+      ['Producto', 'Insumo', 'Gasto'].forEach(tipoItem => {
+        const listId = `itemsCompraList${tipoItem}`;
+        document.getElementById(listId).innerHTML = obtenerItemsSugeridosCompraPorTipo_(tipoItem)
+          .map(item => `<option value="${escapeHtml(item.item)}"></option>`)
+          .join('');
+      });
+
+      document.querySelectorAll('.compra-linea').forEach(card => sincronizarDatalistItemCompra_(card));
+    }
+
+    function obtenerItemsSugeridosCompraPorTipo_(tipoItem) {
+      return (catalogoCompras.itemsSugeridos || [])
+        .filter(item => String(item.tipoItem || '').trim() === tipoItem)
+        .sort((a, b) => String(a.item || '').localeCompare(String(b.item || ''), undefined, { numeric: true, sensitivity: 'base' }));
+    }
+
+    function actualizarOpcionesMedioPagoCompra() {
+      const select = document.getElementById('medioPagoCompra');
+      const selected = select.value;
+      select.innerHTML = ['<option value="">Seleccionar medio...</option>']
+        .concat((catalogoCompras.mediosPago || []).map(medio =>
+          `<option value="${escapeHtml(medio)}">${escapeHtml(medio)}</option>`
+        ))
+        .join('');
+
+      if (selected && (catalogoCompras.mediosPago || []).includes(selected)) {
+        select.value = selected;
+      } else if ((catalogoCompras.mediosPago || []).length) {
+        select.value = catalogoCompras.mediosPago[0];
+      }
+    }
+
+    function agregarLineaCompra() {
+      const cont = document.getElementById('lineasCompra');
+      const card = document.createElement('div');
+      card.className = 'line-card compra-linea';
+
+      card.innerHTML = `
+        <div class="grid-4">
+          <div>
+            <label>Tipo item</label>
+            <select class="tipoItem" onchange="actualizarTipoCompra(this)">
+              <option value="Producto">Producto</option>
+              <option value="Insumo" selected>Insumo</option>
+              <option value="Gasto">Gasto</option>
+            </select>
+          </div>
+          <div>
+            <label>Item</label>
+            <input class="item" list="itemsCompraListInsumo" placeholder="Ej: AcMed, frasco, sticker..." oninput="sincronizarItemCompra(this)" onblur="normalizarItemCompra(this)">
+          </div>
+          <div>
+            <label>Cantidad</label>
+            <input class="cantidad" type="number" step="1" inputmode="decimal" value="1" oninput="recalcularCompra()">
+          </div>
+          <div>
+            <label>Unidad</label>
+            <input class="unidad" value="und" oninput="recalcularCompra()">
+          </div>
+        </div>
+
+        <div class="grid-4">
+          <div>
+            <label>Costo total linea</label>
+            <input class="costoTotalLinea" type="number" step="1" placeholder="0" oninput="recalcularCompra()">
+          </div>
+          <div>
+            <label>Costo unitario</label>
+            <input class="costoUnitario readonly" readonly>
+          </div>
+          <div>
+            <label>Impacta costo</label>
+            <select class="impactaCosto" onchange="recalcularCompra()">
+              <option value="true" selected>Si</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+          <div style="display:flex; align-items:end;">
+            <button class="btn danger" type="button" onclick="this.closest('.compra-linea').remove(); recalcularCompra();">
+              Quitar
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label>Comentario linea</label>
+          <input class="comentarioLinea" placeholder="Marca, lote, envio, nota...">
+        </div>
+
+        <div class="line-hint"></div>
+      `;
+
+      cont.appendChild(card);
+      sincronizarDatalistItemCompra_(card);
+      recalcularCompra();
+    }
+
+    function actualizarTipoCompra(select) {
+      const card = select.closest('.compra-linea');
+      const impacta = card.querySelector('.impactaCosto');
+      impacta.value = select.value === 'Gasto' ? 'false' : 'true';
+      sincronizarDatalistItemCompra_(card);
+      sincronizarItemCompra(card.querySelector('.item'));
+      recalcularCompra();
+    }
+
+    function sincronizarItemCompra(input) {
+      const card = input.closest('.compra-linea');
+      const tipoItem = card.querySelector('.tipoItem').value;
+      const sugerencia = buscarItemSugeridoCompra_(input.value, tipoItem);
+      const productoCanonico = tipoItem === 'Producto' ? buscarProductoCanonicoCompra_(input.value) : null;
+
+      if (productoCanonico) {
+        card.querySelector('.unidad').value = productoCanonico.unidad || card.querySelector('.unidad').value || 'und';
+      } else if (sugerencia) {
+        card.querySelector('.unidad').value = sugerencia.unidad || card.querySelector('.unidad').value || 'und';
+      }
+
+      recalcularCompra();
+    }
+
+    function normalizarItemCompra(input) {
+      const card = input.closest('.compra-linea');
+      const tipoItem = card.querySelector('.tipoItem').value;
+      const sugerencia = buscarItemSugeridoCompra_(input.value, tipoItem);
+      const productoCanonico = tipoItem === 'Producto' ? buscarProductoCanonicoCompra_(input.value) : null;
+      const referencia = productoCanonico || sugerencia;
+      if (referencia && referencia.item) {
+        input.value = referencia.item;
+      }
+      sincronizarItemCompra(input);
+    }
+
+    function sincronizarDatalistItemCompra_(card) {
+      if (!card) return;
+      const tipoItem = card.querySelector('.tipoItem').value || 'Insumo';
+      const input = card.querySelector('.item');
+      input.setAttribute('list', `itemsCompraList${tipoItem}`);
+    }
+
+    function buscarItemSugeridoCompra_(valor, tipoItem) {
+      const clave = normalizarClave_(valor);
+      if (!clave) return null;
+      return (catalogoCompras.itemsSugeridos || []).find(item =>
+        normalizarClave_(item.item) === clave &&
+        String(item.tipoItem || '').trim() === String(tipoItem || '').trim()
+      ) || null;
+    }
+
+    function buscarProductoCanonicoCompra_(valor) {
+      const clave = normalizarClave_(valor);
+      if (!clave) return null;
+      return (catalogoCompras.productos || []).find(item => normalizarClave_(item.item) === clave) || null;
+    }
+
+    function resolverReferenciaCostoCompraLocal_(card) {
+      const item = card.querySelector('.item').value.trim();
+      const tipoItem = card.querySelector('.tipoItem').value;
+      const unidad = card.querySelector('.unidad').value.trim();
+      const impacto = card.querySelector('.impactaCosto').value === 'true';
+      const productoCanonico = tipoItem === 'Producto' ? buscarProductoCanonicoCompra_(item) : null;
+      const sugerencia = buscarItemSugeridoCompra_(item, tipoItem);
+      const referencia = productoCanonico || sugerencia;
+
+      return {
+        item: item,
+        tipoItem: tipoItem,
+        unidad: unidad,
+        impacto: impacto,
+        productoCanonico: productoCanonico,
+        sugerencia: sugerencia,
+        itemCanonico: referencia ? referencia.item : item,
+        unidadCanonica: referencia ? referencia.unidad : unidad,
+        costoVigente: redondearNumero_(referencia && referencia.costoUnitario ? referencia.costoUnitario : 0),
+        requiereProductoCanonico: impacto && tipoItem === 'Producto',
+        productoCanonicoValido: !impacto || tipoItem !== 'Producto' || Boolean(productoCanonico),
+        unidadCanonicaValida: !impacto || tipoItem !== 'Producto' || !productoCanonico ||
+          normalizarClave_(unidad) === normalizarClave_(productoCanonico.unidad)
+      };
+    }
+
+    function recalcularCompra() {
+      let totalCompra = 0;
+      let lineasValidas = 0;
+      let lineasImpactan = 0;
+      let hayError = false;
+
+      document.querySelectorAll('.compra-linea').forEach(card => {
+        const item = card.querySelector('.item').value.trim();
+        const tipoItem = card.querySelector('.tipoItem').value;
+        const cantidad = numero_(card.querySelector('.cantidad').value);
+        const unidad = card.querySelector('.unidad').value.trim();
+        const costoTotalLinea = numero_(card.querySelector('.costoTotalLinea').value);
+        const impacto = card.querySelector('.impactaCosto').value === 'true';
+        const costoUnitario = cantidad > 0 ? redondearNumero_(costoTotalLinea / cantidad) : 0;
+        const referencia = resolverReferenciaCostoCompraLocal_(card);
+        const invalida = !item ||
+          cantidad <= 0 ||
+          !unidad ||
+          costoTotalLinea <= 0 ||
+          (impacto && tipoItem === 'Producto' && !referencia.productoCanonicoValido) ||
+          (impacto && tipoItem === 'Producto' && !referencia.unidadCanonicaValida);
+
+        card.querySelector('.costoUnitario').value = costoUnitario > 0 ? costoUnitario : '';
+        card.classList.toggle('invalid', invalida);
+        actualizarHintCompra_(card, referencia, costoUnitario);
+
+        hayError = hayError || invalida;
+        if (!invalida) {
+          lineasValidas += 1;
+          totalCompra += costoTotalLinea;
+          if (impacto) lineasImpactan += 1;
+        }
+      });
+
+      totalCompra = redondearNumero_(totalCompra);
+      document.getElementById('totalCompra').innerText = moneda_(totalCompra);
+      document.getElementById('lineasValidas').innerText = String(lineasValidas);
+      document.getElementById('lineasImpactanCosto').innerText = String(lineasImpactan);
+      document.getElementById('guardarCompraBtn').disabled = lineasValidas <= 0 || hayError;
+    }
+
+    function actualizarHintCompra_(card, referencia, costoUnitario) {
+      const hint = card.querySelector('.line-hint');
+      const mensajes = [];
+      const item = referencia.item;
+      const unidad = referencia.unidad;
+      const tipoItem = referencia.tipoItem;
+      const impacto = referencia.impacto;
+
+      if (!item) {
+        hint.innerText = 'Escribe el item para registrar la linea.';
+        return;
+      }
+
+      if (referencia.costoVigente > 0) {
+        mensajes.push(`Costo vigente conocido: ${moneda_(referencia.costoVigente)} por ${referencia.unidadCanonica || unidad}.`);
+      }
+
+      if (costoUnitario > 0) {
+        mensajes.push(`Quedara guardado a ${moneda_(costoUnitario)} por ${unidad || 'unidad'}.`);
+      }
+
+      if (impacto && tipoItem === 'Producto') {
+        if (!referencia.productoCanonicoValido) {
+          mensajes.push('Para impactar costo como Producto debes elegir un producto canonico existente.');
+        } else if (!referencia.unidadCanonicaValida) {
+          mensajes.push(`Este producto impacta el costo de ${referencia.itemCanonico} y debe usar la unidad ${referencia.unidadCanonica}.`);
+        } else {
+          mensajes.push(`Impactara el costo canonico de ${referencia.itemCanonico} en ${referencia.unidadCanonica}.`);
+        }
+      } else if (impacto) {
+        mensajes.push(`Impactara el costo de ${tipoItem.toLowerCase()} ${referencia.itemCanonico || item}.`);
+      } else {
+        mensajes.push('Esta linea se guarda para analisis, pero no movera el costo de referencia.');
+      }
+
+      hint.innerText = mensajes.join(' ');
+    }
+
+    function guardarCompra() {
+      const payload = {
+        fechaCompra: document.getElementById('fechaCompra').value,
+        proveedor: document.getElementById('proveedorCompra').value.trim(),
+        medioPago: document.getElementById('medioPagoCompra').value,
+        comentarioCompra: document.getElementById('comentarioCompra').value.trim(),
+        lineas: []
+      };
+
+      document.querySelectorAll('.compra-linea').forEach(card => {
+        const item = card.querySelector('.item').value.trim();
+        const cantidad = numero_(card.querySelector('.cantidad').value);
+        const unidad = card.querySelector('.unidad').value.trim() || 'und';
+        const costoTotalLinea = numero_(card.querySelector('.costoTotalLinea').value);
+
+        if (!item || cantidad <= 0 || costoTotalLinea <= 0) return;
+
+        payload.lineas.push({
+          tipoItem: card.querySelector('.tipoItem').value,
+          item: item,
+          cantidad: cantidad,
+          unidad: unidad,
+          costoTotalLinea: costoTotalLinea,
+          impactaCosto: card.querySelector('.impactaCosto').value === 'true',
+          comentarioLinea: card.querySelector('.comentarioLinea').value.trim()
+        });
+      });
+
+      if (!payload.proveedor) {
+        alert('Falta el proveedor.');
+        return;
+      }
+
+      if (!payload.medioPago) {
+        alert('Selecciona el medio de pago.');
+        return;
+      }
+
+      if (!payload.lineas.length) {
+        alert('Agrega al menos una linea valida.');
+        return;
+      }
+
+      document.getElementById('estadoCompra').innerText = 'Guardando compra...';
+
+      google.script.run
+        .withSuccessHandler(resp => {
+          document.getElementById('estadoCompra').innerText =
+            `Compra ${resp.compraId} guardada. Total: ${moneda_(resp.totalCompra)}. Costos actualizados: ${resp.costosActualizados}.`;
+          limpiarFormularioCompra();
+          cargarCatalogoCompras(false);
+        })
+        .withFailureHandler(err => {
+          document.getElementById('estadoCompra').innerText = 'Error guardando compra: ' + err.message;
+        })
+        .registrarCompraQTAS(payload);
+    }
+
+    function limpiarFormularioCompra() {
+      document.getElementById('fechaCompra').value = catalogoCompras.hoy || fechaHoyLocal_();
+      document.getElementById('proveedorCompra').value = '';
+      document.getElementById('comentarioCompra').value = '';
+      document.getElementById('lineasCompra').innerHTML = '';
+      actualizarOpcionesMedioPagoCompra();
+      agregarLineaCompra();
+    }
+
+    function renderComprasRecientes() {
+      const cont = document.getElementById('comprasRecientes');
+      const rows = catalogoCompras.comprasRecientes || [];
+
+      if (!rows.length) {
+        cont.innerHTML = '<div class="muted">No hay compras registradas aun.</div>';
+        return;
+      }
+
+      cont.innerHTML = rows.map(row => `
+        <div class="list-item">
+          <strong>C${escapeHtml(String(row.compraId))} · ${escapeHtml(row.proveedor)}</strong>
+          <div>${escapeHtml(row.fechaCompra)} · ${escapeHtml(row.medioPago || '')}</div>
+          <div><b>${escapeHtml(moneda_(row.totalCompra || 0))}</b></div>
+          <div class="helper">${escapeHtml(row.itemsResumen || '')}</div>
+        </div>
+      `).join('');
+    }
+
+    function renderCostosVigentes() {
+      const cont = document.getElementById('costosVigentes');
+      const rows = (catalogoCompras.costosVigentes || []).slice(0, 12);
+
+      if (!rows.length) {
+        cont.innerHTML = '<div class="muted">Aun no hay costos de referencia guardados.</div>';
+        return;
+      }
+
+      cont.innerHTML = rows.map(row => `
+        <div class="list-item">
+          <strong>${escapeHtml(row.item)}</strong>
+          <div>${escapeHtml(row.tipoItem || '')} · ${escapeHtml(row.unidad || '')}</div>
+          <div><b>${escapeHtml(moneda_(row.costoUnitario || 0))}</b></div>
+          <div class="helper">Desde ${escapeHtml(row.fechaDesde || '')}${row.proveedor ? ` · ${escapeHtml(row.proveedor)}` : ''}</div>
+        </div>
+      `).join('');
+    }
+
+    let adminData = adminDefaults_();
+    let adminTab = 'productos';
+
+    function initConfig() {
+      cargarConfiguracionAvanzada(true);
+    }
+
+    function cargarConfiguracionAvanzada(resetForms) {
+      setEstadoAdmin('Cargando configuracion avanzada...');
+
+      google.script.run
+        .withSuccessHandler(data => {
+          aplicarRespuestaAdmin_(data, { resetAll: resetForms !== false });
+          setEstadoAdmin('Configuracion avanzada lista. Los cambios nuevos no alteran el historico.');
+        })
+        .withFailureHandler(err => {
+          setEstadoAdmin('No se pudo cargar la configuracion avanzada: ' + err.message);
+        })
+        .getConfiguracionAvanzadaQTAS();
+    }
+
+    function mostrarAdminTab(tab) {
+      adminTab = tab || 'productos';
+      document.querySelectorAll('.admin-tab').forEach(button => {
+        button.classList.toggle('active', button.dataset.tab === adminTab);
+      });
+      document.querySelectorAll('.admin-panel').forEach(panel => {
+        panel.classList.toggle('hidden', panel.dataset.tab !== adminTab);
+      });
+    }
+
+    function aplicarRespuestaAdmin_(data, options) {
+      adminData = Object.assign(adminDefaults_(), data || {});
+      renderConfiguracionAvanzada();
+
+      if (options && (options.resetAll || options.resetProducto)) restablecerProductoAdmin();
+      if (options && (options.resetAll || options.resetPrecio)) restablecerPrecioAdmin();
+      if (options && (options.resetAll || options.resetMedio)) restablecerMedioPagoAdmin();
+      if (options && (options.resetAll || options.resetRegla)) restablecerReglaAdmin();
+
+      mostrarAdminTab(options && options.tab ? options.tab : adminTab);
+    }
+
+    function renderConfiguracionAvanzada() {
+      renderProductosAdmin();
+      renderPreciosAdmin();
+      renderMediosPagoAdmin();
+      renderReglasDistribucionAdmin();
+      mostrarAdminTab(adminTab);
+    }
+
+    function renderProductosAdmin() {
+      const rows = adminData.productos || [];
+      const activos = rows.filter(row => row.activo).length;
+      document.getElementById('adminProductosResumen').innerHTML = [
+        `<span class="tag ok">${activos} activo(s)</span>`,
+        `<span class="tag warn">${rows.length - activos} inactivo(s)</span>`,
+        `<span class="tag">${rows.length} total</span>`
+      ].join('');
+
+      const cont = document.getElementById('adminProductosLista');
+      if (!rows.length) {
+        cont.innerHTML = adminEmpty_('No hay productos configurados.');
+        return;
+      }
+
+      cont.innerHTML = rows.map((row, index) => `
+        <div class="list-item">
+          <strong>${escapeHtml(row.producto)}</strong>
+          <div>Unidad default: <b>${escapeHtml(row.unidad || '-')}</b></div>
+          ${row.nota ? `<div class="admin-note">${escapeHtml(row.nota)}</div>` : ''}
+          <div class="tag-row">
+            <span class="tag ${row.activo ? 'ok' : 'warn'}">${row.activo ? 'Activo' : 'Inactivo'}</span>
+          </div>
+          <div class="admin-actions">
+            <button class="btn ghost" type="button" onclick="editarProductoAdmin(${index})">Editar</button>
+            <button class="btn ${row.activo ? 'danger' : 'secondary'}" type="button" onclick="toggleProductoAdmin(${index}, ${row.activo ? 'false' : 'true'})">
+              ${row.activo ? 'Desactivar' : 'Activar'}
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function restablecerProductoAdmin() {
+      document.getElementById('adminProductoOriginal').value = '';
+      document.getElementById('adminProductoNombre').value = '';
+      document.getElementById('adminProductoUnidad').value = '';
+      document.getElementById('adminProductoNota').value = '';
+      document.getElementById('adminProductoActivo').value = 'true';
+      bloquearCampoAdmin_('adminProductoNombre', false);
+    }
+
+    function editarProductoAdmin(index) {
+      const row = (adminData.productos || [])[index];
+      if (!row) return;
+
+      document.getElementById('adminProductoOriginal').value = row.producto || '';
+      document.getElementById('adminProductoNombre').value = row.producto || '';
+      document.getElementById('adminProductoUnidad').value = row.unidad || '';
+      document.getElementById('adminProductoNota').value = row.nota || '';
+      document.getElementById('adminProductoActivo').value = row.activo ? 'true' : 'false';
+      bloquearCampoAdmin_('adminProductoNombre', true);
+      mostrarAdminTab('productos');
+      setEstadoAdmin('Editando producto existente. El nombre queda bloqueado para no renombrar historico.');
+    }
+
+    function guardarProductoAdmin() {
+      const payload = {
+        productoOriginal: document.getElementById('adminProductoOriginal').value.trim(),
+        producto: document.getElementById('adminProductoNombre').value.trim(),
+        unidad: document.getElementById('adminProductoUnidad').value.trim(),
+        nota: document.getElementById('adminProductoNota').value.trim(),
+        activo: document.getElementById('adminProductoActivo').value === 'true'
+      };
+
+      if (!payload.producto) {
+        alert('Falta el nombre del producto.');
+        return;
+      }
+
+      if (!payload.unidad) {
+        alert('Falta la unidad default.');
+        return;
+      }
+
+      setEstadoAdmin('Guardando producto...');
+
+      google.script.run
+        .withSuccessHandler(data => {
+          aplicarRespuestaAdmin_(data, { resetProducto: true, tab: 'productos' });
+          setEstadoAdmin(`Producto ${payload.producto} guardado.`);
+        })
+        .withFailureHandler(err => {
+          setEstadoAdmin('Error guardando producto: ' + err.message);
+        })
+        .guardarProductoConfiguracionQTAS(payload);
+    }
+
+    function toggleProductoAdmin(index, activo) {
+      const row = (adminData.productos || [])[index];
+      if (!row) return;
+
+      const accion = activo ? 'activar' : 'desactivar';
+      if (!confirm(`Vas a ${accion} ${row.producto}. Deseas seguir?`)) return;
+
+      setEstadoAdmin(`${activo ? 'Activando' : 'Desactivando'} producto...`);
+
+      google.script.run
+        .withSuccessHandler(data => {
+          aplicarRespuestaAdmin_(data, { tab: 'productos' });
+          setEstadoAdmin(`Producto ${row.producto} ${activo ? 'activado' : 'desactivado'}.`);
+        })
+        .withFailureHandler(err => {
+          setEstadoAdmin('Error cambiando estado del producto: ' + err.message);
+        })
+        .cambiarEstadoProductoQTAS({
+          producto: row.producto,
+          activo: activo
+        });
+    }
+
+    function renderPreciosAdmin() {
+      const productosActivos = (adminData.productos || []).filter(row => row.activo);
+      const select = document.getElementById('adminPrecioProducto');
+      const selected = select.value;
+
+      select.innerHTML = ['<option value="">Seleccionar producto...</option>']
+        .concat(productosActivos.map(row =>
+          `<option value="${escapeHtml(row.producto)}">${escapeHtml(row.producto)}</option>`
+        ))
+        .join('');
+
+      if (selected && productosActivos.some(row => row.producto === selected)) {
+        select.value = selected;
+      } else if (productosActivos.length) {
+        select.value = productosActivos[0].producto;
+      }
+
+      actualizarUnidadPrecioAdmin();
+
+      const vigentes = obtenerPreciosVigentesAdmin_();
+      const recientes = (adminData.precios || [])
+        .slice()
+        .sort((a, b) => b.fechaDesde.localeCompare(a.fechaDesde))
+        .slice(0, 20);
+
+      document.getElementById('adminPreciosResumen').innerHTML = [
+        `<span class="tag ok">${vigentes.length} vigente(s)</span>`,
+        `<span class="tag">${(adminData.precios || []).length} cambio(s) total</span>`
+      ].join('');
+
+      document.getElementById('adminPreciosVigentes').innerHTML = vigentes.length
+        ? vigentes.map(row => `
+            <div class="list-item">
+              <strong>${escapeHtml(row.producto)}</strong>
+              <div>Unidad: <b>${escapeHtml(row.unidad || '-')}</b></div>
+              <div>Precio vigente: <b>${escapeHtml(moneda_(row.precio || 0))}</b></div>
+              <div class="helper">Desde ${escapeHtml(row.fechaDesde || '')}</div>
+              ${row.nota ? `<div class="admin-note">${escapeHtml(row.nota)}</div>` : ''}
+            </div>
+          `).join('')
+        : adminEmpty_('No hay precios vigentes para mostrar.');
+
+      document.getElementById('adminPreciosHistorial').innerHTML = recientes.length
+        ? recientes.map(row => `
+            <div class="list-item">
+              <strong>${escapeHtml(row.producto)}</strong>
+              <div>${escapeHtml(row.fechaDesde || '')}${row.fechaHasta ? ` hasta ${escapeHtml(row.fechaHasta)}` : ' en adelante'}</div>
+              <div>${escapeHtml(row.unidad || '-')} · <b>${escapeHtml(moneda_(row.precio || 0))}</b></div>
+              ${row.nota ? `<div class="admin-note">${escapeHtml(row.nota)}</div>` : ''}
+            </div>
+          `).join('')
+        : adminEmpty_('No hay historial de precios.');
+    }
+
+    function actualizarUnidadPrecioAdmin() {
+      const producto = document.getElementById('adminPrecioProducto').value;
+      const row = (adminData.productos || []).find(item => item.producto === producto);
+      document.getElementById('adminPrecioUnidad').value = row ? (row.unidad || '') : '';
+    }
+
+    function restablecerPrecioAdmin() {
+      const productosActivos = (adminData.productos || []).filter(row => row.activo);
+      document.getElementById('adminPrecioProducto').value = productosActivos.length ? productosActivos[0].producto : '';
+      document.getElementById('adminPrecioValor').value = '';
+      document.getElementById('adminPrecioFechaDesde').value = adminData.hoy || fechaHoyLocal_();
+      document.getElementById('adminPrecioNota').value = '';
+      actualizarUnidadPrecioAdmin();
+    }
+
+    function guardarCambioPrecioAdmin() {
+      const payload = {
+        producto: document.getElementById('adminPrecioProducto').value,
+        unidad: document.getElementById('adminPrecioUnidad').value,
+        precio: numero_(document.getElementById('adminPrecioValor').value),
+        fechaDesde: document.getElementById('adminPrecioFechaDesde').value,
+        nota: document.getElementById('adminPrecioNota').value.trim()
+      };
+
+      if (!payload.producto) {
+        alert('Selecciona un producto.');
+        return;
+      }
+
+      if (payload.precio <= 0) {
+        alert('El precio debe ser mayor a cero.');
+        return;
+      }
+
+      if (!payload.fechaDesde) {
+        alert('Falta la fecha desde.');
+        return;
+      }
+
+      setEstadoAdmin('Guardando nuevo precio...');
+
+      google.script.run
+        .withSuccessHandler(data => {
+          aplicarRespuestaAdmin_(data, { resetPrecio: true, tab: 'precios' });
+          setEstadoAdmin(`Precio nuevo guardado para ${payload.producto}.`);
+        })
+        .withFailureHandler(err => {
+          setEstadoAdmin('Error guardando precio: ' + err.message);
+        })
+        .guardarCambioPrecioFrontendQTAS(payload);
+    }
+
+    function renderMediosPagoAdmin() {
+      const rows = adminData.mediosPago || [];
+      const activos = rows.filter(row => row.activo).length;
+
+      document.getElementById('adminMediosResumen').innerHTML = [
+        `<span class="tag ok">${activos} activo(s)</span>`,
+        `<span class="tag warn">${rows.length - activos} inactivo(s)</span>`
+      ].join('');
+
+      const cont = document.getElementById('adminMediosLista');
+      if (!rows.length) {
+        cont.innerHTML = adminEmpty_('No hay medios de pago configurados.');
+        return;
+      }
+
+      cont.innerHTML = rows.map((row, index) => `
+        <div class="list-item">
+          <strong>${escapeHtml(row.medioPago)}</strong>
+          ${row.nota ? `<div class="admin-note">${escapeHtml(row.nota)}</div>` : '<div class="admin-note">Sin nota.</div>'}
+          <div class="tag-row">
+            <span class="tag ${row.activo ? 'ok' : 'warn'}">${row.activo ? 'Activo' : 'Inactivo'}</span>
+          </div>
+          <div class="admin-actions">
+            <button class="btn ghost" type="button" onclick="editarMedioPagoAdmin(${index})">Editar</button>
+            <button class="btn ${row.activo ? 'danger' : 'secondary'}" type="button" onclick="toggleMedioPagoAdmin(${index}, ${row.activo ? 'false' : 'true'})">
+              ${row.activo ? 'Desactivar' : 'Activar'}
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function restablecerMedioPagoAdmin() {
+      document.getElementById('adminMedioOriginal').value = '';
+      document.getElementById('adminMedioNombre').value = '';
+      document.getElementById('adminMedioNota').value = '';
+      document.getElementById('adminMedioActivo').value = 'true';
+      bloquearCampoAdmin_('adminMedioNombre', false);
+    }
+
+    function editarMedioPagoAdmin(index) {
+      const row = (adminData.mediosPago || [])[index];
+      if (!row) return;
+
+      document.getElementById('adminMedioOriginal').value = row.medioPago || '';
+      document.getElementById('adminMedioNombre').value = row.medioPago || '';
+      document.getElementById('adminMedioNota').value = row.nota || '';
+      document.getElementById('adminMedioActivo').value = row.activo ? 'true' : 'false';
+      bloquearCampoAdmin_('adminMedioNombre', true);
+      mostrarAdminTab('medios');
+      setEstadoAdmin('Editando medio existente. El nombre queda bloqueado para no romper el catalogo.');
+    }
+
+    function guardarMedioPagoAdmin() {
+      const payload = {
+        medioOriginal: document.getElementById('adminMedioOriginal').value.trim(),
+        medioPago: document.getElementById('adminMedioNombre').value.trim(),
+        nota: document.getElementById('adminMedioNota').value.trim(),
+        activo: document.getElementById('adminMedioActivo').value === 'true'
+      };
+
+      if (!payload.medioPago) {
+        alert('Falta el nombre del medio de pago.');
+        return;
+      }
+
+      setEstadoAdmin('Guardando medio de pago...');
+
+      google.script.run
+        .withSuccessHandler(data => {
+          aplicarRespuestaAdmin_(data, { resetMedio: true, tab: 'medios' });
+          setEstadoAdmin(`Medio de pago ${payload.medioPago} guardado.`);
+        })
+        .withFailureHandler(err => {
+          setEstadoAdmin('Error guardando medio de pago: ' + err.message);
+        })
+        .guardarMedioPagoQTAS(payload);
+    }
+
+    function toggleMedioPagoAdmin(index, activo) {
+      const row = (adminData.mediosPago || [])[index];
+      if (!row) return;
+
+      const accion = activo ? 'activar' : 'desactivar';
+      if (!confirm(`Vas a ${accion} ${row.medioPago}. Deseas seguir?`)) return;
+
+      setEstadoAdmin(`${activo ? 'Activando' : 'Desactivando'} medio de pago...`);
+
+      google.script.run
+        .withSuccessHandler(data => {
+          aplicarRespuestaAdmin_(data, { tab: 'medios' });
+          setEstadoAdmin(`Medio de pago ${row.medioPago} ${activo ? 'activado' : 'desactivado'}.`);
+        })
+        .withFailureHandler(err => {
+          setEstadoAdmin('Error cambiando estado del medio de pago: ' + err.message);
+        })
+        .cambiarEstadoMedioPagoQTAS({
+          medioPago: row.medioPago,
+          activo: activo
+        });
+    }
+
+    function renderReglasDistribucionAdmin() {
+      const rows = (adminData.reglasDistribucion || [])
+        .slice()
+        .sort((a, b) => b.fechaDesde.localeCompare(a.fechaDesde));
+      const vigente = obtenerReglaVigenteAdmin_();
+      const ultima = obtenerUltimaReglaDistribucionAdmin_();
+      const resumen = [];
+
+      if (vigente) {
+        resumen.push(`<span class="tag ok">Vigente ${escapeHtml(formatoRepartoAdmin_(vigente))}</span>`);
+      }
+
+      if (ultima && (!vigente || ultima.reglaId !== vigente.reglaId)) {
+        resumen.push(`<span class="tag warn">Programada desde ${escapeHtml(ultima.fechaDesde || '')}</span>`);
+      }
+
+      resumen.push(`<span class="tag">${rows.length} regla(s)</span>`);
+      document.getElementById('adminReglasResumen').innerHTML = resumen.join('');
+
+      const cont = document.getElementById('adminReglasLista');
+      if (!rows.length) {
+        cont.innerHTML = adminEmpty_('No hay reglas de distribucion configuradas.');
+        return;
+      }
+
+      cont.innerHTML = rows.map(row => {
+        const estado = clasificarReglaDistribucionAdmin_(row);
+        return `
+          <div class="list-item">
+            <strong>${escapeHtml(row.reglaId || 'Sin ID')}</strong>
+            <div>${escapeHtml(row.fechaDesde || '')}${row.fechaHasta ? ` hasta ${escapeHtml(row.fechaHasta)}` : ' en adelante'}</div>
+            <div>${escapeHtml(formatoRepartoAdmin_(row))}</div>
+            <div class="tag-row">
+              <span class="tag ${estado.clase}">${escapeHtml(estado.label)}</span>
+            </div>
+            ${row.nota ? `<div class="admin-note">${escapeHtml(row.nota)}</div>` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function restablecerReglaAdmin() {
+      const base = obtenerUltimaReglaDistribucionAdmin_() || {};
+      document.getElementById('adminReglaFechaDesde').value = sugerirFechaNuevaReglaAdmin_();
+      document.getElementById('adminReglaNota').value = '';
+      document.getElementById('adminReglaSteve').value = base.steve || '';
+      document.getElementById('adminReglaMajo').value = base.majo || '';
+      document.getElementById('adminReglaMush').value = base.mush || '';
+      actualizarResumenReglaAdmin_();
+    }
+
+    function actualizarResumenReglaAdmin_() {
+      const fechaDesde = document.getElementById('adminReglaFechaDesde').value;
+      const steve = numero_(document.getElementById('adminReglaSteve').value);
+      const majo = numero_(document.getElementById('adminReglaMajo').value);
+      const mush = numero_(document.getElementById('adminReglaMush').value);
+      const total = redondearNumero_(steve + majo + mush);
+      const resumen = document.getElementById('adminReglaResumen');
+
+      if (!fechaDesde) {
+        resumen.innerText = 'Debes indicar la fecha desde.';
+        return;
+      }
+
+      if (Math.abs(total - 100) > 0.01) {
+        resumen.innerText = `La suma actual da ${total}%. Debe cerrar en 100%.`;
+        return;
+      }
+
+      resumen.innerText = `Nueva regla desde ${fechaDesde}. La regla anterior se cerrara automaticamente el dia previo.`;
+    }
+
+    function guardarReglaDistribucionAdmin() {
+      const payload = {
+        fechaDesde: document.getElementById('adminReglaFechaDesde').value,
+        steve: numero_(document.getElementById('adminReglaSteve').value),
+        majo: numero_(document.getElementById('adminReglaMajo').value),
+        mush: numero_(document.getElementById('adminReglaMush').value),
+        nota: document.getElementById('adminReglaNota').value.trim()
+      };
+
+      const total = redondearNumero_(payload.steve + payload.majo + payload.mush);
+      if (!payload.fechaDesde) {
+        alert('Falta la fecha desde.');
+        return;
+      }
+
+      if (Math.abs(total - 100) > 0.01) {
+        alert('La regla debe sumar 100%.');
+        return;
+      }
+
+      setEstadoAdmin('Guardando regla de distribucion...');
+
+      google.script.run
+        .withSuccessHandler(data => {
+          aplicarRespuestaAdmin_(data, { resetRegla: true, tab: 'distribucion' });
+          setEstadoAdmin(`Regla de distribucion guardada desde ${payload.fechaDesde}.`);
+        })
+        .withFailureHandler(err => {
+          setEstadoAdmin('Error guardando regla de distribucion: ' + err.message);
+        })
+        .guardarReglaDistribucionFrontendQTAS(payload);
+    }
+
+    function adminDefaults_() {
+      return {
+        hoy: fechaHoyLocal_(),
+        productos: [],
+        precios: [],
+        mediosPago: [],
+        reglasDistribucion: []
+      };
+    }
+
+    function setEstadoAdmin(message) {
+      const el = document.getElementById('estadoAdmin');
+      if (el) el.innerText = message;
+    }
+
+    function bloquearCampoAdmin_(id, bloqueado) {
+      const input = document.getElementById(id);
+      if (!input) return;
+      input.readOnly = bloqueado;
+      input.classList.toggle('readonly', bloqueado);
+    }
+
+    function obtenerPreciosVigentesAdmin_() {
+      const vistos = {};
+      return (adminData.precios || [])
+        .filter(row => row.activo)
+        .slice()
+        .sort((a, b) => {
+          if (a.producto !== b.producto) return a.producto.localeCompare(b.producto);
+          if (a.unidad !== b.unidad) return a.unidad.localeCompare(b.unidad);
+          return b.fechaDesde.localeCompare(a.fechaDesde);
+        })
+        .filter(row => {
+          const key = `${normalizarClave_(row.producto)}|${normalizarClave_(row.unidad)}`;
+          if (vistos[key]) return false;
+          vistos[key] = true;
+          return true;
+        });
+    }
+
+    function obtenerReglaVigenteAdmin_() {
+      const hoy = adminData.hoy || fechaHoyLocal_();
+      return (adminData.reglasDistribucion || []).find(row =>
+        row.activo &&
+        row.fechaDesde &&
+        row.fechaDesde <= hoy &&
+        (!row.fechaHasta || row.fechaHasta >= hoy)
+      ) || null;
+    }
+
+    function obtenerUltimaReglaDistribucionAdmin_() {
+      return (adminData.reglasDistribucion || [])
+        .slice()
+        .sort((a, b) => b.fechaDesde.localeCompare(a.fechaDesde))[0] || null;
+    }
+
+    function clasificarReglaDistribucionAdmin_(row) {
+      const hoy = adminData.hoy || fechaHoyLocal_();
+      if (!row || !row.activo) return { label: 'Inactiva', clase: 'warn' };
+      if (row.fechaDesde > hoy) return { label: 'Programada', clase: 'warn' };
+      if (!row.fechaHasta || row.fechaHasta >= hoy) return { label: 'Vigente', clase: 'ok' };
+      return { label: 'Historica', clase: '' };
+    }
+
+    function sugerirFechaNuevaReglaAdmin_() {
+      const hoy = adminData.hoy || fechaHoyLocal_();
+      const ultima = obtenerUltimaReglaDistribucionAdmin_();
+      if (!ultima || !ultima.fechaDesde) return hoy;
+      return hoy > ultima.fechaDesde ? hoy : sumarDiasTextoFecha_(ultima.fechaDesde, 1);
+    }
+
+    function sumarDiasTextoFecha_(fechaTexto, dias) {
+      const partes = String(fechaTexto || '').split('-').map(Number);
+      if (partes.length !== 3 || partes.some(isNaN)) return adminData.hoy || fechaHoyLocal_();
+      const fecha = new Date(partes[0], partes[1] - 1, partes[2]);
+      fecha.setDate(fecha.getDate() + dias);
+      const year = fecha.getFullYear();
+      const month = String(fecha.getMonth() + 1).padStart(2, '0');
+      const day = String(fecha.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function formatoRepartoAdmin_(row) {
+      return `Steve ${formatoPctAdmin_(row.steve)} · Majo ${formatoPctAdmin_(row.majo)} · Mush ${formatoPctAdmin_(row.mush)}`;
+    }
+
+    function formatoPctAdmin_(value) {
+      return `${redondearNumero_(value || 0)}%`;
+    }
+
+    function adminEmpty_(message) {
+      return `<div class="admin-empty">${escapeHtml(message)}</div>`;
+    }
+
+    function numeroDesdeTextoMoneda_(texto) {
+      const limpio = String(texto || '').replace(/[^\d.,-]/g, '').trim();
+      if (!limpio) return 0;
+
+      if (limpio.includes(',')) {
+        return numero_(limpio.replace(/\./g, '').replace(',', '.'));
+      }
+
+      return numero_(limpio.replace(/\./g, ''));
+    }
+
+    function redondearNumero_(value) {
+      return Math.round((Number(value) || 0) * 100) / 100;
+    }
+
+    function moneda_(value) {
+      return '$' + Math.round(Number(value) || 0).toLocaleString('es-CO');
+    }
+
+    function numero_(value) {
+      const parsed = Number(value);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+
+    function normalizarClave_(value) {
+      return String(value || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function fechaHoyLocal_() {
+      const hoy = new Date();
+      const year = hoy.getFullYear();
+      const month = String(hoy.getMonth() + 1).padStart(2, '0');
+      const day = String(hoy.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    window.onload = initApp;
+  </script>
+</body>
+</html>
