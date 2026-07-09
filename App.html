@@ -837,6 +837,19 @@
             </div>
             <div id="estadoEnviosPendientes" class="status-box">Selecciona una venta del panel para revisar su estado.</div>
           </section>
+
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <h2>Ventas recientes</h2>
+              </div>
+              <button class="btn ghost" type="button" onclick="cargarPaneles()">Recargar</button>
+            </div>
+
+            <div id="ventasRecientes" class="list">
+              <div class="muted">Cargando...</div>
+            </div>
+          </section>
         </aside>
       </div>
     </section>
@@ -1265,6 +1278,7 @@
     const UI_MOSTRAR_DETALLE_ERROR = false;
     let ventasPendientes = [];
     let enviosPendientes = [];
+    let ventasRecientes = [];
 
     function initVentas() {
       document.getElementById('fechaVenta').value = '';
@@ -1340,6 +1354,11 @@
             envios.innerHTML = '<div class="muted">No se pudieron cargar envios pendientes.</div>';
           }
 
+          const recientes = document.getElementById('ventasRecientes');
+          if (!recientes.textContent.trim() || /cargando/i.test(recientes.textContent)) {
+            recientes.innerHTML = '<div class="muted">No se pudieron cargar ventas recientes.</div>';
+          }
+
           document.getElementById('estadoEnviosPendientes').innerText = `${mensaje} Se conserva lo ultimo visible.`;
         })
         .getDashboardQTAS();
@@ -1349,14 +1368,21 @@
       const dashboard = normalizarDashboardVentasLocal_(info || {});
       ventasPendientes = dashboard.ventasPendientes;
       enviosPendientes = dashboard.enviosPendientes;
+      ventasRecientes = dashboard.ventasRecientes;
       renderVentasPendientes();
       renderDeudores(dashboard.deudores);
       renderEnviosPendientes();
+      renderVentasRecientes();
     }
 
     function normalizarDashboardVentasLocal_(info) {
       const pendientes = normalizarVentasPendientesLocales_(info.ventasPendientes || []);
       const envios = normalizarEnviosPendientesLocales_(info.enviosPendientes || []);
+      const recientes = normalizarVentasRecientesLocales_(
+        Object.prototype.hasOwnProperty.call(info, 'ventasRecientes')
+          ? (info.ventasRecientes || [])
+          : ventasRecientes
+      );
       const deudores = (info.deudores && info.deudores.length)
         ? normalizarDeudoresLocales_(info.deudores)
         : reconstruirDeudoresDesdeVentasPendientes_(pendientes);
@@ -1364,7 +1390,8 @@
       return {
         ventasPendientes: pendientes,
         deudores: deudores,
-        enviosPendientes: envios
+        enviosPendientes: envios,
+        ventasRecientes: recientes
       };
     }
 
@@ -1405,7 +1432,24 @@
         });
       }
 
-      return construirDashboardDesdePendientesLocales_(pendientes, { enviosPendientes: envios });
+      const recientes = upsertVentaRecienteLocal_(ventasRecientes, {
+        ventaId: numero_(resp.ventaId),
+        clienteId: resp.clienteId || '',
+        nombre: resp.nombre || '',
+        fechaVenta: normalizarFechaPendienteLocal_(resp.fechaVenta) ||
+          normalizarFechaPendienteLocal_(document.getElementById('fechaVenta').value) ||
+          catalogo.hoy ||
+          fechaHoyLocal_(),
+        totalVenta: redondearNumero_(resp.totalVenta),
+        saldo: redondearNumero_(resp.saldo),
+        estadoPago: resp.estadoPago || '',
+        productos: resp.productosResumen || ''
+      });
+
+      return construirDashboardDesdePendientesLocales_(pendientes, {
+        enviosPendientes: envios,
+        ventasRecientes: recientes
+      });
     }
 
     function construirDashboardLocalTrasPago_(resp) {
@@ -1426,7 +1470,16 @@
           return acc;
         }, []);
 
-      return construirDashboardDesdePendientesLocales_(pendientes, { enviosPendientes: enviosPendientes });
+      const recientes = upsertVentaRecienteLocal_(ventasRecientes, {
+        ventaId: numero_(resp.ventaId),
+        saldo: saldoRestante,
+        estadoPago: saldoRestante > 0.009 ? 'Parcial' : 'Pagado'
+      });
+
+      return construirDashboardDesdePendientesLocales_(pendientes, {
+        enviosPendientes: enviosPendientes,
+        ventasRecientes: recientes
+      });
     }
 
     function construirDashboardLocalTrasCambioEnvio_(resp) {
@@ -1434,7 +1487,10 @@
         .map(item => Object.assign({}, item))
         .filter(item => String(item.ventaId) !== String(resp.ventaId));
 
-      return construirDashboardDesdePendientesLocales_(ventasPendientes, { enviosPendientes: envios });
+      return construirDashboardDesdePendientesLocales_(ventasPendientes, {
+        enviosPendientes: envios,
+        ventasRecientes: ventasRecientes
+      });
     }
 
     function construirDashboardDesdePendientesLocales_(rows, options) {
@@ -1444,10 +1500,16 @@
           ? options.enviosPendientes
           : enviosPendientes
       );
+      const recientes = normalizarVentasRecientesLocales_(
+        options && Object.prototype.hasOwnProperty.call(options, 'ventasRecientes')
+          ? options.ventasRecientes
+          : ventasRecientes
+      );
       return {
         ventasPendientes: pendientes,
         deudores: reconstruirDeudoresDesdeVentasPendientes_(pendientes),
-        enviosPendientes: envios
+        enviosPendientes: envios,
+        ventasRecientes: recientes
       };
     }
 
@@ -1514,6 +1576,51 @@
           if (fechaA !== fechaB) return fechaA.localeCompare(fechaB);
           return numero_(a.ventaId) - numero_(b.ventaId);
         });
+    }
+
+    function normalizarVentasRecientesLocales_(rows) {
+      return (rows || [])
+        .map(normalizarVentaRecienteLocal_)
+        .filter(item => item.ventaId > 0)
+        .sort(compararVentasRecientes_)
+        .slice(0, 12);
+    }
+
+    function normalizarVentaRecienteLocal_(row) {
+      return {
+        ventaId: numero_(row.ventaId),
+        clienteId: String(row.clienteId || '').trim(),
+        nombre: String(row.nombre || '').trim(),
+        fechaVenta: normalizarFechaPendienteLocal_(row.fechaVenta),
+        totalVenta: redondearNumero_(row.totalVenta),
+        saldo: redondearNumero_(row.saldo),
+        estadoPago: String(row.estadoPago || '').trim(),
+        productos: String(row.productos || row.productosResumen || '').trim()
+      };
+    }
+
+    function compararVentasRecientes_(a, b) {
+      const fechaA = normalizarFechaPendienteLocal_(a.fechaVenta);
+      const fechaB = normalizarFechaPendienteLocal_(b.fechaVenta);
+      if (fechaA !== fechaB) return fechaB.localeCompare(fechaA);
+      return numero_(b.ventaId) - numero_(a.ventaId);
+    }
+
+    function upsertVentaRecienteLocal_(rows, patch) {
+      const ventaId = numero_(patch && patch.ventaId);
+      if (ventaId <= 0) {
+        return normalizarVentasRecientesLocales_(rows || []);
+      }
+
+      const existentes = normalizarVentasRecientesLocales_(rows || []);
+      const actual = existentes.find(item => item.ventaId === ventaId) || {};
+      const merged = Object.assign({}, actual, patch, { ventaId: ventaId });
+
+      return normalizarVentasRecientesLocales_(
+        existentes
+          .filter(item => item.ventaId !== ventaId)
+          .concat([merged])
+      );
     }
 
     function reconstruirDeudoresDesdeVentasPendientes_(rows) {
@@ -2358,6 +2465,25 @@
         </div>
       `).join('');
       estado.innerText = `${rows.length} envio(s) pendiente(s).`;
+    }
+
+    function renderVentasRecientes() {
+      const cont = document.getElementById('ventasRecientes');
+      const rows = ventasRecientes || [];
+
+      if (!rows.length) {
+        cont.innerHTML = '<div class="muted">Sin ventas recientes.</div>';
+        return;
+      }
+
+      cont.innerHTML = rows.map(row => `
+        <div class="list-item">
+          <strong>V${escapeHtml(String(row.ventaId))} | ${escapeHtml(row.nombre || '')}</strong>
+          <div>${escapeHtml(row.fechaVenta || '')} | Pago: <b>${escapeHtml(row.estadoPago || 'Pendiente')}</b></div>
+          <div><b>${escapeHtml(moneda_(row.totalVenta || 0))}</b>${row.saldo > 0.009 ? ` | Saldo ${escapeHtml(moneda_(row.saldo || 0))}` : ''}</div>
+          <div class="helper">${escapeHtml(row.productos || '')}</div>
+        </div>
+      `).join('');
     }
 
     function marcarVentaEnviada(ventaId) {

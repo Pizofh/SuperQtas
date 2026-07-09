@@ -498,7 +498,8 @@ function dashboardVentasDesdeEstadoQTAS_(estado) {
   return {
     deudores: construirDeudoresQTAS_(source),
     ventasPendientes: ventasPendientesDesdeEstadoQTAS_(source),
-    enviosPendientes: construirEnviosPendientesQTAS_(source)
+    enviosPendientes: construirEnviosPendientesQTAS_(source),
+    ventasRecientes: ventasRecientesDesdeEstadoQTAS_(source)
   };
 }
 
@@ -666,6 +667,35 @@ function ventasPendientesDesdeEstadoQTAS_(estado) {
       saldo: item.saldo,
       productos: item.productos,
       label: `V${item.ventaId} | ${item.nombre} | ${moneda_(item.saldo)} | ${fechaInput_(item.fechaVenta)}`
+    }));
+}
+
+function ventasRecientesDesdeEstadoQTAS_(estado) {
+  const source = estado || construirEstadoVentasQTAS_();
+
+  return (source.ventasActualizadas || [])
+    .filter(venta =>
+      texto_(venta.Venta_ID) &&
+      texto_(venta.Estado_Registro) !== QTAS.status.registro.anulado
+    )
+    .slice()
+    .sort((a, b) => {
+      const fechaA = valorFechaVentaCanonicaQTAS_(a, new Date());
+      const fechaB = valorFechaVentaCanonicaQTAS_(b, new Date());
+      if (fechaA.getTime() !== fechaB.getTime()) return fechaB - fechaA;
+      return numero_(b.Venta_ID) - numero_(a.Venta_ID);
+    })
+    .slice(0, 12)
+    .map(venta => ({
+      ventaId: numero_(venta.Venta_ID),
+      clienteId: texto_(venta.Cliente_ID),
+      nombre: texto_(venta.Nombre),
+      fechaVenta: fechaInput_(valorFechaVentaCanonicaQTAS_(venta, new Date())),
+      totalVenta: redondear_(numero_(venta.Total_Venta)),
+      totalPagado: redondear_(numero_(venta.Total_Pagado)),
+      saldo: redondear_(numero_(venta.Saldo)),
+      estadoPago: texto_(venta.Estado_Pago),
+      productos: texto_(venta.Productos_Resumen)
     }));
 }
 
