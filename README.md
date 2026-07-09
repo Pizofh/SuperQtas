@@ -1,88 +1,88 @@
 # SuperQTAS
 
-SuperQTAS es un ERP ligero construido sobre Google Sheets y Google Apps Script para operar ventas, compras, cartera, costos historicos y configuracion comercial desde una interfaz web integrada en la hoja.
+SuperQTAS is a lightweight ERP built on top of Google Sheets and Google Apps Script. It is designed to run day-to-day sales, purchasing, receivables, historical cost tracking, and commercial configuration from a web interface embedded directly inside a spreadsheet.
 
-No busca reemplazar un ERP corporativo; busca resolver bien la operacion diaria de un negocio pequeno con trazabilidad, reglas claras y mantenimiento simple.
+It is not trying to replace a full corporate ERP. It is meant to solve daily operations well, with traceability, clear rules, and low maintenance overhead.
 
-## Que hace
+## What It Does
 
-- Registra ventas con varios productos, descuentos, pagos iniciales y saldo pendiente.
-- Lleva cartera viva con ventas pendientes, pagos posteriores y deudores resumidos.
-- Hace seguimiento de envios pendientes dentro del mismo flujo comercial.
-- Registra compras por lineas con proveedor, medio de pago y comentario operativo.
-- Actualiza costos de referencia historicos desde compras reales.
-- Calcula costos y margenes para productos compuestos usando recetas y reglas de costo.
-- Permite configurar productos, precios, medios de pago y reglas de distribucion sin editar codigo.
-- Mantiene separados los ambientes de QA y produccion para probar antes de desplegar.
+- Registers sales with multiple products, discounts, upfront payments, and open balances.
+- Keeps receivables live with pending sales, later payments, and debtor summaries.
+- Tracks pending shipments inside the same commercial workflow.
+- Registers purchases by line item, supplier, payment method, and operational note.
+- Updates historical reference costs from real purchase data.
+- Calculates costs and margins for composite products using recipes and cost rules.
+- Lets users manage products, prices, payment methods, and distribution rules without editing code.
+- Keeps QA and production environments separated so changes can be tested before release.
 
-## Como funciona
+## How It Works
 
-La solucion esta dividida en cuatro capas:
+The solution is split into four layers:
 
-1. Google Sheets como base operativa.
-2. Apps Script como backend y modelo transaccional.
-3. HTML/CSS/JavaScript como interfaz embebida dentro del spreadsheet.
-4. `clasp`, Node.js y GitHub Actions para despliegue y automatizacion.
+1. Google Sheets as the operational data store.
+2. Apps Script as the backend and transaction layer.
+3. HTML/CSS/JavaScript as the embedded interface.
+4. `clasp`, Node.js, and GitHub Actions for deployment and automation.
 
-En la practica, el usuario abre la hoja, entra al menu `QTAS ERP`, trabaja desde la interfaz y los scripts actualizan las hojas canonicas del modelo por debajo.
+In practice, the user opens the spreadsheet, launches the `QTAS ERP` menu, works from the interface, and the scripts update the canonical sheets behind the scenes.
 
-## Modulos principales
+## Core Modules
 
-### Ventas
+### Sales
 
-- Registro de ventas con multiples lineas.
-- Pagos completos o parciales desde el inicio.
-- Registro posterior de pagos pendientes.
-- Panel de deudores y ventas abiertas.
-- Seguimiento de ventas marcadas para envio.
+- Multi-line sales registration.
+- Full or partial payment at the time of sale.
+- Later payment registration for open balances.
+- Debtors and open-sales dashboard.
+- Shipment follow-up for sales marked as pending shipment.
 
-### Compras
+### Purchases
 
-- Registro de compras por proveedor y medio de pago.
-- Catalogo sugerido de items para reducir digitacion manual.
-- Estandarizacion de items conocidos al guardar.
-- Opcion para decidir si una linea impacta o no el costo historico.
+- Purchase registration by supplier and payment method.
+- Suggested item catalog to reduce manual typing.
+- Canonicalization of known items when saving.
+- Per-line option to decide whether the purchase affects historical costs.
 
-### Costos y analitica
+### Costs and Analytics
 
-- Costos de referencia vigentes e historicos.
-- Productos compuestos con componentes y reglas variables.
-- Calculo incremental de `Costo_Producto_Calc`.
-- Calculo incremental de `Venta_Detalle_Costos_Calc`.
-- Cobertura de costo, metodo usado y margen estimado por linea vendida.
+- Current and historical reference costs.
+- Composite products with components and variable cost rules.
+- Incremental calculation of `Costo_Producto_Calc`.
+- Incremental calculation of `Venta_Detalle_Costos_Calc`.
+- Cost coverage, costing method, and estimated margin per sold line.
 
-### Configuracion operativa
+### Operational Configuration
 
-- Catalogo de productos activos e inactivos.
-- Historial de precios con vigencia por fecha.
-- Medios de pago configurables.
-- Reglas de distribucion por fecha.
+- Active and inactive product catalog.
+- Price history with date-based validity.
+- Configurable payment methods.
+- Date-based income distribution rules.
 
-## Flujo operativo
+## Operational Flow
 
-### Venta
+### Sales
 
-1. Se seleccionan productos, cantidades, precios y descuentos.
-2. Se registran pagos iniciales si existen.
-3. Se actualizan `Ventas`, `Venta_Detalle` y `Pagos`.
-4. Se sincroniza la distribucion de ingresos.
-5. Se actualiza la analitica incremental de costos de esa venta.
+1. Products, quantities, prices, and discounts are selected.
+2. Upfront payments are registered when applicable.
+3. `Ventas`, `Venta_Detalle`, and `Pagos` are updated.
+4. Income distribution is synchronized.
+5. Incremental cost analytics are refreshed for that sale.
 
-### Compra
+### Purchases
 
-1. Se registra proveedor, medio de pago y lineas.
-2. Cada linea puede impactar o no el costo de referencia.
-3. Se actualizan `Compras`, `Compra_Detalle` y `Costos_Referencia`.
-4. Se refresca el snapshot operativo de costos de producto.
+1. Supplier, payment method, and purchase lines are registered.
+2. Each line can affect or ignore reference cost updates.
+3. `Compras`, `Compra_Detalle`, and `Costos_Referencia` are updated.
+4. The operational product-cost snapshot is refreshed.
 
-### Configuracion
+### Configuration
 
-1. Se editan productos, precios, medios de pago o distribuciones desde la UI.
-2. Los cambios se aplican sin romper historicos ya registrados.
+1. Products, prices, payment methods, or distribution rules are edited from the UI.
+2. Changes are applied without breaking historical records.
 
-## Hojas principales del modelo
+## Main Model Sheets
 
-Estas son las hojas operativas mas importantes:
+These are the most important operational sheets in the model:
 
 - `Productos`
 - `Precios_Referencia`
@@ -102,35 +102,35 @@ Estas son las hojas operativas mas importantes:
 - `Distribucion_Ingresos`
 - `Config_MediosPago`
 
-## Arquitectura del repositorio
+## Repository Architecture
 
-- [Codigo.gs](./Codigo.gs) define constantes, esquemas y datos base.
-- [QTAS_Ventas.gs](./QTAS_Ventas.gs) contiene el flujo comercial de ventas, pagos y envios.
-- [QTAS_Compras.gs](./QTAS_Compras.gs) maneja compras y costos historicos.
-- [QTAS_CostosProducto.gs](./QTAS_CostosProducto.gs) resuelve recetas, costo compuesto y margen.
-- [QTAS_Distribucion.gs](./QTAS_Distribucion.gs) calcula la distribucion de ingresos.
-- [QTAS_Admin.gs](./QTAS_Admin.gs) expone la configuracion avanzada al front.
-- [QTAS_Modelo.gs](./QTAS_Modelo.gs) asegura y valida la estructura canonica.
-- [QTAS_Utils.gs](./QTAS_Utils.gs) concentra utilidades transversales.
-- [App.html](./App.html) contiene la interfaz web embebida.
+- [Codigo.gs](./Codigo.gs) defines constants, schemas, and base data.
+- [QTAS_Ventas.gs](./QTAS_Ventas.gs) contains the commercial flow for sales, payments, and shipments.
+- [QTAS_Compras.gs](./QTAS_Compras.gs) handles purchases and historical costs.
+- [QTAS_CostosProducto.gs](./QTAS_CostosProducto.gs) resolves recipes, composite costing, and margins.
+- [QTAS_Distribucion.gs](./QTAS_Distribucion.gs) calculates income distribution.
+- [QTAS_Admin.gs](./QTAS_Admin.gs) exposes advanced configuration to the front end.
+- [QTAS_Modelo.gs](./QTAS_Modelo.gs) ensures and validates the canonical structure.
+- [QTAS_Utils.gs](./QTAS_Utils.gs) contains shared utilities.
+- [App.html](./App.html) contains the embedded web interface.
 
-## Calidad, QA y despliegue
+## Quality, QA, and Deployment
 
-El repositorio ya trabaja con separacion real entre QA y produccion.
+The repository already works with a real separation between QA and production.
 
-- `qa` despliega al proyecto de prueba.
-- `main` se reserva para produccion.
-- Cada push a `qa` puede correr pruebas headless sobre Apps Script.
-- La suite smoke corre como validacion rapida.
-- La suite completa se puede activar de forma manual o por variable.
-- Produccion se despliega manualmente desde GitHub Actions.
+- `qa` deploys to the test Apps Script project.
+- `main` is reserved for production.
+- Each push to `qa` can run headless Apps Script tests.
+- The smoke suite acts as the fast validation layer.
+- The full suite can be enabled manually or through a repository/environment variable.
+- Production deployment is triggered manually from GitHub Actions.
 
-Ademas, produccion usa un bundle reducido:
+Production also uses a reduced bundle:
 
-- Excluye archivos de testing, migracion, backup y export.
-- Recorta funciones manuales o destructivas que no pertenecen al flujo normal del ERP.
+- It excludes testing, migration, backup, and export files.
+- It strips out manual and destructive functions that are not part of the normal ERP runtime.
 
-## Scripts utiles
+## Useful Scripts
 
 ```bash
 npm run push:gas:test
@@ -141,55 +141,55 @@ npm run build:gas:prod
 npm run deploy:prod:push
 ```
 
-## Puesta en marcha
+## Setup
 
-### Requisitos
+### Requirements
 
 - Node.js 20+
 - `clasp`
-- Un spreadsheet para produccion
-- Una copia separada para QA
-- Un proyecto de Apps Script ligado a cada hoja
+- One spreadsheet for production
+- A separate copy for QA
+- One Apps Script project linked to each spreadsheet
 
-### Paso a paso
+### Step by Step
 
-1. Crea una hoja de produccion y una copia separada para QA.
-2. Crea o vincula un proyecto de Apps Script a cada archivo.
-3. Configura `.clasp.json` para produccion.
-4. Configura `.clasp.test.json` para QA.
-5. Instala dependencias con `npm install`.
-6. Haz push a QA y valida el probe y la smoke suite.
-7. Despliega a produccion solo cuando QA haya pasado.
+1. Create a production spreadsheet and a separate QA copy.
+2. Create or link one Apps Script project to each file.
+3. Configure `.clasp.json` for production.
+4. Configure `.clasp.test.json` for QA.
+5. Install dependencies with `npm install`.
+6. Push to QA and validate the probe and smoke suite.
+7. Deploy to production only after QA passes.
 
-## Interfaz
+## Interface
 
-La app corre dentro de Google Sheets y hoy incluye tres vistas principales:
+The application runs inside Google Sheets and currently includes three main views:
 
-- Ventas
-- Compras
-- Configuracion avanzada
+- Sales
+- Purchases
+- Advanced configuration
 
-La experiencia esta pensada para uso operativo diario, con estados visibles, catalogos guiados y formularios rapidos.
+The experience is designed for daily operational use, with visible status feedback, guided catalogs, and fast forms.
 
-## Documentacion complementaria
+## Additional Documentation
 
 - [TESTING_QTAS.md](./TESTING_QTAS.md)
 - [OPERACION_QTAS.md](./OPERACION_QTAS.md)
 - [LOOKER_QTAS.md](./LOOKER_QTAS.md)
 
-## Estado actual del proyecto
+## Current State
 
-Hoy el sistema ya cuenta con:
+The system already includes:
 
-- flujo de ventas operativo
-- flujo de compras operativo
-- costos historicos desde compras
-- productos compuestos y reglas de costo
-- analitica incremental
-- QA automatizado
-- despliegue separado para QA y produccion
-- poda de bundle para produccion
+- operational sales flow
+- operational purchase flow
+- historical cost tracking from purchases
+- composite products and cost rules
+- incremental analytics
+- automated QA
+- separated QA and production deployment
+- production bundle pruning
 
-## Nota
+## Note
 
-El repositorio contiene codigo y estructura tecnica. Los datos reales del negocio deben permanecer en hojas separadas y privadas.
+This repository contains code and technical structure. Real business data should remain in separate private spreadsheets.
