@@ -1,5 +1,7 @@
 node_modules/**
 tests/**
+dist/**
+libro/**
 *.md
 package.json
 package-lock.json

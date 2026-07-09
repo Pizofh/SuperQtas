@@ -105,11 +105,6 @@ function escribirFilasDesdeFilaQTAS_(sheet, startRow, rows) {
     .setValues(rows);
 }
 
-function escribirObjetos_(sheet, headers, objects) {
-  if (!sheet || !headers || !headers.length || !objects || !objects.length) return;
-  escribirFilas_(sheet, objects.map(obj => filaDesdeHeaders_(headers, obj)));
-}
-
 function reemplazarObjetos_(sheet, headers, objects) {
   if (!sheet || !headers || !headers.length) return;
 
@@ -266,7 +261,6 @@ function asegurarHojaModelo_(ss, nombre, headers) {
   }
 
   const currentHeaders = getHeaders_(sheet);
-  const isLegacyPriceSheet = nombre === QTAS.sheets.precios && esHojaPreciosLegacy_(sheet);
 
   if (sheet.getLastRow() === 0) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
@@ -278,12 +272,10 @@ function asegurarHojaModelo_(ss, nombre, headers) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     limpiarCacheHeadersHojaQTAS_(sheet);
     debeAutoAjustar = true;
-  } else if (!isLegacyPriceSheet) {
-    if (!headersIguales_(currentHeaders, headers)) {
-      assertOperacionDestructivaPermitidaQTAS_(`sincronizar headers de ${nombre}`);
-      sincronizarHeaders_(sheet, currentHeaders, headers);
-      debeAutoAjustar = true;
-    }
+  } else if (!headersIguales_(currentHeaders, headers)) {
+    assertOperacionDestructivaPermitidaQTAS_(`sincronizar headers de ${nombre}`);
+    sincronizarHeaders_(sheet, currentHeaders, headers);
+    debeAutoAjustar = true;
   }
 
   if (sheet.getFrozenRows() !== 1) {
@@ -302,29 +294,15 @@ function asegurarHojaModelo_(ss, nombre, headers) {
 function obtenerHojaConfigQTAS_(ss, options) {
   const spreadsheet = ss || SpreadsheetApp.getActive();
   const settings = options || {};
-
   const canonical = spreadsheet.getSheetByName(QTAS.sheets.config);
-  const legacy = spreadsheet.getSheetByName(QTAS.sheets.configLegacy);
-
-  if (canonical && (canonical.getLastRow() > 1 || !legacy)) return canonical;
-  if (legacy) return legacy;
   if (canonical) return canonical;
 
   if (!settings.create) return null;
   return asegurarHojaModelo_(spreadsheet, QTAS.sheets.config, QTAS.schemas[QTAS.sheets.config]);
 }
 
-function nombreHojaConfigActivaQTAS_(ss) {
-  const sheet = obtenerHojaConfigQTAS_(ss);
-  return sheet ? sheet.getName() : QTAS.sheets.config;
-}
-
 function esConfigMediosPagoCanonicoQTAS_(sheet) {
   return headersIguales_(getHeaders_(sheet), QTAS.schemas[QTAS.sheets.config]);
-}
-
-function esConfigLegacyQTAS_(sheet) {
-  return headersIguales_(getHeaders_(sheet), ['Tipo', 'Valor', 'Activo']);
 }
 
 function construirMediosPagoBaseQTAS_() {
@@ -341,28 +319,20 @@ function leerMediosPagoConfiguradosQTAS_() {
     return construirMediosPagoBaseQTAS_();
   }
 
-  if (esConfigMediosPagoCanonicoQTAS_(sheet)) {
-    return leerObjetos_(sheet)
-      .map(row => ({
-        medioPago: texto_(row.Medio_Pago),
-        activo: estaActivo_(row.Activo),
-        nota: texto_(row.Nota)
-      }))
-      .filter(row => row.medioPago);
+  if (!esConfigMediosPagoCanonicoQTAS_(sheet)) {
+    throw new Error(
+      `La hoja ${QTAS.sheets.config} no coincide con la estructura esperada. ` +
+      'Corrige la configuracion antes de continuar.'
+    );
   }
 
-  if (esConfigLegacyQTAS_(sheet)) {
-    return leerObjetos_(sheet)
-      .filter(row => texto_(row.Tipo) === 'Medio_Pago')
-      .map(row => ({
-        medioPago: texto_(row.Valor),
-        activo: estaActivo_(row.Activo),
-        nota: 'Migrable desde Config legado'
-      }))
-      .filter(row => row.medioPago);
-  }
-
-  return construirMediosPagoBaseQTAS_();
+  return leerObjetos_(sheet)
+    .map(row => ({
+      medioPago: texto_(row.Medio_Pago),
+      activo: estaActivo_(row.Activo),
+      nota: texto_(row.Nota)
+    }))
+    .filter(row => row.medioPago);
 }
 
 function sincronizarHeaders_(sheet, currentHeaders, expectedHeaders) {
@@ -607,15 +577,6 @@ function finalizarPerfilRendimientoQTAS_(profile, meta) {
   return result;
 }
 
-function snapshotSheet_(sheet, prefix) {
-  const ss = sheet.getParent();
-  const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss');
-  const baseName = `${prefix}_${timestamp}`;
-  const snapshot = sheet.copyTo(ss);
-  snapshot.setName(nombreHojaUnico_(ss, baseName));
-  return snapshot.getName();
-}
-
 function nombreHojaUnico_(ss, baseName) {
   let name = baseName.slice(0, 99);
   let index = 1;
@@ -707,23 +668,6 @@ function resolverFechaOperacion_(value, fallback) {
 
   const base = fecha_(source);
   return crearFechaDiaSeguroQTAS_(base.getFullYear(), base.getMonth(), base.getDate());
-}
-
-function resolverFechaConsistenteQTAS_(fechaPrincipal, fechaRespaldo) {
-  const primary = fechaPrincipal ? resolverFechaOperacion_(fechaPrincipal, fechaRespaldo || new Date()) : null;
-  const backup = fechaRespaldo ? resolverFechaOperacion_(fechaRespaldo, new Date()) : null;
-
-  if (primary && backup && primary.getTime() !== backup.getTime()) {
-    return backup;
-  }
-
-  return primary || backup || resolverFechaOperacion_(new Date(), new Date());
-}
-
-function resolverFechaAnaliticaQTAS_(fechaHora, fechaSolo, fallback) {
-  if (fechaHora) return resolverFechaOperacion_(fechaHora, fallback || new Date());
-  if (fechaSolo) return resolverFechaOperacion_(fechaSolo, fallback || new Date());
-  return resolverFechaOperacion_(fallback || new Date(), new Date());
 }
 
 function resolverFechaMomentoQTAS_(fechaHora, fechaSolo, fallback) {

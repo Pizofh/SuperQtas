@@ -602,15 +602,6 @@ function actualizarCostosDesdeCompraQTAS_(context) {
   return actualizados;
 }
 
-function upsertCostoReferenciaDesdeCompraQTAS_(context) {
-  return upsertCostoReferenciaHistoricoQTAS_(Object.assign({}, context, {
-    fechaDesde: context.fechaCompra,
-    fuenteTipo: 'Compra',
-    fuenteId: context && context.linea ? texto_(context.linea.Compra_Detalle_ID) : '',
-    comentario: context && context.linea ? texto_(context.linea.Comentario_Linea) : ''
-  }));
-}
-
 function upsertCostoReferenciaHistoricoQTAS_(context) {
   const sheet = context.sheet;
   const headers = context.headers;

@@ -24,8 +24,7 @@ var QTAS = {
     ventasEnvio: 'Ventas_Envio',
     distribucionReglas: 'Distribucion_Reglas',
     distribucionIngresos: 'Distribucion_Ingresos',
-    config: 'Config_MediosPago',
-    configLegacy: 'Config'
+    config: 'Config_MediosPago'
   },
   status: {
     pago: {

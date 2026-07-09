@@ -2,6 +2,10 @@ function onOpen() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('QTAS ERP')
     .addItem('Abrir ERP', 'mostrarAppQTAS')
+    .addSeparator()
+    .addItem('Aplicar vista operador', 'aplicarVistaOperadorQTAS')
+    .addItem('Mostrar todas las hojas', 'mostrarTodasLasHojasQTAS')
+    .addItem('Exportar libro TSV', 'exportarLibroTSVQTAS')
     .addToUi();
 }
 
@@ -11,7 +15,7 @@ function crearSalidaAppQTAS_(vistaInicial) {
 
   return template
     .evaluate()
-    .setTitle('QTAS ERP')
+    .setTitle('SuperQTAS')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
@@ -25,7 +29,7 @@ function mostrarAppQTAS() {
     .setWidth(1280)
     .setHeight(920);
 
-  SpreadsheetApp.getUi().showModalDialog(html, 'QTAS ERP');
+  SpreadsheetApp.getUi().showModalDialog(html, 'SuperQTAS');
 }
 
 function getCatalogoQTAS(fechaVenta) {
@@ -79,14 +83,6 @@ function getCatalogoQTAS(fechaVenta) {
     clientes,
     hoy: fechaInput_(new Date())
   };
-}
-
-function getDeudoresQTAS() {
-  validarModeloSoloLecturaQTAS_({
-    sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos],
-    validarConfig: false
-  });
-  return dashboardVentasConsistenteQTAS_().deudores;
 }
 
 function getDashboardQTAS() {

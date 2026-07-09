@@ -252,29 +252,6 @@ node tests/run-qtas-tests.mjs --tag ventas
 node tests/run-qtas-tests.mjs --tag compras
 ```
 
-## Diagnosticar una copia nueva
-
-Si duplicas una hoja y no sabes si quedo completa, abre el proyecto de Apps Script ligado a esa copia y ejecuta:
-
-```javascript
-diagnosticarModeloQTAS()
-```
-
-Ese diagnostico no modifica datos. Solo te devuelve:
-
-- hojas faltantes
-- hojas con headers distintos a los esperados
-- estado de `Config_MediosPago` o `Config`
-- hojas extra fuera del modelo canonico
-
-Si el diagnostico devuelve problemas, la accion segura es correr:
-
-```javascript
-asegurarModeloCompletoQTAS_()
-```
-
-Eso crea o repara las hojas canonicas del modelo antes de usar la copia como `prod` o `test`.
-
 ## Como funciona
 
 El runner llama funciones reales del proyecto con Apps Script API:
