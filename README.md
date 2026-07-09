@@ -1,8 +1,8 @@
 # SuperQTAS
 
-SuperQTAS is a lightweight ERP built on top of Google Sheets and Google Apps Script. It is designed to run day-to-day sales, purchasing, receivables, historical cost tracking, and commercial configuration from a web interface embedded directly inside a spreadsheet.
+SuperQTAS is a spreadsheet-native ERP built with Google Sheets and Google Apps Script for Psylo Scibio operations. It centralizes sales, purchases, receivables, historical costs, and operational configuration in a single interface embedded directly inside the workbook.
 
-It is not trying to replace a full corporate ERP. It is meant to solve daily operations well, with traceability, clear rules, and low maintenance overhead.
+The project is intentionally lightweight. It does not try to mimic a large enterprise ERP; it focuses on operational reliability, traceability, incremental automation, and low maintenance overhead for a small business workflow.
 
 ## What It Does
 
@@ -24,7 +24,7 @@ The solution is split into four layers:
 3. HTML/CSS/JavaScript as the embedded interface.
 4. `clasp`, Node.js, and GitHub Actions for deployment and automation.
 
-In practice, the user opens the spreadsheet, launches the `QTAS ERP` menu, works from the interface, and the scripts update the canonical sheets behind the scenes.
+In practice, the user opens the spreadsheet, launches the `QTAS ERP` menu, works from the SuperQTAS interface, and the scripts update the canonical sheets behind the scenes.
 
 ## Core Modules
 
@@ -171,7 +171,7 @@ The application runs inside Google Sheets and currently includes three main view
 - Purchases
 - Advanced configuration
 
-The experience is designed for daily operational use, with visible status feedback, guided catalogs, and fast forms.
+The experience is designed for daily operational use, with guided catalogs, direct status feedback, and fast forms for both desktop and side-panel usage.
 
 ## Additional Documentation
 
@@ -191,6 +191,7 @@ The system already includes:
 - automated QA
 - separated QA and production deployment
 - production bundle pruning
+- removal of old migration and export modules from the active codebase
 
 ## Note
 

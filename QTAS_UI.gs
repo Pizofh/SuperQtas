@@ -11,7 +11,7 @@ function crearSalidaAppQTAS_(vistaInicial) {
 
   return template
     .evaluate()
-    .setTitle('QTAS ERP')
+    .setTitle('SuperQTAS')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
@@ -25,7 +25,7 @@ function mostrarAppQTAS() {
     .setWidth(1280)
     .setHeight(920);
 
-  SpreadsheetApp.getUi().showModalDialog(html, 'QTAS ERP');
+  SpreadsheetApp.getUi().showModalDialog(html, 'SuperQTAS');
 }
 
 function getCatalogoQTAS(fechaVenta) {

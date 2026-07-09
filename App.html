@@ -612,8 +612,8 @@
             >
           </div>
           <div>
-            <p id="appEyebrow" class="eyebrow">ERP en Google Sheets</p>
-            <h1 id="appTitle">Ventas claras. Analisis limpio.</h1>
+            <p id="appEyebrow" class="eyebrow">Psylo Scibio | SuperQTAS</p>
+            <h1 id="appTitle">Ventas y cartera</h1>
           </div>
         </div>
 
@@ -683,9 +683,9 @@
               <div class="status-box">
                 <label class="inline-toggle">
                   <input id="pendienteEnvioVenta" type="checkbox" onchange="actualizarResumenEnvioVenta()">
-                  Marcar venta como pendiente de envio
+                  Dejar venta en seguimiento de envio
                 </label>
-                <div id="pendienteEnvioVentaTexto" class="helper">Solo se seguira si la marcas aqui.</div>
+                <div id="pendienteEnvioVentaTexto" class="helper">Activalo si esta venta requiere seguimiento logistico.</div>
               </div>
             </div>
 
@@ -707,7 +707,7 @@
           </section>
 
           <button id="guardarVentaBtn" class="btn full" type="button" onclick="guardarVenta()">Guardar venta</button>
-          <div id="estado" class="status-box">Listo para registrar.</div>
+          <div id="estado" class="status-box">Completa los datos para registrar una venta.</div>
         </main>
 
         <aside>
@@ -769,19 +769,19 @@
           <section class="card">
             <div class="section-head">
               <div>
-                <h2>Pago a venta pendiente</h2>
+                <h2>Registrar pago pendiente</h2>
               </div>
               <button class="btn ghost" type="button" onclick="cargarPaneles()">Recargar</button>
             </div>
 
             <div>
-              <label>Venta pendiente</label>
+              <label>Venta con saldo</label>
               <select id="ventaPendiente" onchange="actualizarResumenVentaPendiente()">
                 <option value="">Seleccionar venta...</option>
               </select>
             </div>
 
-            <div id="ventaPendienteInfo" class="status-box">No hay venta seleccionada.</div>
+              <div id="ventaPendienteInfo" class="status-box">Selecciona una venta para ver el detalle.</div>
 
             <div class="grid-2">
               <div>
@@ -808,7 +808,7 @@
             <button id="guardarPagoPendienteBtn" class="btn full" type="button" onclick="guardarPagoPendiente()">
               Registrar pago
             </button>
-            <div id="estadoPagoPendiente" class="status-box">Selecciona una venta.</div>
+            <div id="estadoPagoPendiente" class="status-box">Selecciona una venta para registrar el pago.</div>
           </section>
 
           <section class="card">
@@ -835,7 +835,7 @@
             <div id="enviosPendientes" class="list">
               <div class="muted">Cargando...</div>
             </div>
-            <div id="estadoEnviosPendientes" class="status-box">Marca una venta para verla aqui.</div>
+            <div id="estadoEnviosPendientes" class="status-box">Selecciona una venta del panel para revisar su estado.</div>
           </section>
         </aside>
       </div>
@@ -891,7 +891,7 @@
           </section>
 
           <button id="guardarCompraBtn" class="btn full" type="button" onclick="guardarCompra()">Guardar compra</button>
-          <div id="estadoCompra" class="status-box">Listo para registrar compra.</div>
+          <div id="estadoCompra" class="status-box">Completa los datos para registrar una compra.</div>
         </main>
 
         <aside>
@@ -950,7 +950,7 @@
       <section class="card">
         <div class="section-head">
           <div>
-            <h2>Configuracion</h2>
+                <h2>Configuracion operativa</h2>
           </div>
         </div>
 
@@ -1144,7 +1144,7 @@
 
               <div class="form-actions">
                 <button class="btn" type="button" onclick="guardarReglaDistribucionAdmin()">Guardar regla</button>
-                <button class="btn ghost" type="button" onclick="restablecerReglaAdmin()">Usar sugerencia</button>
+                <button class="btn ghost" type="button" onclick="restablecerReglaAdmin()">Usar ultima referencia</button>
               </div>
             </div>
 
@@ -1157,7 +1157,7 @@
           </div>
         </div>
 
-        <div id="estadoAdmin" class="status-box">Cargando configuracion avanzada...</div>
+        <div id="estadoAdmin" class="status-box">Cargando configuracion operativa...</div>
       </section>
     </section>
   </div>
@@ -1165,16 +1165,16 @@
   <script>
     const APP_VIEWS = {
       ventas: {
-        eyebrow: 'ERP en Google Sheets',
-        title: 'Ventas claras. Analisis limpio.'
+        eyebrow: 'Psylo Scibio | SuperQTAS',
+        title: 'Ventas y cartera'
       },
       compras: {
-        eyebrow: 'Compras y costos',
-        title: 'Compras claras. Costos historicos.'
+        eyebrow: 'Psylo Scibio | SuperQTAS',
+        title: 'Compras y costos'
       },
       config: {
-        eyebrow: 'Configuracion avanzada',
-        title: 'Catalogo limpio. Reglas claras.'
+        eyebrow: 'Psylo Scibio | SuperQTAS',
+        title: 'Configuracion operativa'
       }
     };
 
@@ -1278,14 +1278,14 @@
       const estado = document.getElementById('estado');
       const botonAgregarProducto = document.getElementById('btnAgregarProducto');
 
-      estado.innerText = 'Cargando productos...';
+      estado.innerText = 'Cargando catalogo...';
       if (botonAgregarProducto) botonAgregarProducto.disabled = true;
 
       google.script.run
         .withSuccessHandler(data => {
           catalogo = data || { productos: [], mediosPago: [], clientes: [], hoy: fechaVenta };
           catalogo.productos = normalizarCatalogoProductosVentas_(catalogo.productos || []);
-          estado.innerText = 'Listo para registrar.';
+          estado.innerText = 'Completa los datos para registrar una venta.';
           if (botonAgregarProducto) botonAgregarProducto.disabled = false;
 
           if (!document.getElementById('fechaVenta').value) {
@@ -1720,21 +1720,21 @@
       estado.className = 'field-feedback';
       const nombre = String(nombreDigitado || '').trim();
       if (!nombre) {
-        estado.innerText = 'Escribe el nombre para buscar cliente.';
+        estado.innerText = 'Escribe el nombre para buscar coincidencias.';
         return;
       }
 
       if (cliente && cliente.clienteId) {
         estado.classList.add('status-ok');
         estado.innerHTML = [
-          `Cliente: <strong>${escapeHtml(cliente.nombre || nombre)}</strong>.`,
+          `Cliente registrado: <strong>${escapeHtml(cliente.nombre || nombre)}</strong>.`,
           `ID: <strong>${escapeHtml(cliente.clienteId || '')}</strong>.`
         ].join(' ');
         return;
       }
 
       estado.classList.add('status-warn');
-      estado.innerText = 'Cliente nuevo. Se creara al guardar.';
+      estado.innerText = 'Cliente nuevo. Se registrara al guardar la venta.';
     }
 
     function actualizarResumenEnvioVenta() {
@@ -1742,8 +1742,8 @@
       const helper = document.getElementById('pendienteEnvioVentaTexto');
       if (!checkbox || !helper) return;
       helper.innerText = checkbox.checked
-        ? 'Se seguira en envios.'
-        : 'No se seguira en envios.';
+        ? 'La venta quedara visible en el panel de envios pendientes.'
+        : 'La venta no quedara en seguimiento de envio.';
     }
 
     function actualizarOpcionesProductosExistentes() {
@@ -2005,10 +2005,10 @@
         estadoPago.innerText = 'Sin productos';
         estadoPago.classList.add('status-warn');
       } else if (hayError) {
-        estadoPago.innerText = 'Revisar lineas';
+        estadoPago.innerText = 'Revisar detalles';
         estadoPago.classList.add('status-bad');
       } else if (haySobrepago) {
-        estadoPago.innerText = 'Pago mayor al total';
+        estadoPago.innerText = 'Pago superior al total';
         estadoPago.classList.add('status-bad');
       } else if (saldo <= 0.009) {
         estadoPago.innerText = 'Pagado';
@@ -2038,23 +2038,23 @@
       }
 
       if (precioLista <= 0) {
-        mensajes.push('Sin precio de referencia.');
+        mensajes.push('Sin precio vigente.');
       }
 
       if (precioVendido <= 0) {
-        mensajes.push('Falta precio vendido.');
+        mensajes.push('Falta el precio de venta.');
       }
 
       if (Math.abs(precioVendido - precioLista) > 0.009) {
-        mensajes.push('Precio especial.');
+        mensajes.push('Precio ajustado.');
       }
 
       if (descuento > 0) {
-        mensajes.push('Con descuento.');
+        mensajes.push('Incluye descuento.');
       }
 
       if (!mensajes.length) {
-        mensajes.push('Linea lista.');
+        mensajes.push('Linea validada.');
       }
 
       hint.innerText = mensajes.join(' ');
@@ -2064,7 +2064,7 @@
       const totalVenta = numeroDesdeTextoMoneda_(document.getElementById('totalVenta').innerText);
 
       if (totalVenta <= 0) {
-        alert('Primero agrega productos validos.');
+        alert('Agrega al menos un producto valido.');
         return;
       }
 
@@ -2166,7 +2166,7 @@
         validarModelo: false
       };
 
-      document.getElementById('estado').innerText = 'Guardando venta...';
+      document.getElementById('estado').innerText = 'Registrando venta...';
 
       google.script.run
         .withSuccessHandler(resp => {
@@ -2174,7 +2174,7 @@
           const dashboard = resp.dashboard || construirDashboardLocalTrasVenta_(resp);
           document.getElementById('estado').innerText = [
             `Venta ${resp.ventaId} guardada. Total ${moneda_(resp.totalVenta)}. Saldo ${moneda_(resp.saldo)}.` +
-              (resp.estadoEnvio === 'Pendiente' ? ' En envio.' : ''),
+              (resp.estadoEnvio === 'Pendiente' ? ' Seguimiento de envio activo.' : ''),
             formatearRendimientoOperacion_(resp.performance)
           ].filter(Boolean).join('\n');
           registrarRendimientoOperacion_('registrarVentaQTAS', resp.performance);
@@ -2230,8 +2230,8 @@
       const venta = ventasPendientes.find(item => String(item.ventaId) === select.value);
 
       if (!venta) {
-        info.innerText = 'Sin venta seleccionada.';
-        estado.innerText = 'Selecciona una venta.';
+        info.innerText = 'Selecciona una venta para ver el detalle.';
+        estado.innerText = 'Selecciona una venta para registrar el pago.';
         boton.disabled = true;
         montoInput.dataset.ventaId = '';
         return;
@@ -2270,7 +2270,7 @@
       const medio = document.getElementById('medioPagoPendiente').value;
 
       if (!ventaId) {
-        alert('Selecciona una venta pendiente.');
+        alert('Selecciona una venta con saldo.');
         return;
       }
 
@@ -2285,13 +2285,13 @@
         return;
       }
 
-      document.getElementById('estadoPagoPendiente').innerText = 'Guardando pago...';
+      document.getElementById('estadoPagoPendiente').innerText = 'Registrando pago...';
 
       google.script.run
         .withSuccessHandler(resp => {
           const dashboard = resp.dashboard || construirDashboardLocalTrasPago_(resp);
           document.getElementById('estadoPagoPendiente').innerText = [
-            `Pago registrado. Saldo: ${moneda_(resp.saldoRestante)}.`,
+            `Pago registrado. Saldo restante ${moneda_(resp.saldoRestante)}.`,
             formatearRendimientoOperacion_(resp.performance)
           ].filter(Boolean).join('\n');
           registrarRendimientoOperacion_('registrarPagoPendienteQTAS', resp.performance);
@@ -2319,7 +2319,7 @@
       const cont = document.getElementById('deudores');
 
       if (!rows || !rows.length) {
-        cont.innerHTML = '<div class="muted">No hay deudores.</div>';
+        cont.innerHTML = '<div class="muted">No hay saldos pendientes.</div>';
         return;
       }
 
@@ -2338,8 +2338,8 @@
       const rows = enviosPendientes || [];
 
       if (!rows.length) {
-        cont.innerHTML = '<div class="muted">Sin envios pendientes.</div>';
-        estado.innerText = 'Sin pendientes.';
+        cont.innerHTML = '<div class="muted">No hay envios pendientes.</div>';
+        estado.innerText = 'Sin registros pendientes.';
         return;
       }
 
@@ -2357,23 +2357,23 @@
           </div>
         </div>
       `).join('');
-      estado.innerText = `${rows.length} pendiente(s) de envio.`;
+      estado.innerText = `${rows.length} envio(s) pendiente(s).`;
     }
 
     function marcarVentaEnviada(ventaId) {
       const venta = (enviosPendientes || []).find(item => String(item.ventaId) === String(ventaId));
       if (!venta) {
-        document.getElementById('estadoEnviosPendientes').innerText = 'La venta ya no esta pendiente.';
+        document.getElementById('estadoEnviosPendientes').innerText = 'La venta ya no aparece como pendiente de envio.';
         return;
       }
 
-      document.getElementById('estadoEnviosPendientes').innerText = `Marcando V${ventaId}...`;
+      document.getElementById('estadoEnviosPendientes').innerText = `Actualizando V${ventaId}...`;
 
       google.script.run
         .withSuccessHandler(resp => {
           const dashboard = resp.dashboard || construirDashboardLocalTrasCambioEnvio_(resp);
           document.getElementById('estadoEnviosPendientes').innerText = [
-            `V${ventaId} enviada.`,
+            `V${ventaId} actualizada como enviada.`,
             formatearRendimientoOperacion_(resp.performance)
           ].filter(Boolean).join('\n');
           registrarRendimientoOperacion_('actualizarEstadoEnvioVentaQTAS', resp.performance);
@@ -2828,7 +2828,7 @@
       if (!item) {
         hint.innerText = tipoItem === 'Producto'
           ? 'Selecciona un producto.'
-          : 'Selecciona un item o crea uno nuevo.';
+          : 'Selecciona un item o registra uno nuevo.';
         return;
       }
 
@@ -2844,7 +2844,7 @@
         if (referencia.sugerencia) {
           mensajes.push('Item reconocido.');
         } else {
-          mensajes.push('Item nuevo. Quedara sugerido.');
+          mensajes.push('Item nuevo. Quedara disponible como sugerencia.');
         }
       }
 
@@ -2854,12 +2854,12 @@
         } else if (!referencia.unidadCanonicaValida) {
           mensajes.push(`Usa unidad ${referencia.unidadCanonica}.`);
         } else {
-          mensajes.push(`Actualizara ${referencia.itemCanonico} (${referencia.unidadCanonica}).`);
+          mensajes.push(`Actualizara el costo de ${referencia.itemCanonico} (${referencia.unidadCanonica}).`);
         }
       } else if (impacto) {
-        mensajes.push(`Actualizara costo de ${tipoItem.toLowerCase()}.`);
+        mensajes.push(`Actualizara el costo de referencia del ${tipoItem.toLowerCase()}.`);
       } else {
-        mensajes.push('No actualiza costos.');
+        mensajes.push('No actualizara costos de referencia.');
       }
 
       hint.innerText = mensajes.join(' ');
@@ -2908,12 +2908,12 @@
         return;
       }
 
-      document.getElementById('estadoCompra').innerText = 'Guardando compra...';
+      document.getElementById('estadoCompra').innerText = 'Registrando compra...';
 
       google.script.run
         .withSuccessHandler(resp => {
           document.getElementById('estadoCompra').innerText =
-            `Compra ${resp.compraId} guardada. Total ${moneda_(resp.totalCompra)}. Costos: ${resp.costosActualizados}.`;
+            `Compra ${resp.compraId} guardada. Total ${moneda_(resp.totalCompra)}. Costos actualizados: ${resp.costosActualizados}.`;
           limpiarFormularioCompra();
           cargarCatalogoCompras(false);
         })
@@ -2978,12 +2978,12 @@
     }
 
     function cargarConfiguracionAvanzada(resetForms) {
-      setEstadoAdmin('Cargando configuracion...');
+      setEstadoAdmin('Cargando configuracion operativa...');
 
       google.script.run
         .withSuccessHandler(data => {
           aplicarRespuestaAdmin_(data, { resetAll: resetForms !== false });
-          setEstadoAdmin('Configuracion lista.');
+          setEstadoAdmin('Configuracion actualizada.');
         })
         .withFailureHandler(err => {
           setEstadoAdmin(construirMensajeEstadoError_('No se pudo cargar la configuracion', err));
@@ -3074,7 +3074,7 @@
       document.getElementById('adminProductoActivo').value = row.activo ? 'true' : 'false';
       bloquearCampoAdmin_('adminProductoNombre', true);
       mostrarAdminTab('productos');
-      setEstadoAdmin('Editando producto. Nombre bloqueado.');
+      setEstadoAdmin('Editando producto existente. El nombre no se modifica aqui.');
     }
 
     function guardarProductoAdmin() {
@@ -3101,7 +3101,7 @@
       google.script.run
         .withSuccessHandler(data => {
           aplicarRespuestaAdmin_(data, { resetProducto: true, tab: 'productos' });
-          setEstadoAdmin(`Producto ${payload.producto} listo.`);
+          setEstadoAdmin(`Producto ${payload.producto} guardado.`);
         })
         .withFailureHandler(err => {
           setEstadoAdmin(construirMensajeEstadoError_('No se pudo guardar el producto', err));
@@ -3114,14 +3114,14 @@
       if (!row) return;
 
       const accion = activo ? 'activar' : 'desactivar';
-      if (!confirm(`Vas a ${accion} ${row.producto}. Deseas seguir?`)) return;
+      if (!confirm(`Se cambiara el estado de ${row.producto}. Deseas continuar?`)) return;
 
-      setEstadoAdmin(`${activo ? 'Activando' : 'Desactivando'} producto...`);
+      setEstadoAdmin('Actualizando estado del producto...');
 
       google.script.run
         .withSuccessHandler(data => {
           aplicarRespuestaAdmin_(data, { tab: 'productos' });
-          setEstadoAdmin(`Producto ${row.producto} ${activo ? 'activado' : 'desactivado'}.`);
+          setEstadoAdmin(`Estado actualizado para ${row.producto}.`);
         })
         .withFailureHandler(err => {
           setEstadoAdmin(construirMensajeEstadoError_('No se pudo actualizar el producto', err));
@@ -3230,7 +3230,7 @@
       google.script.run
         .withSuccessHandler(data => {
           aplicarRespuestaAdmin_(data, { resetPrecio: true, tab: 'precios' });
-          setEstadoAdmin(`Precio nuevo guardado para ${payload.producto}.`);
+          setEstadoAdmin(`Precio guardado para ${payload.producto}.`);
         })
         .withFailureHandler(err => {
           setEstadoAdmin(construirMensajeEstadoError_('No se pudo guardar el precio', err));
@@ -3288,7 +3288,7 @@
       document.getElementById('adminMedioActivo').value = row.activo ? 'true' : 'false';
       bloquearCampoAdmin_('adminMedioNombre', true);
       mostrarAdminTab('medios');
-      setEstadoAdmin('Editando medio. Nombre bloqueado.');
+      setEstadoAdmin('Editando medio existente. El nombre no se modifica aqui.');
     }
 
     function guardarMedioPagoAdmin() {
@@ -3309,7 +3309,7 @@
       google.script.run
         .withSuccessHandler(data => {
           aplicarRespuestaAdmin_(data, { resetMedio: true, tab: 'medios' });
-          setEstadoAdmin(`Medio ${payload.medioPago} listo.`);
+          setEstadoAdmin(`Medio de pago ${payload.medioPago} guardado.`);
         })
         .withFailureHandler(err => {
           setEstadoAdmin(construirMensajeEstadoError_('No se pudo guardar el medio de pago', err));
@@ -3322,14 +3322,14 @@
       if (!row) return;
 
       const accion = activo ? 'activar' : 'desactivar';
-      if (!confirm(`Vas a ${accion} ${row.medioPago}. Deseas seguir?`)) return;
+      if (!confirm(`Se cambiara el estado de ${row.medioPago}. Deseas continuar?`)) return;
 
-      setEstadoAdmin(`${activo ? 'Activando' : 'Desactivando'} medio de pago...`);
+      setEstadoAdmin('Actualizando estado del medio de pago...');
 
       google.script.run
         .withSuccessHandler(data => {
           aplicarRespuestaAdmin_(data, { tab: 'medios' });
-          setEstadoAdmin(`Medio de pago ${row.medioPago} ${activo ? 'activado' : 'desactivado'}.`);
+          setEstadoAdmin(`Estado actualizado para ${row.medioPago}.`);
         })
         .withFailureHandler(err => {
           setEstadoAdmin(construirMensajeEstadoError_('No se pudo actualizar el medio de pago', err));
@@ -3409,7 +3409,7 @@
         return;
       }
 
-      resumen.innerText = `Nueva regla desde ${fechaDesde}. La regla anterior se cerrara automaticamente el dia previo.`;
+        resumen.innerText = `Regla propuesta desde ${fechaDesde}. La regla anterior se cerrara automaticamente el dia previo.`;
     }
 
     function guardarReglaDistribucionAdmin() {
