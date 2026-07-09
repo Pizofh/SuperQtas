@@ -417,14 +417,6 @@ function registrarPagoPendienteQTAS(payload) {
   }
 }
 
-function getVentasPendientesQTAS() {
-  validarModeloSoloLecturaQTAS_({
-    sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos, QTAS.sheets.ventasEnvio],
-    validarConfig: false
-  });
-  return dashboardVentasConsistenteQTAS_().ventasPendientes;
-}
-
 function actualizarEstadoEnvioVentaQTAS(payload) {
   const performance = crearPerfilRendimientoQTAS_('actualizarEstadoEnvioVentaQTAS');
   const debeValidarModelo = !payload || payload.validarModelo !== false;
@@ -501,24 +493,6 @@ function actualizarEstadoEnvioVentaQTAS(payload) {
   }
 }
 
-function recalcularSaldosQTAS() {
-  assertOperacionDestructivaPermitidaQTAS_('recalcularSaldosQTAS');
-  asegurarModeloOperativoQTAS_();
-
-  const ss = SpreadsheetApp.getActive();
-  const ventasSheet = ss.getSheetByName(QTAS.sheets.ventas);
-  const ventasHeaders = getHeaders_(ventasSheet);
-  const estado = construirEstadoVentasQTAS_();
-
-  reemplazarObjetos_(ventasSheet, ventasHeaders, estado.ventasActualizadas);
-  const dashboard = dashboardVentasDesdeEstadoQTAS_(estado);
-  return {
-    ventas: estado.ventasActualizadas.length,
-    deudores: dashboard.deudores,
-    ventasPendientes: dashboard.ventasPendientes
-  };
-}
-
 function dashboardVentasDesdeEstadoQTAS_(estado) {
   const source = estado || construirEstadoVentasQTAS_();
   return {
@@ -530,10 +504,6 @@ function dashboardVentasDesdeEstadoQTAS_(estado) {
 
 function dashboardVentasConsistenteQTAS_() {
   return dashboardVentasDesdeEstadoQTAS_(construirEstadoVentasQTAS_());
-}
-
-function dashboardVentasDesdeVentasSheetQTAS_() {
-  return dashboardVentasDesdeEstadoQTAS_(construirEstadoVentasDesdeVentasSheetQTAS_());
 }
 
 function obtenerHojaVentasEnvioQTAS_(ss, options) {
@@ -748,44 +718,6 @@ function construirEstadoVentasQTAS_() {
         fechaVenta: fechaVenta,
         saldo: saldo,
         productos: texto_(venta.Productos_Resumen)
-      });
-    }
-  });
-
-  return {
-    ventasActualizadas,
-    pendientes
-  };
-}
-
-function construirEstadoVentasDesdeVentasSheetQTAS_() {
-  const ss = SpreadsheetApp.getActive();
-  const ventasSheet = ss.getSheetByName(QTAS.sheets.ventas);
-  return construirEstadoVentasDesdeVentasRowsQTAS_(leerObjetos_(ventasSheet));
-}
-
-function construirEstadoVentasDesdeVentasRowsQTAS_(ventas) {
-  const ventasActualizadas = [];
-  const pendientes = [];
-
-  (ventas || []).forEach(venta => {
-    const ventaActualizada = normalizarVentaResumenQTAS_(venta);
-    const ventaId = texto_(ventaActualizada.Venta_ID);
-    if (!ventaId) return;
-
-    ventasActualizadas.push(ventaActualizada);
-
-    if (
-      texto_(ventaActualizada.Estado_Registro) !== QTAS.status.registro.anulado &&
-      numero_(ventaActualizada.Saldo) > 0
-    ) {
-      pendientes.push({
-        ventaId: numero_(ventaId),
-        clienteId: texto_(ventaActualizada.Cliente_ID),
-        nombre: texto_(ventaActualizada.Nombre),
-        fechaVenta: ventaActualizada.Fecha_Venta,
-        saldo: numero_(ventaActualizada.Saldo),
-        productos: texto_(ventaActualizada.Productos_Resumen)
       });
     }
   });

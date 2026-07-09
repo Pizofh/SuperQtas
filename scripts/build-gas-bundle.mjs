@@ -12,6 +12,7 @@ const TARGETS = {
       'appsscript.json',
       'Codigo.gs',
       'QTAS_Admin.gs',
+      'QTAS_Backups.gs',
       'QTAS_Compras.gs',
       'QTAS_CostosProducto.gs',
       'QTAS_Distribucion.gs',
@@ -20,60 +21,7 @@ const TARGETS = {
       'QTAS_UI.gs',
       'QTAS_Utils.gs',
       'QTAS_Ventas.gs'
-    ],
-    stripFunctionsByFile: {
-      'QTAS_CostosProducto.gs': [
-        'reconstruirCostoProductoCalculadoQTAS',
-        'reconstruirVentaDetalleCostosCalculadoQTAS',
-        'reconstruirAnaliticaCostosQTAS',
-        'reconstruirAnaliticaCostosQTAS_Log',
-        'sincronizarPlantillaCosteoBaseQTAS',
-        'sincronizarPlantillaCosteoBaseQTAS_Log',
-        'sembrarCostosDirectosBaseQTAS',
-        'sembrarCostosDirectosBaseQTAS_Log',
-        'sembrarCostosDirectosBaseQTAS_Historico',
-        'sembrarCostosDirectosBaseQTAS_Historico_Log',
-        'repararCoberturaHistoricaCostosQTAS',
-        'repararCoberturaHistoricaCostosQTAS_Log',
-        'sincronizarPlantillaYAnaliticaCostosQTAS',
-        'sincronizarPlantillaYAnaliticaCostosQTAS_Log',
-        'sincronizarPlantillaCosteoBaseQTAS_',
-        'construirCostosDirectosBaseSUPERQTAS_',
-        'construirCostosDirectosDerivadosPowSUPERQTAS_',
-        'asegurarCoberturaVigenteCostosSembradosQTAS_',
-        'repararCoberturaHistoricaCostosQTAS_',
-        'construirItemsObjetivoCoberturaHistoricaQTAS_',
-        'registrarItemObjetivoCoberturaHistoricaQTAS_',
-        'construirPlanCoberturaHistoricaItemQTAS_',
-        'leerCostosHistoricosPorClaveDesdeRowsQTAS_',
-        'construirFuenteAjusteHistoricoCostoQTAS_',
-        'obtenerCostoMasRecienteHistoricoQTAS_',
-        'crearCostoDirectoBaseQTAS_',
-        'construirFuenteDirectaCostoQTAS_',
-        'construirRecetasBaseSUPERQTAS_',
-        'construirReglasCostoSUPERQTAS_',
-        'crearFilaComponentePlantillaQTAS_',
-        'crearFilaReglaCostoPlantillaQTAS_',
-        'upsertPlantillaComponentesQTAS_',
-        'upsertPlantillaReglasCostoQTAS_',
-        'claveComponentePlantillaQTAS_',
-        'claveReglaCostoPlantillaQTAS_',
-        'siguienteIdConPrefijoDesdeValorQTAS_',
-        'resumenCoberturaPlantillaCostoQTAS_'
-      ],
-      'QTAS_Distribucion.gs': [
-        'reconstruirDistribucionIngresosQTAS_'
-      ],
-      'QTAS_Modelo.gs': [
-        'asegurarModeloCompletoQTAS_',
-        'asegurarModeloCompletoQTAS',
-        'diagnosticarModeloQTAS',
-        'snapshotEstructuraModeloQTAS'
-      ],
-      'QTAS_Ventas.gs': [
-        'recalcularSaldosQTAS'
-      ]
-    }
+    ]
   }
 };
 

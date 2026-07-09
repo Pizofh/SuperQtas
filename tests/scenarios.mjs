@@ -531,7 +531,7 @@ export const SCENARIOS = [
     run: async ctx => {
       await ctx.reset();
 
-      const producto = 'ProdCostoCompuesto';
+      const producto = 'ProdCostoCompuestoReceta';
       await ctx.call('guardarProductoConfiguracionQTAS', {
         producto,
         unidad: 'und',
@@ -593,11 +593,6 @@ export const SCENARIOS = [
           ventaLinea(producto, 1, 'und', 2000)
         ]
       }));
-
-      await ctx.call('reconstruirCostoProductoCalculadoQTAS', {
-        fechaBase: '2026-06-20',
-        silent: true
-      });
 
       const state = await snapshotLigero(ctx, {
         sheetNames: ['Costo_Producto_Calc', 'Venta_Detalle_Costos_Calc']

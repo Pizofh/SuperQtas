@@ -328,12 +328,6 @@ function materializarConfigMediosPagoQTAS_() {
   const headers = QTAS.schemas[QTAS.sheets.config];
   const medios = leerMediosPagoConfiguradosQTAS_();
   let sheet = ss.getSheetByName(QTAS.sheets.config);
-  const legacy = ss.getSheetByName(QTAS.sheets.configLegacy);
-
-  if (!sheet && legacy) {
-    legacy.setName(QTAS.sheets.config);
-    sheet = legacy;
-  }
 
   if (!sheet) {
     sheet = asegurarHojaModelo_(ss, QTAS.sheets.config, headers);

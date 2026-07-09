@@ -1,9 +1,3 @@
-function esHojaPreciosLegacy_(sheet) {
-  if (!sheet || sheet.getLastRow() < 1) return false;
-  const headers = getHeaders_(sheet);
-  return texto_(headers[1]).toLowerCase() === 'precio';
-}
-
 function leerPreciosConfigurados_() {
   const ss = SpreadsheetApp.getActive();
   const sheet = ss.getSheetByName(QTAS.sheets.precios);
@@ -29,11 +23,10 @@ function leerPreciosConfigurados_() {
       .filter(row => row.producto && row.precio > 0);
   }
 
-  if (esHojaPreciosLegacy_(sheet)) {
-    return convertirPreciosLegacyANormalizados_(sheet);
-  }
-
-  return construirPreciosNormalizadosBase_();
+  throw new Error(
+    `La hoja ${QTAS.sheets.precios} no coincide con la estructura esperada. ` +
+    'Corrige la hoja antes de continuar.'
+  );
 }
 
 function construirPreciosNormalizadosBase_() {
@@ -48,81 +41,6 @@ function construirPreciosNormalizadosBase_() {
       hasta: item.hasta ? resolverFechaOperacion_(item.hasta, item.desde) : null,
       activo: true,
       nota: 'Precio base'
-    }));
-}
-
-function convertirPreciosLegacyANormalizados_(sheet) {
-  const values = sheet.getDataRange().getValues();
-  const hasLegacyHeader = texto_(values[0][1]).toLowerCase() === 'precio';
-  const body = values.slice(hasLegacyHeader ? 1 : 0);
-  const legacyMap = {};
-
-  body.forEach(row => {
-    const producto = texto_(row[0]);
-    const precio = numero_(row[1]);
-    const unidad = normalizarUnidadCanonicaQTAS_(row[3] || row[2]);
-
-    if (!producto || precio <= 0) return;
-
-    legacyMap[producto] = {
-      precio,
-      unidad: unidad || 'und'
-    };
-  });
-
-  const rows = construirPreciosNormalizadosBase_().map(item => ({
-    precioId: item.precioId,
-    producto: item.producto,
-    precio: item.precio,
-    unidad: item.unidad,
-    desde: item.desde,
-    hasta: item.hasta,
-    activo: item.activo,
-    nota: item.nota
-  }));
-
-  Object.keys(legacyMap).forEach(producto => {
-    const sameProduct = rows
-      .filter(item => item.producto === producto)
-      .sort((a, b) => a.desde - b.desde);
-
-    if (sameProduct.length) {
-      const latest = sameProduct[sameProduct.length - 1];
-      latest.precio = legacyMap[producto].precio;
-      if (legacyMap[producto].unidad) latest.unidad = legacyMap[producto].unidad;
-      latest.nota = unirUnicos_([latest.nota, 'Normalizado desde hoja legacy']);
-      return;
-    }
-
-    rows.push({
-      precioId: '',
-      producto,
-      precio: legacyMap[producto].precio,
-      unidad: legacyMap[producto].unidad,
-      desde: resolverFechaOperacion_('2024-01-01', new Date()),
-      hasta: null,
-      activo: true,
-      nota: 'Creado desde hoja legacy'
-    });
-  });
-
-  return rows
-    .filter(item => item.producto && item.precio > 0)
-    .sort((a, b) => {
-      if (a.producto !== b.producto) {
-        return a.producto.localeCompare(b.producto);
-      }
-      return a.desde - b.desde;
-    })
-    .map((item, index) => ({
-      precioId: item.precioId || 'PREC-' + String(index + 1).padStart(4, '0'),
-      producto: item.producto,
-      precio: item.precio,
-      unidad: item.unidad,
-      desde: item.desde,
-      hasta: item.hasta,
-      activo: item.activo,
-      nota: item.nota
     }));
 }
 
@@ -182,54 +100,6 @@ function obtenerPrecioVigenteDesdeCache_(preciosCache, producto, unidad, fechaCo
   return matches[0].precio;
 }
 
-function normalizarPreciosReferenciaInterno_() {
-  assertOperacionDestructivaPermitidaQTAS_('normalizarPreciosReferenciaInterno_');
-  asegurarModeloOperativoQTAS_();
-
-  const ss = SpreadsheetApp.getActive();
-  const headers = QTAS.schemas[QTAS.sheets.precios];
-  const sheet = asegurarHojaModelo_(ss, QTAS.sheets.precios, headers);
-  const needsBackup = sheet.getLastRow() > 1 &&
-    !headersIguales_(getHeaders_(sheet), headers);
-
-  let snapshotName = '';
-  if (needsBackup) {
-    snapshotName = snapshotSheet_(sheet, 'Precios_Referencia_Backup');
-  }
-
-  const rows = construirFilasPreciosNormalizados_();
-  const currentMaxColumns = sheet.getMaxColumns();
-
-  if (currentMaxColumns < headers.length) {
-    sheet.insertColumnsAfter(currentMaxColumns, headers.length - currentMaxColumns);
-  } else if (currentMaxColumns > headers.length) {
-    sheet.deleteColumns(headers.length + 1, currentMaxColumns - headers.length);
-  }
-
-  sheet.clearContents();
-  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-  limpiarCacheHeadersHojaQTAS_(sheet);
-  sheet.setFrozenRows(1);
-  sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
-
-  escribirFilas_(sheet, rows);
-  sheet.autoResizeColumns(1, headers.length);
-
-  const message = [
-    `Precios normalizados: ${rows.length} fila(s).`,
-    snapshotName ? `Backup: ${snapshotName}.` : ''
-  ].filter(Boolean).join(' ');
-
-  maybeAlert_(message);
-  invalidarCacheDocumentoQTAS_('precios_referencia_memoria');
-
-  return {
-    ok: true,
-    rows: rows.length,
-    backup: snapshotName
-  };
-}
-
 function agregarCambioPrecioQTAS(producto, unidad, nuevoPrecio, fechaDesde, nota) {
   return withScriptLock_('agregar cambio de precio', () => {
     asegurarModeloOperativoQTAS_();
@@ -239,7 +109,10 @@ function agregarCambioPrecioQTAS(producto, unidad, nuevoPrecio, fechaDesde, nota
     const sheet = asegurarHojaModelo_(ss, QTAS.sheets.precios, headers);
 
     if (!headersIguales_(getHeaders_(sheet), headers)) {
-      normalizarPreciosReferenciaInterno_();
+      throw new Error(
+        `La hoja ${QTAS.sheets.precios} no coincide con la estructura esperada. ` +
+        'Corrige la hoja antes de registrar cambios de precio.'
+      );
     }
 
     const rows = leerObjetos_(sheet);

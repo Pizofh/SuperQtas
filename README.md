@@ -127,7 +127,9 @@ The repository already works with a real separation between QA and production.
 
 Production also uses a reduced bundle:
 
-- It excludes testing, migration, backup, and export files.
+- It excludes testing helpers from the production bundle.
+- Migration and export modules were removed from the codebase as part of the production cleanup.
+- Backup routines stay available in production because scheduled backup is part of the operational surface.
 - It strips out manual and destructive functions that are not part of the normal ERP runtime.
 
 ## Useful Scripts

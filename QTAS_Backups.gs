@@ -5,34 +5,6 @@ function crearBackupManualQTAS(payload) {
   }, payload || {}));
 }
 
-function habilitarOperacionesDestructivasQTAS() {
-  PropertiesService.getScriptProperties().setProperty('QTAS_ALLOW_DESTRUCTIVE', 'true');
-  return resumirEstadoOperacionDestructivaQTAS_();
-}
-
-function bloquearOperacionesDestructivasQTAS() {
-  PropertiesService.getScriptProperties().deleteProperty('QTAS_ALLOW_DESTRUCTIVE');
-  return resumirEstadoOperacionDestructivaQTAS_();
-}
-
-function resumirEstadoOperacionDestructivaQTAS_() {
-  const ss = SpreadsheetApp.getActive();
-  const estadoBasico = {
-    ok: true,
-    spreadsheetId: ss ? ss.getId() : '',
-    spreadsheetName: ss ? ss.getName() : '',
-    destructiveOpsAllowed: operacionesDestructivasPermitidasQTAS_()
-  };
-
-  try {
-    return getEstadoBackupsQTAS();
-  } catch (error) {
-    return Object.assign({}, estadoBasico, {
-      warning: `No se pudo leer el estado de backups: ${error.message}`
-    });
-  }
-}
-
 function ejecutarBackupDiarioQTAS() {
   return crearBackupSpreadsheetQTAS_({
     daily: true,

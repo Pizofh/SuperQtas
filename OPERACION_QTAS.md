@@ -7,9 +7,6 @@ El codigo ahora bloquea por defecto las operaciones mas destructivas.
 Mientras `QTAS_ALLOW_DESTRUCTIVE` no este en `true`, quedan bloqueadas rutas como:
 
 - `testResetEntornoQTAS()`
-- `testLimpiarRegistrosPruebaQTAS()`
-- `recalcularSaldosQTAS()`
-- `reconstruirDistribucionIngresosQTAS_()`
 - reparaciones de headers que limpian hojas
 - normalizacion masiva de `Precios_Referencia`
 
@@ -17,11 +14,6 @@ Recomendacion:
 
 - En `prod`: deja `QTAS_ALLOW_DESTRUCTIVE` sin configurar.
 - En `qa` o mantenimiento manual: activalo solo temporalmente si de verdad necesitas una operacion masiva.
-
-Funciones utiles:
-
-- `habilitarOperacionesDestructivasQTAS()`
-- `bloquearOperacionesDestructivasQTAS()`
 
 ## Backups diarios
 

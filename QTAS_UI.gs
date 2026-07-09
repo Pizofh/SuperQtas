@@ -81,14 +81,6 @@ function getCatalogoQTAS(fechaVenta) {
   };
 }
 
-function getDeudoresQTAS() {
-  validarModeloSoloLecturaQTAS_({
-    sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos],
-    validarConfig: false
-  });
-  return dashboardVentasConsistenteQTAS_().deudores;
-}
-
 function getDashboardQTAS() {
   validarModeloSoloLecturaQTAS_({
     sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos],
