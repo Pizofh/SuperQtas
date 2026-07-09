@@ -16,6 +16,7 @@ const TARGETS = {
       'QTAS_Compras.gs',
       'QTAS_CostosProducto.gs',
       'QTAS_Distribucion.gs',
+      'QTAS_Libro.gs',
       'QTAS_Modelo.gs',
       'QTAS_Precios.gs',
       'QTAS_UI.gs',

@@ -2,6 +2,10 @@ function onOpen() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('QTAS ERP')
     .addItem('Abrir ERP', 'mostrarAppQTAS')
+    .addSeparator()
+    .addItem('Aplicar vista operador', 'aplicarVistaOperadorQTAS')
+    .addItem('Mostrar todas las hojas', 'mostrarTodasLasHojasQTAS')
+    .addItem('Exportar libro TSV', 'exportarLibroTSVQTAS')
     .addToUi();
 }
 
