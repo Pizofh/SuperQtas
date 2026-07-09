@@ -155,10 +155,10 @@ function layoutLibroQTAS_() {
       QTAS.sheets.origenesFondosReglas
     ],
     colors: {
-      operator: '#8eb389',
-      analysis: '#88a9c3',
-      backend: '#b8b2ad',
-      other: '#d8c8a9'
+      operator: '#2E7D32',
+      analysis: '#D97706',
+      backend: '#6B7280',
+      other: '#8B5E3C'
     }
   };
 }
