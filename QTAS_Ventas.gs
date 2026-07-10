@@ -493,6 +493,97 @@ function actualizarEstadoEnvioVentaQTAS(payload) {
   }
 }
 
+function eliminarVentaRecienteQTAS(payload) {
+  return withScriptLock_('eliminar venta reciente', () => {
+    validarModeloSoloLecturaQTAS_({
+      sheetNames: [
+        QTAS.sheets.ventas,
+        QTAS.sheets.detalle,
+        QTAS.sheets.pagos,
+        QTAS.sheets.distribucionIngresos
+      ],
+      validarConfig: false
+    });
+
+    const ventaId = numero_(payload && payload.ventaId);
+    if (ventaId <= 0) {
+      throw new Error('Falta la venta a eliminar.');
+    }
+
+    const recientes = ventasRecientesDesdeEstadoQTAS_(construirEstadoVentasQTAS_());
+    if (!recientes.some(row => numero_(row.ventaId) === ventaId)) {
+      throw new Error('Solo se pueden eliminar ventas recientes desde el ERP.');
+    }
+
+    const ss = SpreadsheetApp.getActive();
+    const ventasSheet = ss.getSheetByName(QTAS.sheets.ventas);
+    const detalleSheet = ss.getSheetByName(QTAS.sheets.detalle);
+    const pagosSheet = ss.getSheetByName(QTAS.sheets.pagos);
+    const distribucionSheet = ss.getSheetByName(QTAS.sheets.distribucionIngresos);
+    const ventasHeaders = getHeaders_(ventasSheet);
+    const detalleHeaders = getHeaders_(detalleSheet);
+    const pagosHeaders = getHeaders_(pagosSheet);
+    const distribucionHeaders = getHeaders_(distribucionSheet);
+    const ventasEnvioSheet = obtenerHojaVentasEnvioQTAS_(ss, { create: false, validate: false });
+    const ventasEnvioCanonica = ventasEnvioSheet &&
+      headersIguales_(getHeaders_(ventasEnvioSheet), QTAS.schemas[QTAS.sheets.ventasEnvio]);
+    const costoDetalleRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.ventaDetalleCostosCalculado);
+
+    const ventasAntes = leerObjetos_(ventasSheet);
+    const venta = ventasAntes.find(row => numero_(row.Venta_ID) === ventaId);
+    if (!venta || esRegistroAnulado_(venta.Estado_Registro)) {
+      throw new Error('La venta ya no esta disponible para eliminar.');
+    }
+
+    const detalleAntes = leerObjetos_(detalleSheet);
+    const pagosAntes = leerObjetos_(pagosSheet);
+    const distribucionAntes = leerObjetos_(distribucionSheet);
+    const ventasEnvioAntes = ventasEnvioCanonica ? leerObjetos_(ventasEnvioSheet) : [];
+    const costoDetalleAntes = costoDetalleRef.ok ? leerObjetos_(costoDetalleRef.sheet) : [];
+
+    const ventasDespues = ventasAntes.filter(row => numero_(row.Venta_ID) !== ventaId);
+    const detalleDespues = detalleAntes.filter(row => numero_(row.Venta_ID) !== ventaId);
+    const pagosDespues = pagosAntes.filter(row => numero_(row.Venta_ID) !== ventaId);
+    const distribucionDespues = distribucionAntes.filter(row => numero_(row.Venta_ID) !== ventaId);
+    const ventasEnvioDespues = ventasEnvioAntes.filter(row => numero_(row.Venta_ID) !== ventaId);
+    const costoDetalleDespues = costoDetalleAntes.filter(row => numero_(row.Venta_ID) !== ventaId);
+
+    sobrescribirObjetosHojaQTAS_(ventasSheet, ventasHeaders, ventasDespues);
+    sobrescribirObjetosHojaQTAS_(detalleSheet, detalleHeaders, detalleDespues);
+    sobrescribirObjetosHojaQTAS_(pagosSheet, pagosHeaders, pagosDespues);
+    sobrescribirObjetosHojaQTAS_(distribucionSheet, distribucionHeaders, distribucionDespues);
+    if (ventasEnvioCanonica) {
+      sobrescribirObjetosHojaQTAS_(ventasEnvioSheet, QTAS.schemas[QTAS.sheets.ventasEnvio], ventasEnvioDespues);
+    }
+    if (costoDetalleRef.ok) {
+      sobrescribirObjetosHojaQTAS_(costoDetalleRef.sheet, costoDetalleRef.headers, costoDetalleDespues);
+    }
+
+    const secuenciaVenta = resincronizarIdNumericoPersistenteQTAS_(
+      'venta_id',
+      ventasSheet,
+      'Venta_ID'
+    );
+    limpiarCachesEjecucionQTAS_();
+
+    return {
+      ok: true,
+      ventaId: ventaId,
+      nombre: texto_(venta.Nombre),
+      secuenciaVenta: secuenciaVenta,
+      removed: {
+        ventas: ventasAntes.length - ventasDespues.length,
+        detalle: detalleAntes.length - detalleDespues.length,
+        pagos: pagosAntes.length - pagosDespues.length,
+        distribucionIngresos: distribucionAntes.length - distribucionDespues.length,
+        ventasEnvio: ventasEnvioAntes.length - ventasEnvioDespues.length,
+        ventaDetalleCostosCalculado: costoDetalleAntes.length - costoDetalleDespues.length
+      },
+      dashboard: dashboardVentasConsistenteQTAS_()
+    };
+  });
+}
+
 function dashboardVentasDesdeEstadoQTAS_(estado) {
   const source = estado || construirEstadoVentasQTAS_();
   return {

@@ -19,6 +19,7 @@ function getCatalogoComprasQTAS() {
   return {
     hoy: fechaInput_(new Date()),
     mediosPago: mediosPago,
+    origenesFondos: listarOrigenesFondosDisponiblesQTAS_(),
     productos: productos,
     itemsSugeridos: construirItemsSugeridosComprasQTAS_(productos, costosVigentes, { ss: ss }),
     costosVigentes: costosVigentes,
@@ -53,6 +54,7 @@ function registrarCompraQTAS(payload) {
     const fechaCompra = combinarFechaYHora_(fechaCompraBase, ahora);
     const proveedor = texto_(payload.proveedor);
     const comentarioCompra = texto_(payload.comentarioCompra);
+    const origenFondos = texto_(payload.origenFondos);
     const productosActivos = leerProductosActivosCompraQTAS_(ss);
     const productosActivosIndex = construirIndiceProductosCompraQTAS_(productosActivos);
     const itemsCatalogoIndex = construirIndiceItemsSugeridosCompraQTAS_(
@@ -73,6 +75,13 @@ function registrarCompraQTAS(payload) {
 
     const totalCompra = redondear_(sumar_(lineasPreparadas.map(item => item.Costo_Total_Linea)));
     const itemsResumen = resumenItemsCompraQTAS_(lineasPreparadas);
+    const origenesFondosCompra = construirFilasCompraOrigenesFondosQTAS_({
+      compraId: compraId,
+      fechaCompra: fechaCompraBase,
+      origenFondos: origenFondos,
+      lineas: lineasPreparadas,
+      comentarioCompra: comentarioCompra
+    });
 
     escribirFilas_(comprasSheet, [filaDesdeHeaders_(comprasHeaders, {
       Compra_ID: compraId,
@@ -89,6 +98,8 @@ function registrarCompraQTAS(payload) {
       detalleSheet,
       lineasPreparadas.map(row => filaDesdeHeaders_(detalleHeaders, row))
     );
+
+    registrarOrigenesFondosCompraQTAS_(origenesFondosCompra);
 
     const costosActualizados = actualizarCostosDesdeCompraQTAS_({
       compraId: compraId,
@@ -124,6 +135,8 @@ function registrarCompraQTAS(payload) {
       totalCompra: totalCompra,
       lineas: lineasPreparadas.length,
       costosActualizados: costosActualizados,
+      origenFondos: origenesFondosCompra.origenFondos,
+      origenesFondosAsignados: origenesFondosCompra.rows.length,
       itemsResumen: itemsResumen,
       costoProductoCalculado: costoProductoCalculado
     };
@@ -398,6 +411,7 @@ function listarCostosVigentesQTAS_() {
 function listarComprasRecientesQTAS_() {
   const ss = SpreadsheetApp.getActive();
   const sheet = ss.getSheetByName(QTAS.sheets.compras);
+  const origenesPorCompra = leerOrigenesFondosPorCompraQTAS_();
 
   return leerObjetos_(sheet)
     .filter(row => numero_(row.Compra_ID) > 0 && !esRegistroAnulado_(row.Estado_Registro))
@@ -414,8 +428,374 @@ function listarComprasRecientesQTAS_() {
       proveedor: texto_(row.Proveedor),
       itemsResumen: texto_(row.Items_Resumen),
       totalCompra: redondear_(numero_(row.Total_Compra)),
-      medioPago: texto_(row.Medio_Pago)
+      medioPago: texto_(row.Medio_Pago),
+      origenFondos: resumenOrigenesFondosCompraQTAS_(origenesPorCompra[numero_(row.Compra_ID)])
     }));
+}
+
+function listarOrigenesFondosDisponiblesQTAS_() {
+  const vistos = {};
+
+  return leerReglasOrigenesFondosQTAS_()
+    .map(row => texto_(row.origenFondos))
+    .filter(Boolean)
+    .filter(origen => {
+      const key = normalizarClaveTexto_(origen);
+      if (!key || vistos[key]) return false;
+      vistos[key] = true;
+      return true;
+    })
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+}
+
+function leerReglasOrigenesFondosQTAS_() {
+  const ss = SpreadsheetApp.getActive();
+  const sheet = ss.getSheetByName(QTAS.sheets.origenesFondosReglas);
+
+  if (!sheet || sheet.getLastRow() < 2) {
+    return [];
+  }
+
+  if (!headersIguales_(getHeaders_(sheet), QTAS.schemas[QTAS.sheets.origenesFondosReglas])) {
+    return [];
+  }
+
+  const agrupadas = {};
+
+  leerObjetos_(sheet).forEach(row => {
+    const reglaId = texto_(row.Regla_ID);
+    const origenFondos = texto_(row.Origen_Fondos);
+    if (!reglaId || !origenFondos) return;
+
+    if (!agrupadas[reglaId]) {
+      agrupadas[reglaId] = {
+        reglaId: reglaId,
+        origenFondos: origenFondos,
+        desde: resolverFechaOperacion_(row.Fecha_Desde, new Date()),
+        hasta: row.Fecha_Hasta
+          ? resolverFechaOperacion_(row.Fecha_Hasta, row.Fecha_Desde || new Date())
+          : null,
+        steve: 0,
+        majo: 0,
+        mush: 0,
+        activo: true,
+        nota: '',
+        aportantes: []
+      };
+    }
+
+    const aportante = normalizarAportanteOrigenFondosQTAS_(row.Aportante);
+    const porcentaje = redondear_(numero_(row.Porcentaje));
+    if (!aportante) return;
+
+    if (aportante === 'Steve') agrupadas[reglaId].steve = porcentaje;
+    if (aportante === 'Majo') agrupadas[reglaId].majo = porcentaje;
+    if (aportante === 'Mush') agrupadas[reglaId].mush = porcentaje;
+    agrupadas[reglaId].aportantes.push({
+      aportante: aportante,
+      porcentaje: porcentaje
+    });
+    agrupadas[reglaId].nota = unirUnicos_([
+      agrupadas[reglaId].nota,
+      texto_(row.Nota)
+    ]);
+  });
+
+  const salida = Object.keys(agrupadas)
+    .map(key => {
+      const row = agrupadas[key];
+      row.aportantes = row.aportantes
+        .filter(item => numero_(item.porcentaje) > 0)
+        .sort((a, b) => ordenAportanteOrigenFondosQTAS_(a.aportante) - ordenAportanteOrigenFondosQTAS_(b.aportante));
+      return row;
+    })
+    .filter(row => row.origenFondos)
+    .sort((a, b) => {
+      const origen = a.origenFondos.localeCompare(b.origenFondos, undefined, { sensitivity: 'base' });
+      if (origen !== 0) return origen;
+      return a.desde - b.desde;
+    });
+
+  validarReglasOrigenesFondosQTAS_(salida);
+  return salida;
+}
+
+function cargarReglasOrigenesFondosEnMemoriaQTAS_() {
+  const namespace = 'origenes_fondos_reglas_memoria';
+
+  return obtenerMemoEjecucionQTAS_(`cache:${namespace}`, () => {
+    const cached = leerCacheDocumentoQTAS_(namespace);
+    if (cached && Array.isArray(cached.rows)) {
+      return cached.rows;
+    }
+
+    const rows = leerReglasOrigenesFondosQTAS_()
+      .map(row => ({
+        reglaId: texto_(row.reglaId),
+        origenFondos: texto_(row.origenFondos),
+        desde: fechaInput_(row.desde),
+        hasta: row.hasta ? fechaInput_(row.hasta) : '',
+        steve: redondear_(numero_(row.steve)),
+        majo: redondear_(numero_(row.majo)),
+        mush: redondear_(numero_(row.mush)),
+        nota: texto_(row.nota),
+        aportantes: construirAportantesOrigenFondosQTAS_(row)
+      }))
+      .sort((a, b) => {
+        const origen = a.origenFondos.localeCompare(b.origenFondos, undefined, { sensitivity: 'base' });
+        if (origen !== 0) return origen;
+        return b.desde.localeCompare(a.desde);
+      });
+
+    guardarCacheDocumentoQTAS_(namespace, { rows: rows }, 300);
+    return rows;
+  });
+}
+
+function validarReglasOrigenesFondosQTAS_(reglas) {
+  const porOrigen = {};
+
+  (reglas || []).forEach(regla => {
+    if (!regla || !texto_(regla.origenFondos)) return;
+
+    const total = redondear_(
+      numero_(regla.steve) +
+      numero_(regla.majo) +
+      numero_(regla.mush)
+    );
+    if (Math.abs(total - 100) > 0.01) {
+      throw new Error(`La regla ${texto_(regla.reglaId)} de ${texto_(regla.origenFondos)} debe sumar 100%.`);
+    }
+
+    const key = normalizarClaveTexto_(regla.origenFondos);
+    if (!porOrigen[key]) porOrigen[key] = [];
+    porOrigen[key].push(regla);
+  });
+
+  Object.keys(porOrigen).forEach(key => {
+    const rows = porOrigen[key]
+      .slice()
+      .sort((a, b) => a.desde - b.desde);
+
+    for (let index = 0; index < rows.length - 1; index += 1) {
+      const actual = rows[index];
+      const siguiente = rows[index + 1];
+
+      if (!actual.hasta) {
+        throw new Error(`La regla ${texto_(actual.reglaId)} no puede quedar abierta si existe una regla posterior para ${texto_(actual.origenFondos)}.`);
+      }
+
+      if (resolverFechaOperacion_(actual.hasta, new Date()) >= resolverFechaOperacion_(siguiente.desde, new Date())) {
+        throw new Error(`Las reglas ${texto_(actual.reglaId)} y ${texto_(siguiente.reglaId)} de ${texto_(actual.origenFondos)} se traslapan en fechas.`);
+      }
+    }
+  });
+}
+
+function construirAportantesOrigenFondosQTAS_(row) {
+  return [
+    { aportante: 'Steve', porcentaje: redondear_(numero_(row && row.steve)) },
+    { aportante: 'Majo', porcentaje: redondear_(numero_(row && row.majo)) },
+    { aportante: 'Mush', porcentaje: redondear_(numero_(row && row.mush)) }
+  ].filter(item => numero_(item.porcentaje) > 0);
+}
+
+function normalizarAportanteOrigenFondosQTAS_(value) {
+  const key = normalizarClaveTexto_(value);
+  if (!key) return '';
+  if (key === 'steve') return 'Steve';
+  if (key === 'majo') return 'Majo';
+  if (key === 'mush') return 'Mush';
+  return '';
+}
+
+function ordenAportanteOrigenFondosQTAS_(aportante) {
+  const key = normalizarAportanteOrigenFondosQTAS_(aportante);
+  if (key === 'Steve') return 1;
+  if (key === 'Majo') return 2;
+  if (key === 'Mush') return 3;
+  return 99;
+}
+
+function obtenerReglaOrigenFondosVigenteDesdeCacheQTAS_(reglasCache, origenFondos, fechaBase) {
+  const origenKey = normalizarClaveTexto_(origenFondos);
+  const fechaConsulta = fechaInput_(resolverFechaOperacion_(fechaBase, new Date()));
+  const candidatas = (reglasCache || [])
+    .filter(row => normalizarClaveTexto_(row.origenFondos) === origenKey);
+
+  const matches = candidatas.filter(regla =>
+    fechaConsulta >= regla.desde &&
+    (!regla.hasta || fechaConsulta <= regla.hasta)
+  );
+
+  if (!matches.length) {
+    const ordenadas = candidatas.slice().sort((a, b) => a.desde.localeCompare(b.desde));
+    if (!ordenadas.length) return null;
+
+    const masAntigua = ordenadas[0];
+    if (fechaConsulta < masAntigua.desde) {
+      return masAntigua;
+    }
+
+    return null;
+  }
+
+  matches.sort((a, b) => b.desde.localeCompare(a.desde));
+  return matches[0];
+}
+
+function obtenerSnapshotOrigenFondosDesdeCacheQTAS_(reglasCache, origenFondos, fechaBase) {
+  const regla = obtenerReglaOrigenFondosVigenteDesdeCacheQTAS_(reglasCache, origenFondos, fechaBase);
+  if (!regla) {
+    throw new Error(
+      `No hay regla de origen de fondos vigente para ${texto_(origenFondos)} en la fecha ${fechaInput_(fechaBase)}.`
+    );
+  }
+
+  return {
+    reglaId: texto_(regla.reglaId),
+    origenFondos: texto_(regla.origenFondos),
+    steve: redondear_(numero_(regla.steve)),
+    majo: redondear_(numero_(regla.majo)),
+    mush: redondear_(numero_(regla.mush)),
+    aportantes: construirAportantesOrigenFondosQTAS_(regla)
+  };
+}
+
+function construirFilasCompraOrigenesFondosQTAS_(context) {
+  const origenFondos = texto_(context && context.origenFondos);
+  const lineas = context && context.lineas ? context.lineas : [];
+  if (!origenFondos || !lineas.length) {
+    return {
+      origenFondos: origenFondos,
+      rows: []
+    };
+  }
+
+  const snapshot = obtenerSnapshotOrigenFondosDesdeCacheQTAS_(
+    cargarReglasOrigenesFondosEnMemoriaQTAS_(),
+    origenFondos,
+    context.fechaCompra
+  );
+  const fechaCompra = resolverFechaOperacion_(context.fechaCompra, new Date());
+  const rows = [];
+
+  lineas.forEach(linea => {
+    const montos = distribuirMontoOrigenFondosQTAS_(
+      numero_(linea && linea.Costo_Total_Linea),
+      snapshot.aportantes
+    );
+
+    montos.forEach(item => {
+      rows.push({
+        Compra_Origen_ID: construirCompraOrigenIdQTAS_(linea.Compra_Detalle_ID, item.aportante),
+        Compra_ID: numero_(context.compraId),
+        Compra_Detalle_ID: texto_(linea.Compra_Detalle_ID),
+        Fecha_Compra: fechaCompra,
+        Origen_Fondos: snapshot.origenFondos,
+        Aportante: item.aportante,
+        Porcentaje: item.porcentaje,
+        Monto_Asignado: item.montoAsignado,
+        Fuente_Registro: `Regla ${snapshot.reglaId}`,
+        Nota: unirUnicos_([
+          texto_(context.comentarioCompra),
+          texto_(linea && linea.Comentario_Linea),
+          `Asignacion automatica de ${snapshot.origenFondos}`
+        ])
+      });
+    });
+  });
+
+  return {
+    origenFondos: snapshot.origenFondos,
+    reglaId: snapshot.reglaId,
+    rows: rows
+  };
+}
+
+function registrarOrigenesFondosCompraQTAS_(context) {
+  const rows = context && context.rows ? context.rows : [];
+  if (!rows.length) return 0;
+
+  const ss = SpreadsheetApp.getActive();
+  const sheet = ss.getSheetByName(QTAS.sheets.compraOrigenesFondos);
+  const headers = getHeaders_(sheet);
+  escribirFilas_(sheet, rows.map(row => filaDesdeHeaders_(headers, row)));
+  return rows.length;
+}
+
+function distribuirMontoOrigenFondosQTAS_(montoBase, aportantes) {
+  const activos = (aportantes || [])
+    .map(item => ({
+      aportante: normalizarAportanteOrigenFondosQTAS_(item && item.aportante),
+      porcentaje: redondear_(numero_(item && item.porcentaje))
+    }))
+    .filter(item => item.aportante && item.porcentaje > 0)
+    .sort((a, b) => ordenAportanteOrigenFondosQTAS_(a.aportante) - ordenAportanteOrigenFondosQTAS_(b.aportante));
+
+  const monto = redondear_(Math.max(numero_(montoBase), 0));
+  let restante = monto;
+
+  return activos.map((item, index) => {
+    const esUltimo = index === activos.length - 1;
+    const montoAsignado = esUltimo
+      ? restante
+      : redondear_(monto * item.porcentaje / 100);
+    restante = redondear_(restante - montoAsignado);
+
+    return {
+      aportante: item.aportante,
+      porcentaje: item.porcentaje,
+      montoAsignado: montoAsignado
+    };
+  });
+}
+
+function construirCompraOrigenIdQTAS_(compraDetalleId, aportante) {
+  const detalle = texto_(compraDetalleId).replace(/[^A-Za-z0-9_-]+/g, '_');
+  const persona = texto_(aportante).replace(/[^A-Za-z0-9_-]+/g, '_');
+  return `COF-${detalle}-${persona}`.slice(0, 99);
+}
+
+function leerOrigenesFondosPorCompraQTAS_() {
+  const ss = SpreadsheetApp.getActive();
+  const sheet = ss.getSheetByName(QTAS.sheets.compraOrigenesFondos);
+
+  if (!sheet || sheet.getLastRow() < 2) {
+    return {};
+  }
+
+  if (!headersIguales_(getHeaders_(sheet), QTAS.schemas[QTAS.sheets.compraOrigenesFondos])) {
+    return {};
+  }
+
+  return leerObjetos_(sheet).reduce((acc, row) => {
+    const compraId = numero_(row.Compra_ID);
+    if (compraId <= 0) return acc;
+    if (!acc[compraId]) {
+      acc[compraId] = {
+        origenes: [],
+        aportantes: []
+      };
+    }
+
+    const origen = texto_(row.Origen_Fondos);
+    if (origen && acc[compraId].origenes.indexOf(origen) < 0) {
+      acc[compraId].origenes.push(origen);
+    }
+
+    const aportante = normalizarAportanteOrigenFondosQTAS_(row.Aportante);
+    if (aportante && acc[compraId].aportantes.indexOf(aportante) < 0) {
+      acc[compraId].aportantes.push(aportante);
+    }
+
+    return acc;
+  }, {});
+}
+
+function resumenOrigenesFondosCompraQTAS_(row) {
+  if (!row || !row.origenes || !row.origenes.length) return '';
+  return row.origenes.join(' | ');
 }
 
 function construirItemsSugeridosComprasQTAS_(productos, costosVigentes, options) {
@@ -697,4 +1077,458 @@ function upsertCostoReferenciaHistoricoQTAS_(context) {
   escribirFilas_(sheet, [filaDesdeHeaders_(headers, nueva)]);
   rows.push(Object.assign({ __rowNumber: sheet.getLastRow() }, nueva));
   return 1;
+}
+
+function eliminarCompraRecienteQTAS(payload) {
+  return withScriptLock_('eliminar compra reciente', () => {
+    validarModeloSoloLecturaQTAS_({
+      sheetNames: [
+        QTAS.sheets.compras,
+        QTAS.sheets.compraDetalle,
+        QTAS.sheets.costosReferencia
+      ],
+      validarConfig: false
+    });
+
+    const compraId = numero_(payload && payload.compraId);
+    if (compraId <= 0) {
+      throw new Error('Falta la compra a eliminar.');
+    }
+
+    const recientes = listarComprasRecientesQTAS_();
+    if (!recientes.some(row => numero_(row.compraId) === compraId)) {
+      throw new Error('Solo se pueden eliminar compras recientes desde el ERP.');
+    }
+
+    const ss = SpreadsheetApp.getActive();
+    const comprasSheet = ss.getSheetByName(QTAS.sheets.compras);
+    const detalleSheet = ss.getSheetByName(QTAS.sheets.compraDetalle);
+    const costosSheet = ss.getSheetByName(QTAS.sheets.costosReferencia);
+    const comprasHeaders = getHeaders_(comprasSheet);
+    const detalleHeaders = getHeaders_(detalleSheet);
+    const costosHeaders = getHeaders_(costosSheet);
+    const origenesRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.compraOrigenesFondos);
+
+    if (!origenesRef.ok && origenesRef.sheet) {
+      throw new Error(`${origenesRef.reason} Repara el modelo antes de eliminar compras desde el ERP.`);
+    }
+
+    const comprasAntes = leerObjetos_(comprasSheet);
+    const compra = comprasAntes.find(row => numero_(row.Compra_ID) === compraId);
+    if (!compra || esRegistroAnulado_(compra.Estado_Registro)) {
+      throw new Error('La compra ya no esta disponible para eliminar.');
+    }
+
+    const detalleAntes = leerObjetos_(detalleSheet);
+    const costosAntes = leerObjetos_(costosSheet);
+    const origenesAntes = origenesRef.ok ? leerObjetos_(origenesRef.sheet) : [];
+
+    const comprasDespues = comprasAntes.filter(row => numero_(row.Compra_ID) !== compraId);
+    const detalleDespues = detalleAntes.filter(row => numero_(row.Compra_ID) !== compraId);
+    const origenesDespues = origenesAntes.filter(row => numero_(row.Compra_ID) !== compraId);
+
+    sobrescribirObjetosHojaQTAS_(comprasSheet, comprasHeaders, comprasDespues);
+    sobrescribirObjetosHojaQTAS_(detalleSheet, detalleHeaders, detalleDespues);
+    if (origenesRef.ok) {
+      sobrescribirObjetosHojaQTAS_(origenesRef.sheet, origenesRef.headers, origenesDespues);
+    }
+
+    const costosReconstruidos = reconstruirCostosReferenciaDesdeFuentesQTAS_({
+      ss: ss
+    });
+    const costoProductoCalculado = reconstruirCostoProductoCalculadoInternoQTAS_({
+      ss: ss,
+      fechaBase: new Date(),
+      ahora: new Date()
+    });
+
+    limpiarCachesEjecucionQTAS_();
+
+    return {
+      ok: true,
+      compraId: compraId,
+      proveedor: texto_(compra.Proveedor),
+      removed: {
+        compras: comprasAntes.length - comprasDespues.length,
+        compraDetalle: detalleAntes.length - detalleDespues.length,
+        compraOrigenesFondos: origenesAntes.length - origenesDespues.length,
+        costosPreviosCompra: costosAntes.filter(row => numero_(row.Compra_ID) === compraId).length
+      },
+      costosReconstruidos: costosReconstruidos,
+      costoProductoCalculado: costoProductoCalculado,
+      comprasRecientes: listarComprasRecientesQTAS_()
+    };
+  });
+}
+
+function reconstruirOrigenesFondosComprasHistoricasQTAS(payload) {
+  return withScriptLock_('reconstruir origenes fondos historicos', () => {
+    asegurarModeloOperativoQTAS_();
+
+    const settings = Object.assign({
+      compraIds: [],
+      fechaDesde: '',
+      fechaHasta: '',
+      origenFondosDefault: '',
+      replaceExisting: false
+    }, payload || {});
+    const compraIds = normalizarListaIdsObjetivoQTAS_(settings.compraIds);
+    const tieneRango = Boolean(texto_(settings.fechaDesde) || texto_(settings.fechaHasta));
+
+    if (!compraIds.length && !tieneRango) {
+      throw new Error('Define una compra o un rango de fechas para reconstruir el historico.');
+    }
+
+    const ss = SpreadsheetApp.getActive();
+    const comprasSheet = ss.getSheetByName(QTAS.sheets.compras);
+    const detalleSheet = ss.getSheetByName(QTAS.sheets.compraDetalle);
+    const origenesSheet = ss.getSheetByName(QTAS.sheets.compraOrigenesFondos);
+    const origenesHeaders = getHeaders_(origenesSheet);
+    const compras = leerObjetos_(comprasSheet)
+      .filter(row => numero_(row.Compra_ID) > 0 && !esRegistroAnulado_(row.Estado_Registro));
+    const detallePorCompra = leerObjetos_(detalleSheet)
+      .filter(row => numero_(row.Compra_ID) > 0 && !esRegistroAnulado_(row.Estado_Registro))
+      .reduce((acc, row) => {
+        const key = numero_(row.Compra_ID);
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(row);
+        return acc;
+      }, {});
+    const origenesAntes = leerObjetos_(origenesSheet);
+    const origenesPorCompra = leerOrigenesFondosPorCompraQTAS_();
+    const origenDefault = texto_(settings.origenFondosDefault);
+    const fechaDesde = texto_(settings.fechaDesde)
+      ? resolverFechaOperacion_(settings.fechaDesde, new Date())
+      : null;
+    const fechaHasta = texto_(settings.fechaHasta)
+      ? resolverFechaOperacion_(settings.fechaHasta, fechaDesde || new Date())
+      : null;
+
+    const comprasObjetivo = compras.filter(row => {
+      const compraId = numero_(row.Compra_ID);
+      if (compraIds.length && compraIds.indexOf(compraId) < 0) return false;
+
+      if (fechaDesde || fechaHasta) {
+        const fechaCompra = valorFechaCompraCanonicaQTAS_(row, new Date());
+        if (fechaDesde && resolverFechaOperacion_(fechaCompra, new Date()) < fechaDesde) return false;
+        if (fechaHasta && resolverFechaOperacion_(fechaCompra, new Date()) > fechaHasta) return false;
+      }
+
+      return true;
+    });
+
+    if (!comprasObjetivo.length) {
+      throw new Error('No se encontraron compras activas para el criterio indicado.');
+    }
+
+    const nuevasFilas = [];
+    const procesadas = [];
+    const omitidas = [];
+
+    comprasObjetivo.forEach(compra => {
+      const compraId = numero_(compra.Compra_ID);
+      const detalle = detallePorCompra[compraId] || [];
+      if (!detalle.length) {
+        omitidas.push(`C${compraId}: sin detalle`);
+        return;
+      }
+
+      const origenesActuales = origenesPorCompra[compraId] && origenesPorCompra[compraId].origenes
+        ? origenesPorCompra[compraId].origenes.slice()
+        : [];
+      if (origenesActuales.length > 1) {
+        throw new Error(`La compra C${compraId} tiene multiples origenes de fondos y requiere revision manual.`);
+      }
+
+      if (origenesActuales.length === 1 && !settings.replaceExisting) {
+        omitidas.push(`C${compraId}: ya tenia reparto`);
+        return;
+      }
+
+      const origenFondos = origenesActuales[0] || origenDefault;
+      if (!origenFondos) {
+        omitidas.push(`C${compraId}: sin origen definido`);
+        return;
+      }
+
+      let reconstruida;
+      try {
+        reconstruida = construirFilasCompraOrigenesFondosQTAS_({
+          compraId: compraId,
+          fechaCompra: valorFechaCompraCanonicaQTAS_(compra, new Date()),
+          origenFondos: origenFondos,
+          lineas: detalle,
+          comentarioCompra: texto_(compra.Comentario_Compra)
+        });
+      } catch (error) {
+        throw new Error(`No se pudo reconstruir la compra C${compraId}: ${error.message}`);
+      }
+
+      nuevasFilas.push.apply(nuevasFilas, reconstruida.rows);
+      procesadas.push({
+        compraId: compraId,
+        origenFondos: reconstruida.origenFondos,
+        asignaciones: reconstruida.rows.length
+      });
+    });
+
+    const comprasObjetivoSet = comprasObjetivo.reduce((acc, row) => {
+      acc[numero_(row.Compra_ID)] = true;
+      return acc;
+    }, {});
+    const origenesDespues = origenesAntes
+      .filter(row => {
+        const compraId = numero_(row.Compra_ID);
+        if (!comprasObjetivoSet[compraId]) return true;
+        return !settings.replaceExisting;
+      })
+      .concat(nuevasFilas)
+      .sort(compararCompraOrigenesFondosQTAS_);
+
+    if (settings.replaceExisting || nuevasFilas.length) {
+      sobrescribirObjetosHojaQTAS_(origenesSheet, origenesHeaders, origenesDespues);
+    }
+
+    limpiarCachesEjecucionQTAS_();
+
+    return {
+      ok: true,
+      replaceExisting: Boolean(settings.replaceExisting),
+      origenFondosDefault: origenDefault,
+      comprasObjetivo: comprasObjetivo.length,
+      procesadas: procesadas.length,
+      asignaciones: nuevasFilas.length,
+      omitidas: omitidas,
+      detalle: procesadas
+    };
+  });
+}
+
+function reconstruirCostosReferenciaDesdeFuentesQTAS_(payload) {
+  const settings = Object.assign({
+    ss: SpreadsheetApp.getActive()
+  }, payload || {});
+  const ss = settings.ss || SpreadsheetApp.getActive();
+  const costosSheet = ss.getSheetByName(QTAS.sheets.costosReferencia);
+  const detalleSheet = ss.getSheetByName(QTAS.sheets.compraDetalle);
+  const headers = getHeaders_(costosSheet);
+  const rowsActuales = leerObjetos_(costosSheet);
+  const detalleCompra = leerObjetos_(detalleSheet)
+    .filter(row =>
+      numero_(row.Compra_ID) > 0 &&
+      !esRegistroAnulado_(row.Estado_Registro) &&
+      (row.Impacta_Costo === true || String(row.Impacta_Costo).toLowerCase() === 'true') &&
+      numero_(row.Costo_Unitario) > 0 &&
+      texto_(row.Item) &&
+      texto_(row.Unidad)
+    );
+  const eventos = [];
+  const idsExistentes = {};
+
+  rowsActuales.forEach((row, index) => {
+    const tipoItem = normalizarTipoCompraItemQTAS_(row.Tipo_Item);
+    const item = texto_(row.Item);
+    const unidad = normalizarUnidadCanonicaQTAS_(row.Unidad);
+    const key = claveCostoHistoricoQTAS_(tipoItem, item, unidad);
+    const fuenteTipo = texto_(row.Fuente_Tipo) || (numero_(row.Compra_ID) > 0 ? 'Compra' : 'Manual');
+    const fechaDesde = row.Fecha_Desde ? resolverFechaOperacion_(row.Fecha_Desde, new Date()) : null;
+    if (!key || !fechaDesde || !estaActivo_(row.Activo)) return;
+
+    const identity = construirIdentidadEventoCostoHistoricoQTAS_({
+      key: key,
+      fuenteTipo: fuenteTipo,
+      fuenteId: texto_(row.Fuente_ID) || texto_(row.Costo_ID),
+      fechaDesde: fechaDesde
+    });
+    if (!idsExistentes[identity]) {
+      idsExistentes[identity] = texto_(row.Costo_ID);
+    }
+
+    if (normalizarClaveTexto_(fuenteTipo) === normalizarClaveTexto_('Compra') || numero_(row.Compra_ID) > 0) {
+      return;
+    }
+
+    eventos.push({
+      key: key,
+      tipoItem: tipoItem,
+      item: item,
+      unidad: unidad,
+      costoUnitario: redondear_(numero_(row.Costo_Unitario)),
+      proveedor: texto_(row.Proveedor),
+      fechaDesde: fechaDesde,
+      fuenteTipo: fuenteTipo,
+      fuenteId: texto_(row.Fuente_ID) || texto_(row.Costo_ID),
+      compraId: numero_(row.Compra_ID),
+      nota: texto_(row.Nota),
+      sourcePriority: prioridadFuenteCostoHistoricoQTAS_(fuenteTipo),
+      sourceOrder: index + 1
+    });
+  });
+
+  detalleCompra.forEach((row, index) => {
+    const tipoItem = normalizarTipoCompraItemQTAS_(row.Tipo_Item);
+    const item = texto_(row.Item);
+    const unidad = normalizarUnidadCanonicaQTAS_(row.Unidad);
+    const key = claveCostoHistoricoQTAS_(tipoItem, item, unidad);
+    if (!key) return;
+
+    eventos.push({
+      key: key,
+      tipoItem: tipoItem,
+      item: item,
+      unidad: unidad,
+      costoUnitario: redondear_(numero_(row.Costo_Unitario)),
+      proveedor: texto_(row.Proveedor),
+      fechaDesde: resolverFechaOperacion_(row.Fecha_Compra, new Date()),
+      fuenteTipo: 'Compra',
+      fuenteId: texto_(row.Compra_Detalle_ID),
+      compraId: numero_(row.Compra_ID),
+      nota: unirUnicos_([
+        texto_(row.Comentario_Linea),
+        numero_(row.Compra_ID) > 0 ? `Compra ${numero_(row.Compra_ID)}` : ''
+      ]),
+      sourcePriority: prioridadFuenteCostoHistoricoQTAS_('Compra'),
+      sourceOrder: index + 1
+    });
+  });
+
+  const eventosPorClave = {};
+  eventos.forEach(evento => {
+    if (!eventosPorClave[evento.key]) {
+      eventosPorClave[evento.key] = [];
+    }
+    eventosPorClave[evento.key].push(evento);
+  });
+
+  let nextCostoId = siguienteIdConPrefijo_(costosSheet, 'Costo_ID', 'COST-', 4);
+  const reconstruidas = [];
+
+  Object.keys(eventosPorClave)
+    .sort((a, b) => a.localeCompare(b))
+    .forEach(key => {
+      const eventosUnicosPorFecha = {};
+
+      eventosPorClave[key]
+        .slice()
+        .sort((a, b) => {
+          if (a.fechaDesde.getTime() !== b.fechaDesde.getTime()) return a.fechaDesde - b.fechaDesde;
+          if (a.sourcePriority !== b.sourcePriority) return a.sourcePriority - b.sourcePriority;
+          return a.sourceOrder - b.sourceOrder;
+        })
+        .forEach(evento => {
+          eventosUnicosPorFecha[fechaInput_(evento.fechaDesde)] = evento;
+        });
+
+      const eventosOrdenados = Object.keys(eventosUnicosPorFecha)
+        .map(dateKey => eventosUnicosPorFecha[dateKey])
+        .sort((a, b) => a.fechaDesde - b.fechaDesde);
+
+      eventosOrdenados.forEach((evento, index) => {
+        const siguiente = eventosOrdenados[index + 1];
+        const identity = construirIdentidadEventoCostoHistoricoQTAS_(evento);
+        const costoId = idsExistentes[identity] || nextCostoId;
+
+        reconstruidas.push({
+          Costo_ID: costoId,
+          Compra_ID: normalizarClaveTexto_(evento.fuenteTipo) === normalizarClaveTexto_('Compra')
+            ? numero_(evento.compraId)
+            : 0,
+          Item: evento.item,
+          Tipo_Item: evento.tipoItem,
+          Unidad: evento.unidad,
+          Costo_Unitario: redondear_(numero_(evento.costoUnitario)),
+          Proveedor: evento.proveedor,
+          Fecha_Desde: evento.fechaDesde,
+          Fecha_Hasta: siguiente ? diaAnterior_(siguiente.fechaDesde) : '',
+          Activo: true,
+          Fuente_Tipo: evento.fuenteTipo,
+          Fuente_ID: evento.fuenteId,
+          Nota: evento.nota
+        });
+
+        if (!idsExistentes[identity]) {
+          nextCostoId = siguienteIdConPrefijoDesdeValorQTAS_(nextCostoId, 'COST-', 4);
+        }
+      });
+    });
+
+  sobrescribirObjetosHojaQTAS_(
+    costosSheet,
+    headers,
+    reconstruidas.sort(compararFilasCostoHistoricoQTAS_)
+  );
+  limpiarCachesEjecucionQTAS_();
+
+  return {
+    ok: true,
+    eventosFuente: eventos.length,
+    rows: reconstruidas.length
+  };
+}
+
+function normalizarListaIdsObjetivoQTAS_(value) {
+  const raw = Array.isArray(value) ? value : [value];
+  const seen = {};
+
+  return raw
+    .map(numero_)
+    .filter(id => id > 0)
+    .filter(id => {
+      const key = String(id);
+      if (seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
+}
+
+function compararCompraOrigenesFondosQTAS_(a, b) {
+  if (numero_(a.Compra_ID) !== numero_(b.Compra_ID)) {
+    return numero_(a.Compra_ID) - numero_(b.Compra_ID);
+  }
+  if (texto_(a.Compra_Detalle_ID) !== texto_(b.Compra_Detalle_ID)) {
+    return texto_(a.Compra_Detalle_ID).localeCompare(texto_(b.Compra_Detalle_ID));
+  }
+  return ordenAportanteOrigenFondosQTAS_(a.Aportante) - ordenAportanteOrigenFondosQTAS_(b.Aportante);
+}
+
+function claveCostoHistoricoQTAS_(tipoItem, item, unidad) {
+  const tipo = normalizarTipoCompraItemQTAS_(tipoItem);
+  const nombre = texto_(item);
+  const unidadCanonica = normalizarUnidadCanonicaQTAS_(unidad);
+
+  if (!tipo || !nombre || !unidadCanonica) return '';
+  return [
+    normalizarClaveTexto_(tipo),
+    normalizarClaveTexto_(nombre),
+    normalizarClaveTexto_(unidadCanonica)
+  ].join('|');
+}
+
+function construirIdentidadEventoCostoHistoricoQTAS_(evento) {
+  return [
+    texto_(evento && evento.key),
+    normalizarClaveTexto_(evento && evento.fuenteTipo),
+    texto_(evento && evento.fuenteId),
+    fechaTextoPlanoQTAS_(evento && evento.fechaDesde)
+  ].join('|');
+}
+
+function prioridadFuenteCostoHistoricoQTAS_(fuenteTipo) {
+  const key = normalizarClaveTexto_(fuenteTipo);
+  if (key === normalizarClaveTexto_('Directo')) return 10;
+  if (key === normalizarClaveTexto_('Compra')) return 20;
+  if (key === normalizarClaveTexto_('Manual')) return 30;
+  return 25;
+}
+
+function compararFilasCostoHistoricoQTAS_(a, b) {
+  const keyA = claveCostoHistoricoQTAS_(a.Tipo_Item, a.Item, a.Unidad);
+  const keyB = claveCostoHistoricoQTAS_(b.Tipo_Item, b.Item, b.Unidad);
+  if (keyA !== keyB) return keyA.localeCompare(keyB);
+
+  const fechaA = fechaTextoPlanoQTAS_(a.Fecha_Desde);
+  const fechaB = fechaTextoPlanoQTAS_(b.Fecha_Desde);
+  if (fechaA !== fechaB) return fechaA.localeCompare(fechaB);
+
+  return texto_(a.Costo_ID).localeCompare(texto_(b.Costo_ID));
 }

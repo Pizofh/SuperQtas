@@ -105,6 +105,22 @@ function escribirFilasDesdeFilaQTAS_(sheet, startRow, rows) {
     .setValues(rows);
 }
 
+function sobrescribirObjetosHojaQTAS_(sheet, headers, objects) {
+  if (!sheet || !headers || !headers.length) return;
+
+  const lastRow = sheet.getLastRow();
+  const lastColumn = Math.max(sheet.getLastColumn(), headers.length);
+  if (lastRow > 1 && lastColumn > 0) {
+    sheet.getRange(2, 1, lastRow - 1, lastColumn).clearContent();
+  }
+
+  if (!objects || !objects.length) return;
+
+  sheet
+    .getRange(2, 1, objects.length, headers.length)
+    .setValues(objects.map(obj => filaDesdeHeaders_(headers, obj)));
+}
+
 function reemplazarObjetos_(sheet, headers, objects) {
   if (!sheet || !headers || !headers.length) return;
 
@@ -501,6 +517,42 @@ function siguienteIdConPrefijoPersistenteQTAS_(sequenceKey, sheet, headerName, p
   });
 
   return prefix + String(siguienteNumero).padStart(size, '0');
+}
+
+function maximoIdNumericoHojaQTAS_(sheet, headerName) {
+  const headers = getHeaders_(sheet);
+  const col = headers.indexOf(headerName) + 1;
+  const lastRow = sheet ? sheet.getLastRow() : 0;
+
+  if (!col || lastRow < 2) return 0;
+
+  return sheet
+    .getRange(2, col, lastRow - 1, 1)
+    .getValues()
+    .flat()
+    .map(numero_)
+    .reduce((max, value) => Math.max(max, value > 0 ? value : 0), 0);
+}
+
+function fijarSecuenciaPersistenteQTAS_(sequenceKey, lastAssigned) {
+  const props = PropertiesService.getDocumentProperties();
+  const propKey = `QTAS_SEQ_${texto_(sequenceKey)}`;
+  const value = Math.max(0, Math.floor(numero_(lastAssigned)));
+
+  if (value > 0) {
+    props.setProperty(propKey, String(value));
+  } else {
+    props.deleteProperty(propKey);
+  }
+
+  return value;
+}
+
+function resincronizarIdNumericoPersistenteQTAS_(sequenceKey, sheet, headerName) {
+  return fijarSecuenciaPersistenteQTAS_(
+    sequenceKey,
+    maximoIdNumericoHojaQTAS_(sheet, headerName)
+  );
 }
 
 function withScriptLock_(label, fn, performance) {
