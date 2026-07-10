@@ -869,14 +869,18 @@
             <datalist id="itemsCompraListInsumo"></datalist>
             <datalist id="itemsCompraListGasto"></datalist>
 
-            <div class="grid-2">
+            <div class="grid-3">
               <div>
                 <label>Fecha de compra</label>
-                <input id="fechaCompra" type="date">
+                <input id="fechaCompra" type="date" onchange="actualizarEstadoOrigenFondosCompra()">
               </div>
               <div>
                 <label>Medio de pago</label>
                 <select id="medioPagoCompra"></select>
+              </div>
+              <div>
+                <label>Origen de fondos</label>
+                <select id="origenFondosCompra" onchange="actualizarEstadoOrigenFondosCompra()"></select>
               </div>
             </div>
 
@@ -890,6 +894,8 @@
                 <input id="comentarioCompra" placeholder="Lote, promo, observacion...">
               </div>
             </div>
+
+            <div id="origenFondosCompraEstado" class="field-feedback">Sin origen de fondos seleccionado.</div>
           </section>
 
           <section class="card">
@@ -979,6 +985,9 @@
           </button>
           <button class="btn ghost admin-tab" type="button" data-tab="distribucion" onclick="mostrarAdminTab('distribucion')">
             Distribucion
+          </button>
+          <button class="btn ghost admin-tab" type="button" data-tab="fondos" onclick="mostrarAdminTab('fondos')">
+            Fondos compras
           </button>
         </div>
 
@@ -1165,6 +1174,97 @@
               <div id="adminReglasResumen" class="tag-row"></div>
               <div id="adminReglasLista" class="list list-scroll">
                 <div class="admin-empty">Cargando reglas...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="admin-panel hidden" data-tab="fondos">
+          <div class="admin-layout">
+            <div class="panel-card">
+              <h3>Regla de origen de fondos</h3>
+
+              <div class="grid-2">
+                <div>
+                  <label>Origen de fondos</label>
+                  <input id="adminOrigenFondosNombre" placeholder="Ej: SM, Mush, Steve, Caja mixta..." oninput="actualizarResumenOrigenFondosAdmin_()">
+                </div>
+                <div>
+                  <label>Fecha desde</label>
+                  <input id="adminOrigenFechaDesde" type="date" onchange="actualizarResumenOrigenFondosAdmin_()">
+                </div>
+              </div>
+
+              <div class="grid-3">
+                <div>
+                  <label>Steve %</label>
+                  <input id="adminOrigenSteve" type="number" step="0.01" placeholder="0" oninput="actualizarResumenOrigenFondosAdmin_()">
+                </div>
+                <div>
+                  <label>Majo %</label>
+                  <input id="adminOrigenMajo" type="number" step="0.01" placeholder="0" oninput="actualizarResumenOrigenFondosAdmin_()">
+                </div>
+                <div>
+                  <label>Mush %</label>
+                  <input id="adminOrigenMush" type="number" step="0.01" placeholder="0" oninput="actualizarResumenOrigenFondosAdmin_()">
+                </div>
+              </div>
+
+              <div>
+                <label>Nota</label>
+                <input id="adminOrigenNota" placeholder="Acuerdo nuevo, cambio temporal, compra especial...">
+              </div>
+
+              <div id="adminOrigenResumen" class="helper-box">Cada origen de fondos puede tener su propio historial por fecha.</div>
+
+              <div class="form-actions">
+                <button class="btn" type="button" onclick="guardarReglaOrigenFondosAdmin()">Guardar regla</button>
+                <button class="btn ghost" type="button" onclick="restablecerReglaOrigenFondosAdmin()">Limpiar</button>
+              </div>
+
+              <div style="height:12px;"></div>
+
+              <h3>Reaplicar historico</h3>
+
+              <div class="grid-2">
+                <div>
+                  <label>Origen por defecto</label>
+                  <input id="adminOrigenBackfillDefault" placeholder="Ej: SM, Mush, Steve...">
+                </div>
+                <div>
+                  <label>Modo</label>
+                  <select id="adminOrigenBackfillMode">
+                    <option value="missing">Solo compras sin reparto</option>
+                    <option value="replace">Reemplazar rango completo</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="grid-2">
+                <div>
+                  <label>Desde</label>
+                  <input id="adminOrigenBackfillDesde" type="date">
+                </div>
+                <div>
+                  <label>Hasta</label>
+                  <input id="adminOrigenBackfillHasta" type="date">
+                </div>
+              </div>
+
+              <div class="helper-box">
+                Recalcula asignaciones historicas de compras usando la regla vigente en cada fecha.
+              </div>
+
+              <div class="form-actions">
+                <button class="btn secondary" type="button" onclick="reconstruirOrigenesFondosHistoricosAdmin()">Reaplicar historico</button>
+                <button class="btn ghost" type="button" onclick="restablecerReaplicacionOrigenFondosAdmin_()">Limpiar rango</button>
+              </div>
+            </div>
+
+            <div>
+              <div id="adminOrigenesResumen" class="tag-row"></div>
+              <div id="adminOrigenesLista" class="list list-scroll">
+                <div class="admin-empty">Cargando reglas de fondos...</div>
               </div>
             </div>
           </div>
@@ -2482,8 +2582,35 @@
           <div>${escapeHtml(row.fechaVenta || '')} | Pago: <b>${escapeHtml(row.estadoPago || 'Pendiente')}</b></div>
           <div><b>${escapeHtml(moneda_(row.totalVenta || 0))}</b>${row.saldo > 0.009 ? ` | Saldo ${escapeHtml(moneda_(row.saldo || 0))}` : ''}</div>
           <div class="helper">${escapeHtml(row.productos || '')}</div>
+          <div class="list-item-actions">
+            <button class="btn danger" type="button" onclick="eliminarVentaReciente(${row.ventaId})">Eliminar</button>
+          </div>
         </div>
       `).join('');
+    }
+
+    function eliminarVentaReciente(ventaId) {
+      const venta = (ventasRecientes || []).find(item => String(item.ventaId) === String(ventaId));
+      if (!venta) {
+        document.getElementById('estado').innerText = 'La venta ya no aparece en recientes.';
+        return;
+      }
+
+      if (!confirm(`Se eliminara la venta V${ventaId} y sus registros asociados. Deseas continuar?`)) return;
+
+      document.getElementById('estado').innerText = `Eliminando V${ventaId}...`;
+
+      google.script.run
+        .withSuccessHandler(resp => {
+          document.getElementById('estado').innerText = `Venta V${ventaId} eliminada.`;
+          aplicarDashboardVentas_(resp.dashboard || {});
+        })
+        .withFailureHandler(err => {
+          document.getElementById('estado').innerText = construirMensajeEstadoError_('No se pudo eliminar la venta', err);
+        })
+        .eliminarVentaRecienteQTAS({
+          ventaId: ventaId
+        });
     }
 
     function marcarVentaEnviada(ventaId) {
@@ -2519,6 +2646,7 @@
     let catalogoCompras = {
       hoy: '',
       mediosPago: [],
+      origenesFondos: [],
       productos: [],
       itemsSugeridos: [],
       costosVigentes: [],
@@ -2537,6 +2665,7 @@
           catalogoCompras = data || {
             hoy: fechaHoyLocal_(),
             mediosPago: [],
+            origenesFondos: [],
             productos: [],
             itemsSugeridos: [],
             costosVigentes: [],
@@ -2551,6 +2680,8 @@
           renderProveedoresList();
           renderItemsCompraList();
           actualizarOpcionesMedioPagoCompra();
+          actualizarOpcionesOrigenFondosCompra();
+          actualizarEstadoOrigenFondosCompra();
           renderComprasRecientes();
           renderCostosVigentes();
 
@@ -2678,6 +2809,49 @@
       } else if ((catalogoCompras.mediosPago || []).length) {
         select.value = catalogoCompras.mediosPago[0];
       }
+    }
+
+    function actualizarOpcionesOrigenFondosCompra() {
+      const select = document.getElementById('origenFondosCompra');
+      const selected = select.value;
+      const opciones = catalogoCompras.origenesFondos || [];
+
+      select.innerHTML = ['<option value="">Seleccionar origen...</option>']
+        .concat(opciones.map(origen =>
+          `<option value="${escapeHtml(origen)}">${escapeHtml(origen)}</option>`
+        ))
+        .join('');
+
+      if (selected && opciones.includes(selected)) {
+        select.value = selected;
+      } else if (opciones.length === 1) {
+        select.value = opciones[0];
+      }
+    }
+
+    function actualizarEstadoOrigenFondosCompra() {
+      const helper = document.getElementById('origenFondosCompraEstado');
+      const origen = document.getElementById('origenFondosCompra').value;
+      const fecha = document.getElementById('fechaCompra').value || catalogoCompras.hoy || fechaHoyLocal_();
+      const total = (catalogoCompras.origenesFondos || []).length;
+      if (!helper) return;
+
+      helper.className = 'field-feedback';
+
+      if (!total) {
+        helper.classList.add('status-warn');
+        helper.innerText = 'No hay reglas de fondos configuradas. La compra se puede guardar, pero quedara sin reparto de aportantes.';
+        return;
+      }
+
+      if (!origen) {
+        helper.classList.add('status-warn');
+        helper.innerText = `Selecciona el origen de fondos para la compra del ${fecha}.`;
+        return;
+      }
+
+      helper.classList.add('status-ok');
+      helper.innerText = `Origen seleccionado: ${origen}. Se aplicara la regla vigente para ${fecha}.`;
     }
 
     function agregarLineaCompra() {
@@ -2996,6 +3170,7 @@
         fechaCompra: document.getElementById('fechaCompra').value,
         proveedor: document.getElementById('proveedorCompra').value.trim(),
         medioPago: document.getElementById('medioPagoCompra').value,
+        origenFondos: document.getElementById('origenFondosCompra').value,
         comentarioCompra: document.getElementById('comentarioCompra').value.trim(),
         lineas: []
       };
@@ -3029,6 +3204,11 @@
         return;
       }
 
+      if ((catalogoCompras.origenesFondos || []).length && !payload.origenFondos) {
+        alert('Selecciona el origen de fondos.');
+        return;
+      }
+
       if (!payload.lineas.length) {
         alert('Agrega al menos una linea valida.');
         return;
@@ -3039,7 +3219,12 @@
       google.script.run
         .withSuccessHandler(resp => {
           document.getElementById('estadoCompra').innerText =
-            `Compra ${resp.compraId} guardada. Total ${moneda_(resp.totalCompra)}. Costos actualizados: ${resp.costosActualizados}.`;
+            [
+              `Compra ${resp.compraId} guardada. Total ${moneda_(resp.totalCompra)}. Costos actualizados: ${resp.costosActualizados}.`,
+              resp.origenFondos
+                ? `Origen de fondos: ${resp.origenFondos}. Asignaciones: ${resp.origenesFondosAsignados || 0}.`
+                : 'Compra guardada sin origen de fondos asignado.'
+            ].join(' ');
           limpiarFormularioCompra();
           cargarCatalogoCompras(false);
         })
@@ -3055,6 +3240,8 @@
       document.getElementById('comentarioCompra').value = '';
       document.getElementById('lineasCompra').innerHTML = '';
       actualizarOpcionesMedioPagoCompra();
+      actualizarOpcionesOrigenFondosCompra();
+      actualizarEstadoOrigenFondosCompra();
       agregarLineaCompra();
     }
 
@@ -3071,10 +3258,38 @@
         <div class="list-item">
           <strong>C${escapeHtml(String(row.compraId))} | ${escapeHtml(row.proveedor)}</strong>
           <div>${escapeHtml(row.fechaCompra)} | ${escapeHtml(row.medioPago || '')}</div>
+          ${row.origenFondos ? `<div class="helper">Fondos: ${escapeHtml(row.origenFondos)}</div>` : ''}
           <div><b>${escapeHtml(moneda_(row.totalCompra || 0))}</b></div>
           <div class="helper">${escapeHtml(row.itemsResumen || '')}</div>
+          <div class="list-item-actions">
+            <button class="btn danger" type="button" onclick="eliminarCompraReciente(${row.compraId})">Eliminar</button>
+          </div>
         </div>
       `).join('');
+    }
+
+    function eliminarCompraReciente(compraId) {
+      const compra = (catalogoCompras.comprasRecientes || []).find(item => String(item.compraId) === String(compraId));
+      if (!compra) {
+        document.getElementById('estadoCompra').innerText = 'La compra ya no aparece en recientes.';
+        return;
+      }
+
+      if (!confirm(`Se eliminara la compra C${compraId} y se recalcularan sus costos derivados. Deseas continuar?`)) return;
+
+      document.getElementById('estadoCompra').innerText = `Eliminando C${compraId}...`;
+
+      google.script.run
+        .withSuccessHandler(() => {
+          document.getElementById('estadoCompra').innerText = `Compra C${compraId} eliminada. Costos historicos actualizados.`;
+          cargarCatalogoCompras(false);
+        })
+        .withFailureHandler(err => {
+          document.getElementById('estadoCompra').innerText = construirMensajeEstadoError_('No se pudo eliminar la compra', err);
+        })
+        .eliminarCompraRecienteQTAS({
+          compraId: compraId
+        });
     }
 
     function renderCostosVigentes() {
@@ -3135,6 +3350,7 @@
       if (options && (options.resetAll || options.resetPrecio)) restablecerPrecioAdmin();
       if (options && (options.resetAll || options.resetMedio)) restablecerMedioPagoAdmin();
       if (options && (options.resetAll || options.resetRegla)) restablecerReglaAdmin();
+      if (options && (options.resetAll || options.resetOrigen)) restablecerReglaOrigenFondosAdmin();
 
       mostrarAdminTab(options && options.tab ? options.tab : adminTab);
     }
@@ -3144,6 +3360,7 @@
       renderPreciosAdmin();
       renderMediosPagoAdmin();
       renderReglasDistribucionAdmin();
+      renderReglasOrigenesFondosAdmin();
       mostrarAdminTab(adminTab);
     }
 
@@ -3571,13 +3788,182 @@
         .guardarReglaDistribucionFrontendQTAS(payload);
     }
 
+    function renderReglasOrigenesFondosAdmin() {
+      const rows = (adminData.reglasOrigenesFondos || [])
+        .slice()
+        .sort((a, b) => {
+          const origen = String(a.origenFondos || '').localeCompare(String(b.origenFondos || ''), undefined, { sensitivity: 'base' });
+          if (origen !== 0) return origen;
+          return String(b.fechaDesde || '').localeCompare(String(a.fechaDesde || ''));
+        });
+      const cont = document.getElementById('adminOrigenesLista');
+      const origenesActivos = {};
+
+      rows.forEach(row => {
+        const estado = clasificarReglaOrigenFondosAdmin_(row);
+        if (estado.label === 'Vigente') {
+          origenesActivos[normalizarClave_(row.origenFondos)] = true;
+        }
+      });
+
+      const totalOrigenes = [...new Set(rows.map(row => normalizarClave_(row.origenFondos)).filter(Boolean))].length;
+      document.getElementById('adminOrigenesResumen').innerHTML = [
+        `<span class="tag ok">${Object.keys(origenesActivos).length} origen(es) vigente(s)</span>`,
+        `<span class="tag">${totalOrigenes} origen(es)</span>`,
+        `<span class="tag">${rows.length} regla(s)</span>`
+      ].join('');
+
+      if (!rows.length) {
+        cont.innerHTML = adminEmpty_('No hay reglas de fondos configuradas.');
+        return;
+      }
+
+      cont.innerHTML = rows.map(row => {
+        const estado = clasificarReglaOrigenFondosAdmin_(row);
+        return `
+          <div class="list-item">
+            <strong>${escapeHtml(row.origenFondos || 'Sin origen')}</strong>
+            <div>${escapeHtml(row.fechaDesde || '')}${row.fechaHasta ? ` hasta ${escapeHtml(row.fechaHasta)}` : ' en adelante'}</div>
+            <div>${escapeHtml(formatoRepartoAdmin_(row))}</div>
+            <div class="tag-row">
+              <span class="tag ${estado.clase}">${escapeHtml(estado.label)}</span>
+              <span class="tag">${escapeHtml(row.reglaId || '')}</span>
+            </div>
+            ${row.nota ? `<div class="admin-note">${escapeHtml(row.nota)}</div>` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function restablecerReaplicacionOrigenFondosAdmin_() {
+      document.getElementById('adminOrigenBackfillDefault').value = '';
+      document.getElementById('adminOrigenBackfillMode').value = 'missing';
+      document.getElementById('adminOrigenBackfillDesde').value = '';
+      document.getElementById('adminOrigenBackfillHasta').value = '';
+    }
+
+    function restablecerReglaOrigenFondosAdmin() {
+      const actual = document.getElementById('adminOrigenFondosNombre').value.trim();
+      const base = obtenerUltimaReglaOrigenFondosAdmin_(actual) || obtenerUltimaReglaOrigenFondosAdmin_('');
+      document.getElementById('adminOrigenFondosNombre').value = base && base.origenFondos ? base.origenFondos : '';
+      document.getElementById('adminOrigenFechaDesde').value = sugerirFechaNuevaReglaOrigenFondosAdmin_(document.getElementById('adminOrigenFondosNombre').value);
+      document.getElementById('adminOrigenNota').value = '';
+      document.getElementById('adminOrigenSteve').value = base && base.steve ? base.steve : '';
+      document.getElementById('adminOrigenMajo').value = base && base.majo ? base.majo : '';
+      document.getElementById('adminOrigenMush').value = base && base.mush ? base.mush : '';
+      actualizarResumenOrigenFondosAdmin_();
+    }
+
+    function actualizarResumenOrigenFondosAdmin_() {
+      const origenFondos = document.getElementById('adminOrigenFondosNombre').value.trim();
+      const fechaDesde = document.getElementById('adminOrigenFechaDesde').value;
+      const steve = numero_(document.getElementById('adminOrigenSteve').value);
+      const majo = numero_(document.getElementById('adminOrigenMajo').value);
+      const mush = numero_(document.getElementById('adminOrigenMush').value);
+      const total = redondearNumero_(steve + majo + mush);
+      const resumen = document.getElementById('adminOrigenResumen');
+      const ultima = obtenerUltimaReglaOrigenFondosAdmin_(origenFondos);
+
+      if (!origenFondos) {
+        resumen.innerText = 'Debes indicar el origen de fondos.';
+        return;
+      }
+
+      if (!fechaDesde) {
+        resumen.innerText = 'Debes indicar la fecha desde.';
+        return;
+      }
+
+      if (Math.abs(total - 100) > 0.01) {
+        resumen.innerText = `La suma actual da ${total}%. Debe cerrar en 100%.`;
+        return;
+      }
+
+      if (ultima && ultima.fechaDesde && fechaDesde <= ultima.fechaDesde) {
+        resumen.innerText = `La nueva fecha debe ser posterior a ${ultima.fechaDesde} para ${origenFondos}.`;
+        return;
+      }
+
+      resumen.innerText = ultima && ultima.fechaDesde
+        ? `Nueva version para ${origenFondos} desde ${fechaDesde}. La regla anterior se cerrara automaticamente el dia previo.`
+        : `Primera regla para ${origenFondos} desde ${fechaDesde}.`;
+    }
+
+    function reconstruirOrigenesFondosHistoricosAdmin() {
+      const payload = {
+        origenFondosDefault: document.getElementById('adminOrigenBackfillDefault').value.trim(),
+        fechaDesde: document.getElementById('adminOrigenBackfillDesde').value,
+        fechaHasta: document.getElementById('adminOrigenBackfillHasta').value,
+        replaceExisting: document.getElementById('adminOrigenBackfillMode').value === 'replace'
+      };
+
+      if (!payload.fechaDesde && !payload.fechaHasta) {
+        setEstadoAdmin('Define al menos una fecha para el rango historico.');
+        return;
+      }
+
+      if (!confirm('Se recalcularan asignaciones historicas de compras en el rango indicado. Deseas continuar?')) return;
+
+      setEstadoAdmin('Reaplicando historico de fondos...');
+
+      google.script.run
+        .withSuccessHandler(resp => {
+          setEstadoAdmin(`Historico de fondos actualizado. Compras procesadas: ${resp.procesadas}.`);
+          cargarConfiguracionAvanzada(false);
+        })
+        .withFailureHandler(err => {
+          setEstadoAdmin(construirMensajeEstadoError_('No se pudo reaplicar el historico de fondos', err));
+        })
+        .reconstruirOrigenesFondosComprasHistoricasQTAS(payload);
+    }
+
+    function guardarReglaOrigenFondosAdmin() {
+      const payload = {
+        origenFondos: document.getElementById('adminOrigenFondosNombre').value.trim(),
+        fechaDesde: document.getElementById('adminOrigenFechaDesde').value,
+        steve: numero_(document.getElementById('adminOrigenSteve').value),
+        majo: numero_(document.getElementById('adminOrigenMajo').value),
+        mush: numero_(document.getElementById('adminOrigenMush').value),
+        nota: document.getElementById('adminOrigenNota').value.trim()
+      };
+      const total = redondearNumero_(payload.steve + payload.majo + payload.mush);
+
+      if (!payload.origenFondos) {
+        alert('Falta el origen de fondos.');
+        return;
+      }
+
+      if (!payload.fechaDesde) {
+        alert('Falta la fecha desde.');
+        return;
+      }
+
+      if (Math.abs(total - 100) > 0.01) {
+        alert('La regla debe sumar 100%.');
+        return;
+      }
+
+      setEstadoAdmin('Guardando regla de fondos...');
+
+      google.script.run
+        .withSuccessHandler(data => {
+          aplicarRespuestaAdmin_(data, { resetOrigen: true, tab: 'fondos' });
+          setEstadoAdmin(`Regla de fondos guardada para ${payload.origenFondos} desde ${payload.fechaDesde}.`);
+        })
+        .withFailureHandler(err => {
+          setEstadoAdmin(construirMensajeEstadoError_('No se pudo guardar la regla de fondos', err));
+        })
+        .guardarReglaOrigenFondosFrontendQTAS(payload);
+    }
+
     function adminDefaults_() {
       return {
         hoy: fechaHoyLocal_(),
         productos: [],
         precios: [],
         mediosPago: [],
-        reglasDistribucion: []
+        reglasDistribucion: [],
+        reglasOrigenesFondos: []
       };
     }
 
@@ -3627,6 +4013,14 @@
         .sort((a, b) => b.fechaDesde.localeCompare(a.fechaDesde))[0] || null;
     }
 
+    function obtenerUltimaReglaOrigenFondosAdmin_(origenFondos) {
+      const key = normalizarClave_(origenFondos);
+      return (adminData.reglasOrigenesFondos || [])
+        .filter(row => !key || normalizarClave_(row.origenFondos) === key)
+        .slice()
+        .sort((a, b) => String(b.fechaDesde || '').localeCompare(String(a.fechaDesde || '')))[0] || null;
+    }
+
     function clasificarReglaDistribucionAdmin_(row) {
       const hoy = adminData.hoy || fechaHoyLocal_();
       if (!row || !row.activo) return { label: 'Inactiva', clase: 'warn' };
@@ -3635,9 +4029,24 @@
       return { label: 'Historica', clase: '' };
     }
 
+    function clasificarReglaOrigenFondosAdmin_(row) {
+      const hoy = adminData.hoy || fechaHoyLocal_();
+      if (!row) return { label: 'Inactiva', clase: 'warn' };
+      if (row.fechaDesde > hoy) return { label: 'Programada', clase: 'warn' };
+      if (!row.fechaHasta || row.fechaHasta >= hoy) return { label: 'Vigente', clase: 'ok' };
+      return { label: 'Historica', clase: '' };
+    }
+
     function sugerirFechaNuevaReglaAdmin_() {
       const hoy = adminData.hoy || fechaHoyLocal_();
       const ultima = obtenerUltimaReglaDistribucionAdmin_();
+      if (!ultima || !ultima.fechaDesde) return hoy;
+      return hoy > ultima.fechaDesde ? hoy : sumarDiasTextoFecha_(ultima.fechaDesde, 1);
+    }
+
+    function sugerirFechaNuevaReglaOrigenFondosAdmin_(origenFondos) {
+      const hoy = adminData.hoy || fechaHoyLocal_();
+      const ultima = obtenerUltimaReglaOrigenFondosAdmin_(origenFondos);
       if (!ultima || !ultima.fechaDesde) return hoy;
       return hoy > ultima.fechaDesde ? hoy : sumarDiasTextoFecha_(ultima.fechaDesde, 1);
     }

@@ -486,6 +486,69 @@ export const SCENARIOS = [
     }
   },
   {
+    id: 'compra_origen_fondos_por_fecha',
+    title: 'Compra asigna aportantes segun origen de fondos y fecha',
+    tags: ['compras', 'fondos', 'smoke'],
+    run: async ctx => {
+      await ctx.reset();
+
+      await ctx.call('guardarReglaOrigenFondosFrontendQTAS', {
+        origenFondos: 'SM',
+        fechaDesde: '2026-06-01',
+        steve: 50,
+        majo: 50,
+        mush: 0,
+        nota: 'Base SM'
+      });
+
+      await ctx.call('guardarReglaOrigenFondosFrontendQTAS', {
+        origenFondos: 'SM',
+        fechaDesde: '2026-07-01',
+        steve: 40,
+        majo: 60,
+        mush: 0,
+        nota: 'Ajuste SM'
+      });
+
+      const resp = await ctx.call('registrarCompraQTAS', compraPayloadBase({
+        fechaCompra: '2026-07-02',
+        proveedor: 'Proveedor Fondo Test',
+        origenFondos: 'SM',
+        lineas: [
+          compraLinea('Insumo', 'Caja', 2, 'und', 10000, true, 'Compra con reparto')
+        ]
+      }));
+
+      ctx.equal(String(resp.origenFondos), 'SM', 'La compra debe conservar el origen de fondos usado.');
+      ctx.equal(ctx.num(resp.origenesFondosAsignados), 2, 'La compra debe generar dos asignaciones de fondos.');
+
+      const state = await snapshotLigero(ctx, {
+        sheetNames: ['Origenes_Fondos_Reglas', 'Compra_Origenes_Fondos'],
+        includeCompras: true
+      });
+      const reglas = ctx.sheetRows(state, 'Origenes_Fondos_Reglas');
+      const asignaciones = ctx.sheetRows(state, 'Compra_Origenes_Fondos')
+        .filter(row => ctx.num(row.Compra_ID) === ctx.num(resp.compraId));
+
+      ctx.equal(reglas.length, 4, 'Deben existir cuatro filas historicas para las dos versiones de la regla SM.');
+      ctx.equal(asignaciones.length, 2, 'La compra debe repartir una linea entre dos aportantes.');
+
+      const filaSteve = asignaciones.find(row => row.Aportante === 'Steve');
+      const filaMajo = asignaciones.find(row => row.Aportante === 'Majo');
+
+      ctx.assert(filaSteve, 'Debe existir la asignacion para Steve.');
+      ctx.assert(filaMajo, 'Debe existir la asignacion para Majo.');
+      ctx.equal(ctx.num(filaSteve.Porcentaje), 40, 'Steve debe tomar 40% en la fecha nueva.');
+      ctx.equal(ctx.num(filaMajo.Porcentaje), 60, 'Majo debe tomar 60% en la fecha nueva.');
+      ctx.equal(ctx.num(filaSteve.Monto_Asignado), 4000, 'A Steve deben asignarse 4000.');
+      ctx.equal(ctx.num(filaMajo.Monto_Asignado), 6000, 'A Majo deben asignarse 6000.');
+      ctx.assert(
+        (state.comprasRecientes || []).some(row => ctx.num(row.compraId) === ctx.num(resp.compraId) && row.origenFondos === 'SM'),
+        'Las compras recientes deben exponer el origen de fondos.'
+      );
+    }
+  },
+  {
     id: 'compra_estandariza_item_catalogo',
     title: 'Compra reutiliza items conocidos y los deja sugeridos en catalogo',
     tags: ['compras', 'catalogo', 'smoke'],
@@ -710,6 +773,183 @@ export const SCENARIOS = [
         medioRow.activo === false || String(medioRow.activo).toLowerCase() === 'false',
         'El medio debe quedar desactivado.'
       );
+    }
+  },
+  {
+    id: 'compra_origen_fondos_historico_reaplica',
+    title: 'Historico de compras reaplica origenes de fondos por rango',
+    tags: ['compras', 'fondos', 'historico'],
+    run: async ctx => {
+      await ctx.reset();
+
+      await ctx.call('guardarReglaOrigenFondosFrontendQTAS', {
+        origenFondos: 'SM',
+        fechaDesde: '2026-06-01',
+        steve: 50,
+        majo: 50,
+        mush: 0,
+        nota: 'Base historica SM'
+      });
+
+      const compra = await ctx.call('registrarCompraQTAS', compraPayloadBase({
+        fechaCompra: '2026-06-20',
+        proveedor: 'Proveedor Fondo Historico Test',
+        lineas: [
+          compraLinea('Insumo', 'CajaHistorica', 2, 'und', 10000, true, 'Compra sin reparto inicial')
+        ]
+      }));
+
+      const reconstruccion = await ctx.call('reconstruirOrigenesFondosComprasHistoricasQTAS', {
+        fechaDesde: '2026-06-01',
+        fechaHasta: '2026-06-30',
+        origenFondosDefault: 'SM',
+        replaceExisting: false
+      });
+
+      ctx.equal(ctx.num(reconstruccion.procesadas), 1, 'Debe procesarse una compra historica.');
+      ctx.equal(ctx.num(reconstruccion.asignaciones), 2, 'La reconstruccion debe generar dos asignaciones.');
+
+      const state = await snapshotLigero(ctx, {
+        sheetNames: ['Compra_Origenes_Fondos']
+      });
+      const asignaciones = ctx.sheetRows(state, 'Compra_Origenes_Fondos')
+        .filter(row => ctx.num(row.Compra_ID) === ctx.num(compra.compraId));
+
+      ctx.equal(asignaciones.length, 2, 'La compra debe quedar repartida entre dos aportantes.');
+      ctx.equal(ctx.num(asignaciones.find(row => row.Aportante === 'Steve').Monto_Asignado), 5000, 'Steve debe recibir 5000.');
+      ctx.equal(ctx.num(asignaciones.find(row => row.Aportante === 'Majo').Monto_Asignado), 5000, 'Majo debe recibir 5000.');
+    }
+  },
+  {
+    id: 'compra_eliminacion_reciente_reconstruye_costos',
+    title: 'Eliminar compra reciente limpia cascada y recompone costos',
+    tags: ['compras', 'costos', 'correccion', 'smoke'],
+    run: async ctx => {
+      await ctx.reset();
+
+      await ctx.call('registrarCompraQTAS', compraPayloadBase({
+        fechaCompra: '2026-06-20',
+        proveedor: 'Proveedor Delete Test 1',
+        lineas: [
+          compraLinea('Insumo', 'CajaDeleteTest', 10, 'und', 5000, true, 'Costo base')
+        ]
+      }));
+
+      const compra2 = await ctx.call('registrarCompraQTAS', compraPayloadBase({
+        fechaCompra: '2026-06-21',
+        proveedor: 'Proveedor Delete Test 2',
+        lineas: [
+          compraLinea('Insumo', 'CajaDeleteTest', 10, 'und', 7000, true, 'Costo a corregir')
+        ]
+      }));
+
+      const eliminacion = await ctx.call('eliminarCompraRecienteQTAS', {
+        compraId: compra2.compraId
+      });
+
+      ctx.equal(ctx.num(eliminacion.removed.compras), 1, 'Debe eliminarse una compra.');
+      ctx.equal(ctx.num(eliminacion.removed.compraDetalle), 1, 'Debe eliminarse un detalle de compra.');
+
+      let state = await snapshotLigero(ctx, {
+        sheetNames: ['Compras', 'Compra_Detalle', 'Costos_Referencia'],
+        includeCompras: true
+      });
+      let costos = ctx.sheetRows(state, 'Costos_Referencia')
+        .filter(row => row.Item === 'CajaDeleteTest');
+
+      ctx.equal(ctx.sheetRows(state, 'Compras').length, 1, 'Solo debe quedar una compra.');
+      ctx.equal(costos.length, 1, 'El historico de costos debe volver a una sola fila vigente.');
+      ctx.equal(ctx.num(costos[0].Costo_Unitario), 500, 'Debe conservarse el costo de la compra restante.');
+
+      const compra3 = await ctx.call('registrarCompraQTAS', compraPayloadBase({
+        fechaCompra: '2026-06-22',
+        proveedor: 'Proveedor Delete Test 3',
+        lineas: [
+          compraLinea('Insumo', 'CajaDeleteTest', 4, 'und', 3600, true, 'Reingreso corregido')
+        ]
+      }));
+
+      ctx.equal(ctx.num(compra3.compraId), ctx.num(compra2.compraId), 'La nueva compra debe reutilizar el ultimo ID disponible.');
+
+      state = await snapshotLigero(ctx, {
+        sheetNames: ['Compras', 'Costos_Referencia'],
+        includeCompras: true
+      });
+      costos = ctx.sheetRows(state, 'Costos_Referencia')
+        .filter(row => row.Item === 'CajaDeleteTest');
+
+      ctx.assert(
+        (state.costosVigentes || []).some(row => row.item === 'CajaDeleteTest' && ctx.num(row.costoUnitario) === 900),
+        'El costo vigente debe reflejar la compra corregida.'
+      );
+      ctx.equal(costos.length, 2, 'El historico debe conservar la fila previa y la corregida.');
+    }
+  },
+  {
+    id: 'venta_eliminacion_reciente_reusa_id',
+    title: 'Eliminar venta reciente limpia cascada y libera el ultimo ID',
+    tags: ['ventas', 'correccion'],
+    run: async ctx => {
+      await ctx.reset();
+
+      await ctx.call('registrarVentaQTAS', ventaPayloadBase({
+        cliente: { nombre: 'Cliente Delete Base' },
+        pendienteEnvio: true,
+        lineas: [
+          ventaLinea('AcSup', 1, 'g', 20000)
+        ],
+        pagos: [
+          pagoLinea('Efectivo', 20000, 'Pago base')
+        ]
+      }));
+
+      const venta2 = await ctx.call('registrarVentaQTAS', ventaPayloadBase({
+        cliente: { nombre: 'Cliente Delete Target' },
+        pendienteEnvio: true,
+        lineas: [
+          ventaLinea('AcSup', 1, 'g', 22000)
+        ]
+      }));
+
+      const eliminacion = await ctx.call('eliminarVentaRecienteQTAS', {
+        ventaId: venta2.ventaId
+      });
+
+      ctx.equal(ctx.num(eliminacion.removed.ventas), 1, 'Debe eliminarse una venta.');
+      ctx.equal(ctx.num(eliminacion.removed.detalle), 1, 'Debe eliminarse el detalle asociado.');
+      ctx.equal(ctx.num(eliminacion.removed.distribucionIngresos), 1, 'Debe eliminarse la distribucion de la venta borrada.');
+      ctx.equal(ctx.num(eliminacion.removed.ventasEnvio), 1, 'Debe eliminarse el seguimiento de envio.');
+
+      let state = await snapshotLigero(ctx, {
+        sheetNames: ['Ventas', 'Venta_Detalle', 'Pagos', 'Distribucion_Ingresos', 'Ventas_Envio', 'Venta_Detalle_Costos_Calc'],
+        includeDashboard: true
+      });
+      ctx.equal(ctx.sheetRows(state, 'Ventas').length, 1, 'Solo debe quedar la venta base.');
+      ctx.equal(
+        ctx.sheetRows(state, 'Venta_Detalle').filter(row => ctx.num(row.Venta_ID) === ctx.num(venta2.ventaId)).length,
+        0,
+        'No deben quedar detalles de la venta eliminada.'
+      );
+      ctx.equal(
+        ctx.sheetRows(state, 'Venta_Detalle_Costos_Calc').filter(row => ctx.num(row.Venta_ID) === ctx.num(venta2.ventaId)).length,
+        0,
+        'No debe quedar analitica de costos para la venta eliminada.'
+      );
+
+      const venta3 = await ctx.call('registrarVentaQTAS', ventaPayloadBase({
+        cliente: { nombre: 'Cliente Delete Reuse' },
+        lineas: [
+          ventaLinea('AcSup', 1, 'g', 21000)
+        ]
+      }));
+
+      ctx.equal(ctx.num(venta3.ventaId), ctx.num(venta2.ventaId), 'La siguiente venta debe reutilizar el ultimo ID disponible.');
+
+      state = await snapshotLigero(ctx, {
+        sheetNames: ['Ventas'],
+        includeDashboard: true
+      });
+      ctx.equal(ctx.sheetRows(state, 'Ventas').length, 2, 'Deben quedar dos ventas activas tras reingresar la corregida.');
     }
   }
 ];

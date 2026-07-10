@@ -7,6 +7,7 @@ function getConfiguracionAvanzadaQTAS() {
     precios: listarPreciosQTAS_(),
     mediosPago: listarMediosPagoQTAS_(),
     reglasDistribucion: listarReglasDistribucionQTAS_(),
+    reglasOrigenesFondos: listarReglasOrigenesFondosQTAS_(),
     componentesProducto: listarComponentesProductoQTAS_(),
     reglasCostoProducto: listarReglasCostoProductoQTAS_()
   };
@@ -266,6 +267,70 @@ function guardarReglaDistribucionFrontendQTAS(payload) {
   });
 }
 
+function guardarReglaOrigenFondosFrontendQTAS(payload) {
+  return withScriptLock_('guardar regla origen fondos frontend', () => {
+    asegurarModeloOperativoQTAS_();
+
+    const origenFondos = texto_(payload && payload.origenFondos);
+    const fechaDesde = resolverFechaOperacion_(payload && payload.fechaDesde, new Date());
+    const steve = redondear_(numero_(payload && payload.steve));
+    const majo = redondear_(numero_(payload && payload.majo));
+    const mush = redondear_(numero_(payload && payload.mush));
+    const nota = texto_(payload && payload.nota) || 'Nueva regla de origen de fondos';
+
+    if (!origenFondos) {
+      throw new Error('Falta el origen de fondos.');
+    }
+
+    const total = redondear_(steve + majo + mush);
+    if (Math.abs(total - 100) > 0.01) {
+      throw new Error('La regla debe sumar 100%.');
+    }
+
+    const ss = SpreadsheetApp.getActive();
+    const sheet = ss.getSheetByName(QTAS.sheets.origenesFondosReglas);
+    const headers = getHeaders_(sheet);
+    const reglas = leerReglasOrigenesFondosQTAS_()
+      .filter(row => normalizarClaveTexto_(row.origenFondos) === normalizarClaveTexto_(origenFondos))
+      .sort((a, b) => a.desde - b.desde);
+
+    const ultima = reglas.length ? reglas[reglas.length - 1] : null;
+    if (ultima && fechaDesde <= ultima.desde) {
+      throw new Error('La nueva regla debe empezar despues de la ultima regla registrada para ese origen.');
+    }
+
+    if (ultima) {
+      leerObjetosConMeta_(sheet)
+        .filter(row => texto_(row.Regla_ID) === texto_(ultima.reglaId))
+        .forEach(row => {
+          actualizarFilaObjeto_(sheet, row.__rowNumber, headers, Object.assign({}, row, {
+            Fecha_Hasta: diaAnterior_(fechaDesde)
+          }));
+        });
+    }
+
+    const reglaId = siguienteIdConPrefijo_(sheet, 'Regla_ID', 'ORG-', 4);
+    const aportantes = construirAportantesOrigenFondosQTAS_({
+      steve: steve,
+      majo: majo,
+      mush: mush
+    });
+
+    escribirFilas_(sheet, aportantes.map(item => filaDesdeHeaders_(headers, {
+      Regla_ID: reglaId,
+      Origen_Fondos: origenFondos,
+      Fecha_Desde: fechaDesde,
+      Fecha_Hasta: '',
+      Aportante: item.aportante,
+      Porcentaje: item.porcentaje,
+      Nota: nota
+    })));
+
+    invalidarCacheDocumentoQTAS_('origenes_fondos_reglas_memoria');
+    return getConfiguracionAvanzadaQTAS();
+  });
+}
+
 function listarProductosQTAS_() {
   const sheet = SpreadsheetApp.getActive().getSheetByName(QTAS.sheets.productos);
   return leerObjetos_(sheet)
@@ -321,6 +386,26 @@ function listarReglasDistribucionQTAS_() {
       nota: texto_(row.nota)
     }))
     .sort((a, b) => b.fechaDesde.localeCompare(a.fechaDesde));
+}
+
+function listarReglasOrigenesFondosQTAS_() {
+  return leerReglasOrigenesFondosQTAS_()
+    .map(row => ({
+      reglaId: texto_(row.reglaId),
+      origenFondos: texto_(row.origenFondos),
+      fechaDesde: fechaInput_(row.desde),
+      fechaHasta: row.hasta ? fechaInput_(row.hasta) : '',
+      steve: redondear_(numero_(row.steve)),
+      majo: redondear_(numero_(row.majo)),
+      mush: redondear_(numero_(row.mush)),
+      activo: true,
+      nota: texto_(row.nota)
+    }))
+    .sort((a, b) => {
+      const origen = a.origenFondos.localeCompare(b.origenFondos, undefined, { sensitivity: 'base' });
+      if (origen !== 0) return origen;
+      return b.fechaDesde.localeCompare(a.fechaDesde);
+    });
 }
 
 function materializarConfigMediosPagoQTAS_() {
