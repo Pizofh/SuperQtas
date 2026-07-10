@@ -1222,43 +1222,6 @@
                 <button class="btn ghost" type="button" onclick="restablecerReglaOrigenFondosAdmin()">Limpiar</button>
               </div>
 
-              <div style="height:12px;"></div>
-
-              <h3>Reaplicar historico</h3>
-
-              <div class="grid-2">
-                <div>
-                  <label>Origen por defecto</label>
-                  <input id="adminOrigenBackfillDefault" placeholder="Ej: SM, Mush, Steve...">
-                </div>
-                <div>
-                  <label>Modo</label>
-                  <select id="adminOrigenBackfillMode">
-                    <option value="missing">Solo compras sin reparto</option>
-                    <option value="replace">Reemplazar rango completo</option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="grid-2">
-                <div>
-                  <label>Desde</label>
-                  <input id="adminOrigenBackfillDesde" type="date">
-                </div>
-                <div>
-                  <label>Hasta</label>
-                  <input id="adminOrigenBackfillHasta" type="date">
-                </div>
-              </div>
-
-              <div class="helper-box">
-                Recalcula asignaciones historicas de compras usando la regla vigente en cada fecha.
-              </div>
-
-              <div class="form-actions">
-                <button class="btn secondary" type="button" onclick="reconstruirOrigenesFondosHistoricosAdmin()">Reaplicar historico</button>
-                <button class="btn ghost" type="button" onclick="restablecerReaplicacionOrigenFondosAdmin_()">Limpiar rango</button>
-              </div>
             </div>
 
             <div>
@@ -3835,13 +3798,6 @@
       }).join('');
     }
 
-    function restablecerReaplicacionOrigenFondosAdmin_() {
-      document.getElementById('adminOrigenBackfillDefault').value = '';
-      document.getElementById('adminOrigenBackfillMode').value = 'missing';
-      document.getElementById('adminOrigenBackfillDesde').value = '';
-      document.getElementById('adminOrigenBackfillHasta').value = '';
-    }
-
     function restablecerReglaOrigenFondosAdmin() {
       const actual = document.getElementById('adminOrigenFondosNombre').value.trim();
       const base = obtenerUltimaReglaOrigenFondosAdmin_(actual) || obtenerUltimaReglaOrigenFondosAdmin_('');
@@ -3887,34 +3843,6 @@
       resumen.innerText = ultima && ultima.fechaDesde
         ? `Nueva version para ${origenFondos} desde ${fechaDesde}. La regla anterior se cerrara automaticamente el dia previo.`
         : `Primera regla para ${origenFondos} desde ${fechaDesde}.`;
-    }
-
-    function reconstruirOrigenesFondosHistoricosAdmin() {
-      const payload = {
-        origenFondosDefault: document.getElementById('adminOrigenBackfillDefault').value.trim(),
-        fechaDesde: document.getElementById('adminOrigenBackfillDesde').value,
-        fechaHasta: document.getElementById('adminOrigenBackfillHasta').value,
-        replaceExisting: document.getElementById('adminOrigenBackfillMode').value === 'replace'
-      };
-
-      if (!payload.fechaDesde && !payload.fechaHasta) {
-        setEstadoAdmin('Define al menos una fecha para el rango historico.');
-        return;
-      }
-
-      if (!confirm('Se recalcularan asignaciones historicas de compras en el rango indicado. Deseas continuar?')) return;
-
-      setEstadoAdmin('Reaplicando historico de fondos...');
-
-      google.script.run
-        .withSuccessHandler(resp => {
-          setEstadoAdmin(`Historico de fondos actualizado. Compras procesadas: ${resp.procesadas}.`);
-          cargarConfiguracionAvanzada(false);
-        })
-        .withFailureHandler(err => {
-          setEstadoAdmin(construirMensajeEstadoError_('No se pudo reaplicar el historico de fondos', err));
-        })
-        .reconstruirOrigenesFondosComprasHistoricasQTAS(payload);
     }
 
     function guardarReglaOrigenFondosAdmin() {
