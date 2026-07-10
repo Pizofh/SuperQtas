@@ -129,16 +129,12 @@ function exportarLibroTSVQTAS() {
 
 function layoutLibroQTAS_() {
   return {
-    operatorVisible: [
-      QTAS.sheets.productos,
-      QTAS.sheets.precios,
-      QTAS.sheets.clientes,
+    operatorVisible: [  
       QTAS.sheets.ventas,
       QTAS.sheets.compras,
       QTAS.sheets.pagos,
       QTAS.sheets.ventasEnvio,
-      QTAS.sheets.costosReferencia,
-      QTAS.sheets.costoProductoCalculado
+
     ],
     analysisVisible: [
       QTAS.sheets.detalle,
@@ -148,11 +144,16 @@ function layoutLibroQTAS_() {
       QTAS.sheets.compraOrigenesFondos
     ],
     backendHidden: [
+      QTAS.sheets.clientes,
+      QTAS.sheets.precios,
+      QTAS.sheets.productos,
       QTAS.sheets.config,
       QTAS.sheets.productoComponentes,
       QTAS.sheets.productoReglasCosto,
       QTAS.sheets.distribucionReglas,
-      QTAS.sheets.origenesFondosReglas
+      QTAS.sheets.origenesFondosReglas,
+      QTAS.sheets.costosReferencia,
+      QTAS.sheets.costoProductoCalculado
     ],
     colors: {
       operator: '#11b319',
