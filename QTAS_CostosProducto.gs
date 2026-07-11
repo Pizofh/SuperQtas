@@ -1706,8 +1706,13 @@ function estimarCostoUnitarioCalcaPsyloScibioQTAS_(costosCache) {
 
 function agruparCantidadStockInicialPsyloScibioQTAS_(pattern) {
   const matcher = pattern instanceof RegExp ? pattern : null;
+  const snapshot = construirStockInicialPsyloScibioQTAS_() || {};
+  const rows = Array.isArray(snapshot)
+    ? snapshot
+    : (Array.isArray(snapshot.stock) ? snapshot.stock : []);
+
   return redondear_(sumar_(
-    (construirStockInicialPsyloScibioQTAS_() || [])
+    rows
       .filter(row =>
         row &&
         row.tipoItem === 'Insumo' &&
