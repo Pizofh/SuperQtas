@@ -1324,3 +1324,398 @@ function claveRecetaComponenteQTAS_(row) {
   ].join('|');
 }
 
+function ajustarPackagingPsyloScibioQTAS() {
+  asegurarModeloOperativoQTAS_({ aplicarFormatos: true });
+
+  const recetas = alinearRecetasExtractosBaseQTAS();
+  const costos = sembrarCostosPackagingPsyloScibioQTAS();
+  const reglas = alinearReglasPackagingPsyloScibioQTAS();
+  const productosCosto = Array.from(new Set(
+    []
+      .concat(recetas && recetas.recetasAlineadas || [])
+      .concat(reglas && reglas.productosAfectados || [])
+  ));
+  const costoProducto = productosCosto.length
+    ? sincronizarCostoProductoDesdeProductosQTAS_(productosCosto, {
+      ss: SpreadsheetApp.getActive(),
+      ahora: new Date()
+    })
+    : {
+      ok: true,
+      rows: 0,
+      inserted: 0,
+      updated: 0,
+      stale: 0
+    };
+
+  limpiarCachesEjecucionQTAS_();
+
+  return {
+    ok: true,
+    recetas: recetas,
+    costos: costos,
+    reglas: reglas,
+    costoProducto: costoProducto,
+    assumptions: unirUnicos_(
+      []
+        .concat(recetas && recetas.assumptions || [])
+        .concat(costos && costos.assumptions || [])
+        .concat(reglas && reglas.assumptions || [])
+        .concat([
+          'AcAlt, AcMed, AcSup y Choco no se tocan en este ajuste porque falta confirmar la separacion final de empaque por tamano.',
+          'El borrado de hojas legacy se deja en un script aparte con dryRun por seguridad.'
+        ])
+    )
+  };
+}
+
+function ajustarPackagingPsyloScibioQTAS_Log() {
+  const result = ajustarPackagingPsyloScibioQTAS();
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+function sembrarCostosPackagingPsyloScibioQTAS() {
+  return withScriptLock_('sembrar costos packaging psylo scibio', () => {
+    asegurarModeloOperativoQTAS_({ aplicarFormatos: true });
+
+    const ss = SpreadsheetApp.getActive();
+    const sheet = ss.getSheetByName(QTAS.sheets.costosReferencia);
+    const headers = getHeaders_(sheet);
+    const rows = leerObjetosConMeta_(sheet);
+    const fechaDesde = resolverFechaOperacion_(new Date(), new Date());
+    const proveedor = 'Placeholder packaging Psylo Scibio';
+    const costosCache = cargarCostosEnMemoria_();
+    const seeds = crearSeedsCostosPackagingPsyloScibioQTAS_(costosCache, fechaDesde);
+    let actualizados = 0;
+
+    seeds.forEach(seed => {
+      actualizados += upsertCostoReferenciaHistoricoQTAS_({
+        sheet: sheet,
+        headers: headers,
+        rows: rows,
+        fechaDesde: fechaDesde,
+        proveedor: proveedor,
+        compraId: 0,
+        fuenteTipo: 'Directo',
+        fuenteId: construirFuenteDirectaCostoQTAS_(seed),
+        comentario: texto_(seed.nota),
+        nota: texto_(seed.referencia),
+        linea: {
+          Tipo_Item: seed.tipoItem,
+          Item: seed.item,
+          Unidad: seed.unidad,
+          Costo_Unitario: seed.costoUnitario,
+          Comentario_Linea: seed.nota
+        }
+      });
+    });
+
+    actualizados += asegurarCoberturaVigenteCostosSembradosQTAS_(
+      sheet,
+      headers,
+      rows,
+      seeds,
+      fechaDesde,
+      proveedor
+    );
+
+    limpiarCachesEjecucionQTAS_();
+
+    return {
+      ok: true,
+      fechaDesde: fechaInput_(fechaDesde),
+      proveedor: proveedor,
+      actualizados: actualizados,
+      costosSembrados: seeds.map(seed => ({
+        item: seed.item,
+        tipoItem: seed.tipoItem,
+        unidad: seed.unidad,
+        costoUnitario: seed.costoUnitario,
+        referencia: seed.referencia
+      })),
+      assumptions: [
+        'Bolsa_Papel_0_5lb y Bolsa_Papel_1lb se siembran como placeholder usando la referencia vigente de Bolsa_Barata.',
+        'Bolsa_Kraft_Zip_Mediana, Bolsa_Zip_Negra y Bolsa_Zip_Plateada se siembran usando la referencia vigente de Bolsa_Media.',
+        'Bolsa_Kraft_Zip_Grande y Frasco_Capsulas se siembran usando la referencia vigente de Bolsa_Cara.',
+        'Las calcas especificas se siembran con un costo unitario estimado a partir de Calcas genericas dividido entre el stock inicial de calcas contabilizadas.'
+      ]
+    };
+  });
+}
+
+function alinearReglasPackagingPsyloScibioQTAS() {
+  return withScriptLock_('alinear reglas packaging psylo scibio', () => {
+    asegurarModeloOperativoQTAS_();
+
+    const plan = construirReglasPackagingPsyloScibioQTAS_();
+    const ss = SpreadsheetApp.getActive();
+    const sheet = ss.getSheetByName(QTAS.sheets.productoReglasCosto);
+    const headers = getHeaders_(sheet);
+    const rows = leerObjetos_(sheet);
+    const productosObjetivo = {};
+    const existentesPorClave = {};
+    let nextId = siguienteIdConPrefijo_(sheet, 'Regla_Costo_ID', 'RCR-', 4);
+
+    plan.productosObjetivo.forEach(producto => {
+      productosObjetivo[normalizarClaveTexto_(producto)] = true;
+      validarProductoCanonicoExistenteQTAS_(ss, producto);
+    });
+
+    rows.forEach(row => {
+      const key = claveReglaPackagingPsyloScibioQTAS_(row);
+      if (!key || existentesPorClave[key]) return;
+      existentesPorClave[key] = row;
+    });
+
+    const deseadasConId = plan.rows.map(row => {
+      const key = claveReglaPackagingPsyloScibioQTAS_(row);
+      const existente = key ? existentesPorClave[key] : null;
+      const withId = Object.assign({}, row, {
+        Regla_Costo_ID: existente
+          ? texto_(existente.Regla_Costo_ID)
+          : nextId
+      });
+      if (!existente) {
+        nextId = siguienteIdConPrefijoDesdeValorQTAS_(nextId, 'RCR-', 4);
+      }
+      return withId;
+    });
+
+    const conservadas = rows
+      .filter(row => !productosObjetivo[normalizarClaveTexto_(row.Producto_Estandar)])
+      .map(row => ({
+        Regla_Costo_ID: texto_(row.Regla_Costo_ID),
+        Producto_Estandar: texto_(row.Producto_Estandar),
+        Unidad_Venta: normalizarUnidadCanonicaQTAS_(row.Unidad_Venta),
+        Fecha_Desde: row.Fecha_Desde ? resolverFechaOperacion_(row.Fecha_Desde, new Date()) : '',
+        Fecha_Hasta: row.Fecha_Hasta ? resolverFechaOperacion_(row.Fecha_Hasta, row.Fecha_Desde || new Date()) : '',
+        Cantidad_Min: texto_(row.Cantidad_Min) === '' ? '' : redondear_(numero_(row.Cantidad_Min)),
+        Cantidad_Max: texto_(row.Cantidad_Max) === '' ? '' : redondear_(numero_(row.Cantidad_Max)),
+        Orden: Math.max(1, Math.floor(numero_(row.Orden) || 1)),
+        Tipo_Componente: normalizarTipoCompraItemQTAS_(row.Tipo_Componente),
+        Item_Componente: texto_(row.Item_Componente),
+        Cantidad_Componente: redondear_(numero_(row.Cantidad_Componente)),
+        Unidad_Componente: normalizarUnidadCanonicaQTAS_(row.Unidad_Componente),
+        Aplicacion: normalizarAplicacionReglaCostoQTAS_(row.Aplicacion),
+        Merma_Pct: redondear_(numero_(row.Merma_Pct)),
+        Activo: estaActivo_(row.Activo),
+        Nota: texto_(row.Nota)
+      }));
+
+    const finalRows = conservadas
+      .concat(deseadasConId)
+      .sort((a, b) => {
+        if (a.Producto_Estandar !== b.Producto_Estandar) return a.Producto_Estandar.localeCompare(b.Producto_Estandar);
+        if (a.Unidad_Venta !== b.Unidad_Venta) return a.Unidad_Venta.localeCompare(b.Unidad_Venta);
+        if (numero_(a.Cantidad_Min) !== numero_(b.Cantidad_Min)) return numero_(a.Cantidad_Min) - numero_(b.Cantidad_Min);
+        if (texto_(a.Cantidad_Max) !== texto_(b.Cantidad_Max)) return texto_(a.Cantidad_Max).localeCompare(texto_(b.Cantidad_Max));
+        if (numero_(a.Orden) !== numero_(b.Orden)) return numero_(a.Orden) - numero_(b.Orden);
+        return texto_(a.Item_Componente).localeCompare(texto_(b.Item_Componente));
+      });
+
+    sobrescribirObjetosHojaQTAS_(sheet, headers, finalRows);
+
+    return {
+      ok: true,
+      reglasAlineadas: deseadasConId.length,
+      productosAfectados: plan.productosObjetivo.slice(),
+      assumptions: plan.assumptions.slice()
+    };
+  });
+}
+
+function construirReglasPackagingPsyloScibioQTAS_() {
+  const rows = [];
+  const productosObjetivo = [];
+  const assumptions = [
+    'Micros de 1 a 24 unidades consumen zip negra + bolsa papel 0.5 lb + calca logo.',
+    'Micros de 25 o mas siempre consumen bolsa papel 0.5 lb + calca logo; 100mg, 200mg y 300mg ademas consumen frasco y calca de instrucciones.',
+    'Polvos y hongos en gramos consumen bolsa kraft con zip mediana hasta 50 g y grande por encima de 50 g, mas su calca especifica de bolsa.'
+  ];
+  const micros = ['50mg', '100mg', '150mg', '200mg', '300mg', '500mg'];
+  const microsConFrasco = {
+    '100mg': true,
+    '200mg': true,
+    '300mg': true
+  };
+  const polvos = [
+    { producto: 'ColaDP', calca: 'Calca_ColaDP_Bolsa' },
+    { producto: 'ColaDPPow', calca: 'Calca_ColaDP_Bolsa' },
+    { producto: 'Cordy', calca: 'Calca_Cordy_Bolsa' },
+    { producto: 'CordyPow', calca: 'Calca_Cordy_Bolsa' },
+    { producto: 'Gano', calca: 'Calca_Gano_Bolsa' },
+    { producto: 'GanoPow', calca: 'Calca_Gano_Bolsa' },
+    { producto: 'Lm', calca: 'Calca_Lm_Bolsa' },
+    { producto: 'LmPow', calca: 'Calca_Lm_Bolsa' },
+    { producto: 'Shii', calca: 'Calca_Shii_Bolsa' },
+    { producto: 'ShiiPow', calca: 'Calca_Shii_Bolsa' }
+  ];
+
+  micros.forEach(producto => {
+    productosObjetivo.push(producto);
+    rows.push(crearReglaPackagingPsyloScibioQTAS_(producto, 'und', 1, 24, 10, 'Insumo', 'Bolsa_Zip_Negra', 1, 'und', 'PorLinea', 'Micros <25: una zip negra.'));
+    rows.push(crearReglaPackagingPsyloScibioQTAS_(producto, 'und', 1, 24, 20, 'Insumo', 'Bolsa_Papel_0_5lb', 1, 'und', 'PorLinea', 'Micros <25: una bolsa papel 0.5 lb.'));
+    rows.push(crearReglaPackagingPsyloScibioQTAS_(producto, 'und', 1, 24, 30, 'Insumo', 'Calca_Micros_Logo', 1, 'und', 'PorLinea', 'Micros <25: una calca logo.'));
+
+    rows.push(crearReglaPackagingPsyloScibioQTAS_(producto, 'und', 25, '', 20, 'Insumo', 'Bolsa_Papel_0_5lb', 1, 'und', 'PorLinea', 'Micros >=25: una bolsa papel 0.5 lb.'));
+    rows.push(crearReglaPackagingPsyloScibioQTAS_(producto, 'und', 25, '', 30, 'Insumo', 'Calca_Micros_Logo', 1, 'und', 'PorLinea', 'Micros >=25: una calca logo.'));
+
+    if (microsConFrasco[producto]) {
+      rows.push(crearReglaPackagingPsyloScibioQTAS_(producto, 'und', 25, '', 10, 'Insumo', 'Frasco_Capsulas', 1, 'und', 'PorLinea', 'Micros >=25: un frasco por pedido.'));
+      rows.push(crearReglaPackagingPsyloScibioQTAS_(producto, 'und', 25, '', 40, 'Insumo', 'Calca_Micros_Instrucciones', 1, 'und', 'PorLinea', 'Micros >=25: una calca de instrucciones.'));
+    }
+  });
+
+  polvos.forEach(item => {
+    productosObjetivo.push(item.producto);
+    rows.push(crearReglaPackagingPsyloScibioQTAS_(item.producto, 'g', '', 50, 10, 'Insumo', 'Bolsa_Kraft_Zip_Mediana', 1, 'und', 'PorLinea', 'Hasta 50 g: bolsa kraft zip mediana.'));
+    rows.push(crearReglaPackagingPsyloScibioQTAS_(item.producto, 'g', '', 50, 20, 'Insumo', item.calca, 1, 'und', 'PorLinea', 'Hasta 50 g: una calca especifica de bolsa.'));
+    rows.push(crearReglaPackagingPsyloScibioQTAS_(item.producto, 'g', 50.0001, '', 10, 'Insumo', 'Bolsa_Kraft_Zip_Grande', 1, 'und', 'PorLinea', 'Mas de 50 g: bolsa kraft zip grande.'));
+    rows.push(crearReglaPackagingPsyloScibioQTAS_(item.producto, 'g', 50.0001, '', 20, 'Insumo', item.calca, 1, 'und', 'PorLinea', 'Mas de 50 g: una calca especifica de bolsa.'));
+  });
+
+  return {
+    rows: rows,
+    productosObjetivo: productosObjetivo.filter((value, index, array) => array.indexOf(value) === index),
+    assumptions: assumptions
+  };
+}
+
+function crearReglaPackagingPsyloScibioQTAS_(
+  producto,
+  unidadVenta,
+  cantidadMin,
+  cantidadMax,
+  orden,
+  tipoComponente,
+  itemComponente,
+  cantidadComponente,
+  unidadComponente,
+  aplicacion,
+  nota
+) {
+  const medida = normalizarCantidadUnidadQTAS_(cantidadComponente, unidadComponente);
+  return {
+    Producto_Estandar: texto_(producto),
+    Unidad_Venta: normalizarUnidadCanonicaQTAS_(unidadVenta),
+    Fecha_Desde: '',
+    Fecha_Hasta: '',
+    Cantidad_Min: cantidadMin === '' ? '' : redondear_(numero_(cantidadMin)),
+    Cantidad_Max: cantidadMax === '' ? '' : redondear_(numero_(cantidadMax)),
+    Orden: Math.max(1, Math.floor(numero_(orden) || 1)),
+    Tipo_Componente: normalizarTipoCompraItemQTAS_(tipoComponente),
+    Item_Componente: texto_(itemComponente),
+    Cantidad_Componente: medida.cantidad,
+    Unidad_Componente: medida.unidad,
+    Aplicacion: normalizarAplicacionReglaCostoQTAS_(aplicacion),
+    Merma_Pct: 0,
+    Activo: true,
+    Nota: texto_(nota)
+  };
+}
+
+function claveReglaPackagingPsyloScibioQTAS_(row) {
+  return [
+    normalizarClaveTexto_(row.Producto_Estandar),
+    normalizarClaveTexto_(normalizarUnidadCanonicaQTAS_(row.Unidad_Venta)),
+    fechaTextoPlanoQTAS_(row.Fecha_Desde),
+    fechaTextoPlanoQTAS_(row.Fecha_Hasta),
+    texto_(row.Cantidad_Min),
+    texto_(row.Cantidad_Max),
+    String(Math.max(1, Math.floor(numero_(row.Orden) || 1))),
+    normalizarClaveTexto_(row.Tipo_Componente),
+    normalizarClaveTexto_(row.Item_Componente),
+    normalizarClaveTexto_(row.Aplicacion)
+  ].join('|');
+}
+
+function crearSeedsCostosPackagingPsyloScibioQTAS_(costosCache, fechaBase) {
+  const costoCalca = estimarCostoUnitarioCalcaPsyloScibioQTAS_(costosCache);
+  const costoBolsaBarata = resolverCostoPlaceholderPackagingPsyloScibioQTAS_(costosCache, 'Bolsa_Barata', 'und', 'Insumo', 300);
+  const costoBolsaMedia = resolverCostoPlaceholderPackagingPsyloScibioQTAS_(costosCache, 'Bolsa_Media', 'und', 'Insumo', 800);
+  const costoBolsaCara = resolverCostoPlaceholderPackagingPsyloScibioQTAS_(costosCache, 'Bolsa_Cara', 'und', 'Insumo', 1100);
+  const seeds = [
+    crearCostoDirectoBaseQTAS_('Bolsa_Papel_0_5lb', 'Insumo', 'und', costoBolsaBarata, 'Placeholder derivado de Bolsa_Barata.', `Placeholder ${costoBolsaBarata}/und desde Bolsa_Barata`),
+    crearCostoDirectoBaseQTAS_('Bolsa_Papel_1lb', 'Insumo', 'und', costoBolsaBarata, 'Placeholder derivado de Bolsa_Barata.', `Placeholder ${costoBolsaBarata}/und desde Bolsa_Barata`),
+    crearCostoDirectoBaseQTAS_('Bolsa_Kraft_Zip_Mediana', 'Insumo', 'und', costoBolsaMedia, 'Placeholder derivado de Bolsa_Media.', `Placeholder ${costoBolsaMedia}/und desde Bolsa_Media`),
+    crearCostoDirectoBaseQTAS_('Bolsa_Zip_Negra', 'Insumo', 'und', costoBolsaMedia, 'Placeholder derivado de Bolsa_Media.', `Placeholder ${costoBolsaMedia}/und desde Bolsa_Media`),
+    crearCostoDirectoBaseQTAS_('Bolsa_Zip_Plateada', 'Insumo', 'und', costoBolsaMedia, 'Placeholder derivado de Bolsa_Media.', `Placeholder ${costoBolsaMedia}/und desde Bolsa_Media`),
+    crearCostoDirectoBaseQTAS_('Bolsa_Kraft_Zip_Grande', 'Insumo', 'und', costoBolsaCara, 'Placeholder derivado de Bolsa_Cara.', `Placeholder ${costoBolsaCara}/und desde Bolsa_Cara`),
+    crearCostoDirectoBaseQTAS_('Frasco_Capsulas', 'Insumo', 'und', costoBolsaCara, 'Placeholder derivado de Bolsa_Cara.', `Placeholder ${costoBolsaCara}/und desde Bolsa_Cara`)
+  ];
+
+  [
+    'Calca_Choco',
+    'Calca_ColaDP_Bolsa',
+    'Calca_ColaDP_Ext',
+    'Calca_Cordy_Bolsa',
+    'Calca_Cordy_Ext',
+    'Calca_Gano_Bolsa',
+    'Calca_Gano_Ext',
+    'Calca_Lm_Bolsa',
+    'Calca_Lm_Ext',
+    'Calca_Micros_Logo',
+    'Calca_Micros_Instrucciones',
+    'Calca_Shii_Bolsa',
+    'Calca_Shii_Ext'
+  ].forEach(item => {
+    seeds.push(crearCostoDirectoBaseQTAS_(
+      item,
+      'Insumo',
+      'und',
+      costoCalca,
+      'Placeholder estimado a partir de Calcas genericas y el conteo inicial de calcas.',
+      `Placeholder ${costoCalca}/und para calca especifica`
+    ));
+  });
+
+  return seeds.filter(seed =>
+    numero_(seed.costoUnitario) > 0 &&
+    texto_(seed.item) &&
+    texto_(seed.unidad) &&
+    fechaBase
+  );
+}
+
+function resolverCostoPlaceholderPackagingPsyloScibioQTAS_(costosCache, item, unidad, tipoItem, fallback) {
+  const directo = redondear_(obtenerCostoVigenteDesdeCache_(
+    costosCache || cargarCostosEnMemoria_(),
+    item,
+    unidad,
+    new Date(),
+    tipoItem
+  ));
+  return directo > 0 ? directo : redondear_(numero_(fallback));
+}
+
+function estimarCostoUnitarioCalcaPsyloScibioQTAS_(costosCache) {
+  const costoGenerico = redondear_(obtenerCostoVigenteDesdeCache_(
+    costosCache || cargarCostosEnMemoria_(),
+    'Calcas',
+    'und',
+    new Date(),
+    'Insumo'
+  ));
+  const totalCalcas = agruparCantidadStockInicialPsyloScibioQTAS_(/^Calca_/);
+  if (costoGenerico > 0 && totalCalcas > 0) {
+    return redondear_(costoGenerico / totalCalcas);
+  }
+  return 150;
+}
+
+function agruparCantidadStockInicialPsyloScibioQTAS_(pattern) {
+  const matcher = pattern instanceof RegExp ? pattern : null;
+  return redondear_(sumar_(
+    (construirStockInicialPsyloScibioQTAS_() || [])
+      .filter(row =>
+        row &&
+        row.tipoItem === 'Insumo' &&
+        row.unidad === 'und' &&
+        matcher &&
+        matcher.test(texto_(row.item))
+      )
+      .map(row => numero_(row.cantidad))
+  ));
+}
+
