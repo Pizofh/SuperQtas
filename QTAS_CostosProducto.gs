@@ -1641,6 +1641,73 @@ function crearCostoDirectoBaseQTAS_(item, tipoItem, unidad, costoUnitario, nota,
   };
 }
 
+function construirFuenteDirectaCostoQTAS_(seed) {
+  return [
+    'DIR',
+    normalizarClaveProductoQTAS_(seed && seed.item, seed && seed.unidad)
+  ].join('-').slice(0, 99);
+}
+
+function asegurarCoberturaVigenteCostosSembradosQTAS_(sheet, headers, rows, seeds, fechaMinima, proveedor) {
+  const hoy = resolverFechaOperacion_(new Date(), new Date());
+  let actualizados = 0;
+
+  (seeds || []).forEach(seed => {
+    const existentes = (rows || [])
+      .filter(row =>
+        normalizarClaveTexto_(row.Tipo_Item) === normalizarClaveTexto_(seed.tipoItem) &&
+        normalizarClaveTexto_(row.Item) === normalizarClaveTexto_(seed.item) &&
+        normalizarClaveTexto_(row.Unidad) === normalizarClaveTexto_(seed.unidad) &&
+        estaActivo_(row.Activo)
+      )
+      .map(row => ({
+        raw: row,
+        desde: resolverFechaOperacion_(row.Fecha_Desde, hoy),
+        hasta: row.Fecha_Hasta ? resolverFechaOperacion_(row.Fecha_Hasta, row.Fecha_Desde || hoy) : null
+      }))
+      .sort((a, b) => a.desde - b.desde);
+
+    const vigenteHoy = existentes.some(row =>
+      hoy.getTime() >= row.desde.getTime() &&
+      (!row.hasta || hoy.getTime() <= row.hasta.getTime()) &&
+      numero_(row.raw && row.raw.Costo_Unitario) > 0
+    );
+    if (vigenteHoy) return;
+
+    const pasados = existentes.filter(row => row.desde.getTime() <= hoy.getTime());
+    const ultimoPasado = pasados.length ? pasados[pasados.length - 1] : null;
+    const fechaRelleno = ultimoPasado
+      ? diaSiguiente_(ultimoPasado.hasta || ultimoPasado.desde)
+      : resolverFechaOperacion_(fechaMinima, hoy);
+    const fechaDesdeRelleno = fechaRelleno.getTime() > hoy.getTime() ? hoy : fechaRelleno;
+
+    actualizados += upsertCostoReferenciaHistoricoQTAS_({
+      sheet: sheet,
+      headers: headers,
+      rows: rows,
+      fechaDesde: fechaDesdeRelleno,
+      proveedor: proveedor,
+      compraId: 0,
+      fuenteTipo: 'Directo',
+      fuenteId: `${construirFuenteDirectaCostoQTAS_(seed)}-vigente`,
+      comentario: unirUnicos_([
+        texto_(seed.nota),
+        'Relleno automatico de vigencia actual'
+      ]),
+      nota: texto_(seed.referencia),
+      linea: {
+        Tipo_Item: seed.tipoItem,
+        Item: seed.item,
+        Unidad: seed.unidad,
+        Costo_Unitario: seed.costoUnitario,
+        Comentario_Linea: texto_(seed.nota)
+      }
+    });
+  });
+
+  return actualizados;
+}
+
 function crearSeedsCostosPackagingPsyloScibioQTAS_(costosCache, fechaBase) {
   const costoCalca = estimarCostoUnitarioCalcaPsyloScibioQTAS_(costosCache);
   const costoBolsaBarata = resolverCostoPlaceholderPackagingPsyloScibioQTAS_(costosCache, 'Bolsa_Barata', 'und', 'Insumo', 300);
