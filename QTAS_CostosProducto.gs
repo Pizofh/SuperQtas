@@ -1116,111 +1116,211 @@ function upsertObjetosLotePorIdQTAS_(sheet, headers, objects, idHeader) {
 }
 
 function alinearRecetasExtractosBaseQTAS() {
-  const extractos = [
-    { producto: 'ColaDPExt', base: 'ColaDP', calcaExt: 'Calca_ColaDP_Ext' },
-    { producto: 'CordyExt', base: 'Cordy', calcaExt: 'Calca_Cordy_Ext' },
-    { producto: 'GanoExt', base: 'Gano', calcaExt: 'Calca_Gano_Ext' },
-    { producto: 'LmExt', base: 'Lm', calcaExt: 'Calca_Lm_Ext' },
-    { producto: 'ShiiExt', base: 'Shii', calcaExt: 'Calca_Shii_Ext' }
-  ];
-  const componentesComunes = [
-    {
-      orden: 20,
-      tipoComponente: 'Insumo',
-      itemComponente: 'Goteros',
-      cantidadComponente: 1,
-      unidadComponente: 'und',
-      nota: 'Un gotero por unidad.'
-    },
-    {
-      orden: 30,
-      tipoComponente: 'Insumo',
-      itemComponente: 'Alcohol',
-      cantidadComponente: 20,
-      unidadComponente: 'g',
-      nota: 'Supuesto operativo: 400 ml de alcohol por lote de 20 extracciones.'
-    },
-    {
-      orden: 35,
-      tipoComponente: 'Insumo',
-      itemComponente: 'Agua',
-      cantidadComponente: 60,
-      unidadComponente: 'g',
-      nota: 'Supuesto operativo: 400 ml iniciales + 800 ml adicionales por lote de 20 extracciones.'
-    },
-    {
-      orden: 40,
-      tipoComponente: 'Gasto',
-      itemComponente: 'Mano de obra',
-      cantidadComponente: 1,
-      unidadComponente: 'und',
-      nota: 'Unidad base de mano de obra.'
-    },
-    {
-      orden: 50,
-      tipoComponente: 'Insumo',
-      itemComponente: 'Bolsa_Papel_1lb',
-      cantidadComponente: 1,
-      unidadComponente: 'und',
-      nota: 'Una bolsa de papel de 1 lb por unidad.'
-    }
-  ];
-  const resumen = [];
+  return withScriptLock_('alinear recetas extractos base', () => {
+    asegurarModeloOperativoQTAS_();
 
-  extractos.forEach(item => {
-    resumen.push(guardarComponenteProductoQTAS({
-      producto: item.producto,
-      unidadVenta: 'und',
-      orden: 10,
-      tipoComponente: 'Producto',
-      itemComponente: item.base,
-      cantidadComponente: 7.5,
-      unidadComponente: 'g',
-      mermaPct: 0,
-      nota: 'Supuesto operativo: 150 g de hongo seco por lote de 20 extracciones.',
-      activo: true
-    }));
+    const extractos = [
+      { producto: 'ColaDPExt', base: 'ColaDP', calcaExt: 'Calca_ColaDP_Ext' },
+      { producto: 'CordyExt', base: 'Cordy', calcaExt: 'Calca_Cordy_Ext' },
+      { producto: 'GanoExt', base: 'Gano', calcaExt: 'Calca_Gano_Ext' },
+      { producto: 'LmExt', base: 'Lm', calcaExt: 'Calca_Lm_Ext' },
+      { producto: 'ShiiExt', base: 'Shii', calcaExt: 'Calca_Shii_Ext' }
+    ];
+    const componentesComunes = [
+      {
+        orden: 20,
+        tipoComponente: 'Insumo',
+        itemComponente: 'Goteros',
+        cantidadComponente: 1,
+        unidadComponente: 'und',
+        nota: 'Un gotero por unidad.'
+      },
+      {
+        orden: 30,
+        tipoComponente: 'Insumo',
+        itemComponente: 'Alcohol',
+        cantidadComponente: 20,
+        unidadComponente: 'g',
+        nota: 'Supuesto operativo: 400 ml de alcohol por lote de 20 extracciones.'
+      },
+      {
+        orden: 35,
+        tipoComponente: 'Insumo',
+        itemComponente: 'Agua',
+        cantidadComponente: 60,
+        unidadComponente: 'g',
+        nota: 'Supuesto operativo: 400 ml iniciales + 800 ml adicionales por lote de 20 extracciones.'
+      },
+      {
+        orden: 40,
+        tipoComponente: 'Gasto',
+        itemComponente: 'Mano de obra',
+        cantidadComponente: 1,
+        unidadComponente: 'und',
+        nota: 'Unidad base de mano de obra.'
+      },
+      {
+        orden: 50,
+        tipoComponente: 'Insumo',
+        itemComponente: 'Bolsa_Papel_1lb',
+        cantidadComponente: 1,
+        unidadComponente: 'und',
+        nota: 'Una bolsa de papel de 1 lb por unidad.'
+      }
+    ];
+    const ss = SpreadsheetApp.getActive();
+    const sheet = ss.getSheetByName(QTAS.sheets.productoComponentes);
+    const headers = getHeaders_(sheet);
+    const rows = leerObjetos_(sheet);
+    const productosObjetivo = {};
+    const existentesPorClave = {};
+    let nextId = siguienteIdConPrefijo_(sheet, 'Componente_ID', 'RCP-', 4);
 
-    componentesComunes.forEach(componente => {
-      resumen.push(guardarComponenteProductoQTAS({
-        producto: item.producto,
-        unidadVenta: 'und',
-        orden: componente.orden,
-        tipoComponente: componente.tipoComponente,
-        itemComponente: componente.itemComponente,
-        cantidadComponente: componente.cantidadComponente,
-        unidadComponente: componente.unidadComponente,
-        mermaPct: 0,
-        nota: componente.nota,
-        activo: true
-      }));
+    extractos.forEach(item => {
+      productosObjetivo[normalizarClaveTexto_(item.producto)] = true;
+      validarProductoCanonicoExistenteQTAS_(ss, item.producto);
     });
 
-    resumen.push(guardarComponenteProductoQTAS({
-      producto: item.producto,
-      unidadVenta: 'und',
-      orden: 60,
-      tipoComponente: 'Insumo',
-      itemComponente: item.calcaExt,
-      cantidadComponente: 1,
-      unidadComponente: 'und',
-      mermaPct: 0,
-      nota: 'Una calca especifica de extracto por unidad.',
-      activo: true
-    }));
-  });
+    rows.forEach(row => {
+      const key = claveRecetaComponenteQTAS_(row);
+      if (!key || existentesPorClave[key]) return;
+      existentesPorClave[key] = row;
+    });
 
+    const deseados = [];
+    extractos.forEach(item => {
+      deseados.push(
+        crearComponenteAlineadoExtractoQTAS_(item.producto, 'und', 10, 'Producto', item.base, 7.5, 'g',
+          'Supuesto operativo: 150 g de hongo seco por lote de 20 extracciones.')
+      );
+
+      componentesComunes.forEach(componente => {
+        deseados.push(
+          crearComponenteAlineadoExtractoQTAS_(
+            item.producto,
+            'und',
+            componente.orden,
+            componente.tipoComponente,
+            componente.itemComponente,
+            componente.cantidadComponente,
+            componente.unidadComponente,
+            componente.nota
+          )
+        );
+      });
+
+      deseados.push(
+        crearComponenteAlineadoExtractoQTAS_(
+          item.producto,
+          'und',
+          60,
+          'Insumo',
+          item.calcaExt,
+          1,
+          'und',
+          'Una calca especifica de extracto por unidad.'
+        )
+      );
+    });
+
+    const deseadosConId = deseados.map(row => {
+      const key = claveRecetaComponenteQTAS_(row);
+      const existente = key ? existentesPorClave[key] : null;
+      const withId = Object.assign({}, row, {
+        Componente_ID: existente
+          ? texto_(existente.Componente_ID)
+          : nextId
+      });
+      if (!existente) {
+        nextId = siguienteIdConPrefijoDesdeValorQTAS_(nextId, 'RCP-', 4);
+      }
+      return withId;
+    });
+
+    const conservados = rows
+      .filter(row => !productosObjetivo[normalizarClaveTexto_(row.Producto_Estandar)])
+      .map(row => ({
+        Componente_ID: texto_(row.Componente_ID),
+        Producto_Estandar: texto_(row.Producto_Estandar),
+        Unidad_Venta: normalizarUnidadCanonicaQTAS_(row.Unidad_Venta),
+        Orden: Math.max(1, Math.floor(numero_(row.Orden) || 1)),
+        Tipo_Componente: normalizarTipoCompraItemQTAS_(row.Tipo_Componente),
+        Item_Componente: texto_(row.Item_Componente),
+        Cantidad_Componente: redondear_(numero_(row.Cantidad_Componente)),
+        Unidad_Componente: normalizarUnidadCanonicaQTAS_(row.Unidad_Componente),
+        Merma_Pct: redondear_(numero_(row.Merma_Pct)),
+        Activo: estaActivo_(row.Activo),
+        Nota: texto_(row.Nota)
+      }));
+
+    const finalRows = conservados
+      .concat(deseadosConId)
+      .sort((a, b) => {
+        if (a.Producto_Estandar !== b.Producto_Estandar) return a.Producto_Estandar.localeCompare(b.Producto_Estandar);
+        if (a.Unidad_Venta !== b.Unidad_Venta) return a.Unidad_Venta.localeCompare(b.Unidad_Venta);
+        if (numero_(a.Orden) !== numero_(b.Orden)) return numero_(a.Orden) - numero_(b.Orden);
+        return texto_(a.Item_Componente).localeCompare(texto_(b.Item_Componente));
+      });
+
+    sobrescribirObjetosHojaQTAS_(sheet, headers, finalRows);
+
+    const costoProducto = sincronizarCostoProductoDesdeProductosQTAS_(
+      extractos.map(item => item.producto),
+      {
+        ss: ss,
+        ahora: new Date()
+      }
+    );
+
+    return {
+      ok: true,
+      recetasAlineadas: extractos.map(item => item.producto),
+      componentesObjetivo: deseadosConId.length,
+      productosActualizados: extractos.length,
+      costoProducto: costoProducto,
+      assumptions: [
+        'Se asume un lote de 20 extractos terminados de 50 ml.',
+        'Se usa 150 g de hongo seco por lote, equivalente a 7.5 g por unidad.',
+        'Se usa 400 ml de alcohol por lote, equivalente a 20 g por unidad.',
+        'Se usa agua total aproximada de 1200 ml por lote, equivalente a 60 g por unidad.',
+        'Cada extracto usa bolsa de papel de 1 lb y una calca especifica por producto.'
+      ]
+    };
+  });
+}
+
+function crearComponenteAlineadoExtractoQTAS_(
+  producto,
+  unidadVenta,
+  orden,
+  tipoComponente,
+  itemComponente,
+  cantidadComponente,
+  unidadComponente,
+  nota
+) {
+  const medida = normalizarCantidadUnidadQTAS_(cantidadComponente, unidadComponente);
   return {
-    ok: true,
-    recetasAlineadas: extractos.map(item => item.producto),
-    operaciones: resumen.length,
-    assumptions: [
-      'Se asume un lote de 20 extractos terminados de 50 ml.',
-      'Se usa 150 g de hongo seco por lote, equivalente a 7.5 g por unidad.',
-      'Se usa 400 ml de alcohol por lote, equivalente a 20 g por unidad.',
-      'Se usa agua total aproximada de 1200 ml por lote, equivalente a 60 g por unidad.',
-      'Cada extracto usa bolsa de papel de 1 lb y una calca especifica por producto.'
-    ]
+    Producto_Estandar: texto_(producto),
+    Unidad_Venta: normalizarUnidadCanonicaQTAS_(unidadVenta),
+    Orden: Math.max(1, Math.floor(numero_(orden) || 1)),
+    Tipo_Componente: normalizarTipoCompraItemQTAS_(tipoComponente),
+    Item_Componente: texto_(itemComponente),
+    Cantidad_Componente: medida.cantidad,
+    Unidad_Componente: medida.unidad,
+    Merma_Pct: 0,
+    Activo: true,
+    Nota: texto_(nota)
   };
+}
+
+function claveRecetaComponenteQTAS_(row) {
+  return [
+    normalizarClaveTexto_(row.Producto_Estandar),
+    normalizarClaveTexto_(normalizarUnidadCanonicaQTAS_(row.Unidad_Venta)),
+    String(Math.max(1, Math.floor(numero_(row.Orden) || 1))),
+    normalizarClaveTexto_(row.Tipo_Componente),
+    normalizarClaveTexto_(row.Item_Componente)
+  ].join('|');
 }
 
