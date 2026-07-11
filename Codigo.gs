@@ -11,6 +11,11 @@ var QTAS = {
     compras: 'Compras',
     compraDetalle: 'Compra_Detalle',
     costosReferencia: 'Costos_Referencia',
+    inventarioControl: 'Inventario_Control',
+    producciones: 'Producciones',
+    produccionDetalle: 'Produccion_Detalle',
+    inventarioMovimientos: 'Inventario_Movimientos',
+    inventarioSnapshot: 'Inventario_Snapshot',
     productoComponentes: 'Producto_Componentes',
     productoReglasCosto: 'Producto_Reglas_Costo',
     costoProductoCalculado: 'Costo_Producto_Calc',
@@ -97,6 +102,70 @@ var QTAS = {
       'Activo',
       'Fuente_Tipo',
       'Fuente_ID',
+      'Nota'
+    ],
+    Inventario_Control: [
+      'Control_ID',
+      'Tipo_Item',
+      'Item',
+      'Unidad',
+      'Modo_Stock',
+      'Stock_Minimo',
+      'Stock_Objetivo',
+      'Activo',
+      'Nota'
+    ],
+    Producciones: [
+      'Produccion_ID',
+      'Fecha_Produccion',
+      'Producto_Estandar',
+      'Cantidad_Producida',
+      'Unidad',
+      'Comentario_Produccion',
+      'Estado_Registro'
+    ],
+    Produccion_Detalle: [
+      'Produccion_Detalle_ID',
+      'Produccion_ID',
+      'Fecha_Produccion',
+      'Operacion',
+      'Tipo_Item',
+      'Item',
+      'Cantidad',
+      'Unidad',
+      'Nota'
+    ],
+    Inventario_Movimientos: [
+      'Movimiento_ID',
+      'Fecha_Movimiento',
+      'Fuente_Tipo',
+      'Fuente_ID',
+      'Operacion',
+      'Tipo_Item',
+      'Item',
+      'Cantidad',
+      'Unidad',
+      'Cantidad_Signada',
+      'Compra_ID',
+      'Venta_ID',
+      'Produccion_ID',
+      'Detalle_ID',
+      'Nota'
+    ],
+    Inventario_Snapshot: [
+      'Inventario_ID',
+      'Tipo_Item',
+      'Item',
+      'Unidad',
+      'Modo_Stock',
+      'Entradas',
+      'Salidas',
+      'Stock_Actual',
+      'Stock_Minimo',
+      'Stock_Objetivo',
+      'Estado_Stock',
+      'Ultimo_Movimiento',
+      'Activo',
       'Nota'
     ],
     Producto_Componentes: [
@@ -340,6 +409,33 @@ var TIPOS_COMPRA_ITEM = [
   'Producto',
   'Insumo',
   'Gasto'
+];
+
+var MODOS_STOCK_INVENTARIO_QTAS = [
+  'Directo',
+  'Fabricado',
+  'PorRecetaVenta',
+  'NoControlado'
+];
+
+var PRODUCTOS_FABRICADOS_INVENTARIO_QTAS = [
+  '50mg',
+  '100mg',
+  '150mg',
+  '200mg',
+  '300mg',
+  '500mg',
+  'Choco',
+  'Chocordy',
+  'ColaDPExt',
+  'CordyExt',
+  'GanoExt',
+  'LmExt',
+  'ShiiExt'
+];
+
+var PRODUCTOS_RECETA_VENTA_INVENTARIO_QTAS = [
+  'Tin'
 ];
 
 var DISTRIBUCION_REGLAS_INICIALES = [

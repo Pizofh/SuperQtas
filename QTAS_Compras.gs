@@ -107,6 +107,12 @@ function registrarCompraQTAS(payload) {
       fechaCompra: fechaCompraBase,
       lineas: lineasPreparadas
     });
+    const inventario = sincronizarInventarioDesdeCompraQTAS_({
+      ss: ss,
+      compraId: compraId,
+      fechaCompra: fechaCompraBase,
+      lineas: lineasPreparadas
+    });
 
     let costoProductoCalculado = null;
     try {
@@ -135,6 +141,7 @@ function registrarCompraQTAS(payload) {
       totalCompra: totalCompra,
       lineas: lineasPreparadas.length,
       costosActualizados: costosActualizados,
+      inventario: inventario,
       origenFondos: origenesFondosCompra.origenFondos,
       origenesFondosAsignados: origenesFondosCompra.rows.length,
       itemsResumen: itemsResumen,
@@ -1141,6 +1148,9 @@ function eliminarCompraRecienteQTAS(payload) {
       fechaBase: new Date(),
       ahora: new Date()
     });
+    const inventario = reconstruirInventarioInternoQTAS_({
+      ss: ss
+    });
 
     limpiarCachesEjecucionQTAS_();
 
@@ -1156,6 +1166,7 @@ function eliminarCompraRecienteQTAS(payload) {
       },
       costosReconstruidos: costosReconstruidos,
       costoProductoCalculado: costoProductoCalculado,
+      inventario: inventario,
       comprasRecientes: listarComprasRecientesQTAS_()
     };
   });

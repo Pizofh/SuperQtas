@@ -1115,3 +1115,112 @@ function upsertObjetosLotePorIdQTAS_(sheet, headers, objects, idHeader) {
   };
 }
 
+function alinearRecetasExtractosBaseQTAS() {
+  const extractos = [
+    { producto: 'ColaDPExt', base: 'ColaDP', calcaExt: 'Calca_ColaDP_Ext' },
+    { producto: 'CordyExt', base: 'Cordy', calcaExt: 'Calca_Cordy_Ext' },
+    { producto: 'GanoExt', base: 'Gano', calcaExt: 'Calca_Gano_Ext' },
+    { producto: 'LmExt', base: 'Lm', calcaExt: 'Calca_Lm_Ext' },
+    { producto: 'ShiiExt', base: 'Shii', calcaExt: 'Calca_Shii_Ext' }
+  ];
+  const componentesComunes = [
+    {
+      orden: 20,
+      tipoComponente: 'Insumo',
+      itemComponente: 'Goteros',
+      cantidadComponente: 1,
+      unidadComponente: 'und',
+      nota: 'Un gotero por unidad.'
+    },
+    {
+      orden: 30,
+      tipoComponente: 'Insumo',
+      itemComponente: 'Alcohol',
+      cantidadComponente: 20,
+      unidadComponente: 'g',
+      nota: 'Supuesto operativo: 400 ml de alcohol por lote de 20 extracciones.'
+    },
+    {
+      orden: 35,
+      tipoComponente: 'Insumo',
+      itemComponente: 'Agua',
+      cantidadComponente: 60,
+      unidadComponente: 'g',
+      nota: 'Supuesto operativo: 400 ml iniciales + 800 ml adicionales por lote de 20 extracciones.'
+    },
+    {
+      orden: 40,
+      tipoComponente: 'Gasto',
+      itemComponente: 'Mano de obra',
+      cantidadComponente: 1,
+      unidadComponente: 'und',
+      nota: 'Unidad base de mano de obra.'
+    },
+    {
+      orden: 50,
+      tipoComponente: 'Insumo',
+      itemComponente: 'Bolsa_Papel_1lb',
+      cantidadComponente: 1,
+      unidadComponente: 'und',
+      nota: 'Una bolsa de papel de 1 lb por unidad.'
+    }
+  ];
+  const resumen = [];
+
+  extractos.forEach(item => {
+    resumen.push(guardarComponenteProductoQTAS({
+      producto: item.producto,
+      unidadVenta: 'und',
+      orden: 10,
+      tipoComponente: 'Producto',
+      itemComponente: item.base,
+      cantidadComponente: 7.5,
+      unidadComponente: 'g',
+      mermaPct: 0,
+      nota: 'Supuesto operativo: 150 g de hongo seco por lote de 20 extracciones.',
+      activo: true
+    }));
+
+    componentesComunes.forEach(componente => {
+      resumen.push(guardarComponenteProductoQTAS({
+        producto: item.producto,
+        unidadVenta: 'und',
+        orden: componente.orden,
+        tipoComponente: componente.tipoComponente,
+        itemComponente: componente.itemComponente,
+        cantidadComponente: componente.cantidadComponente,
+        unidadComponente: componente.unidadComponente,
+        mermaPct: 0,
+        nota: componente.nota,
+        activo: true
+      }));
+    });
+
+    resumen.push(guardarComponenteProductoQTAS({
+      producto: item.producto,
+      unidadVenta: 'und',
+      orden: 60,
+      tipoComponente: 'Insumo',
+      itemComponente: item.calcaExt,
+      cantidadComponente: 1,
+      unidadComponente: 'und',
+      mermaPct: 0,
+      nota: 'Una calca especifica de extracto por unidad.',
+      activo: true
+    }));
+  });
+
+  return {
+    ok: true,
+    recetasAlineadas: extractos.map(item => item.producto),
+    operaciones: resumen.length,
+    assumptions: [
+      'Se asume un lote de 20 extractos terminados de 50 ml.',
+      'Se usa 150 g de hongo seco por lote, equivalente a 7.5 g por unidad.',
+      'Se usa 400 ml de alcohol por lote, equivalente a 20 g por unidad.',
+      'Se usa agua total aproximada de 1200 ml por lote, equivalente a 60 g por unidad.',
+      'Cada extracto usa bolsa de papel de 1 lb y una calca especifica por producto.'
+    ]
+  };
+}
+

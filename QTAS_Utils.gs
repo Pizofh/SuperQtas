@@ -262,7 +262,12 @@ function esHojaOpcionalQTAS_(sheetName) {
     QTAS.sheets.ventasEnvio,
     QTAS.sheets.costoProductoCalculado,
     QTAS.sheets.ventaDetalleCostosCalculado,
-    QTAS.sheets.compraOrigenesFondos
+    QTAS.sheets.compraOrigenesFondos,
+    QTAS.sheets.inventarioControl,
+    QTAS.sheets.producciones,
+    QTAS.sheets.produccionDetalle,
+    QTAS.sheets.inventarioMovimientos,
+    QTAS.sheets.inventarioSnapshot
   ].map(texto_);
   return optionalSheets.indexOf(texto_(sheetName)) >= 0;
 }
@@ -483,6 +488,13 @@ function siguienteIdConPrefijo_(sheet, headerName, prefix, padLength) {
     .reduce((max, value) => Math.max(max, value), 0);
 
   return prefix + String(maxValue + 1).padStart(size, '0');
+}
+
+function siguienteIdConPrefijoDesdeValorQTAS_(currentId, prefix, padLength) {
+  const size = padLength || 6;
+  const match = texto_(currentId).match(/(\d+)$/);
+  const next = match ? Number(match[1]) + 1 : 1;
+  return `${texto_(prefix)}${String(next).padStart(size, '0')}`;
 }
 
 function siguienteSecuenciaPersistenteQTAS_(sequenceKey, resolverUltimoAsignado) {

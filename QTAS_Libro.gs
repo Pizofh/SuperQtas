@@ -134,11 +134,14 @@ function layoutLibroQTAS_() {
       QTAS.sheets.compras,
       QTAS.sheets.pagos,
       QTAS.sheets.ventasEnvio,
-
+      QTAS.sheets.producciones,
+      QTAS.sheets.inventarioSnapshot
     ],
     analysisVisible: [
       QTAS.sheets.detalle,
       QTAS.sheets.compraDetalle,
+      QTAS.sheets.produccionDetalle,
+      QTAS.sheets.inventarioMovimientos,
       QTAS.sheets.ventaDetalleCostosCalculado,
       QTAS.sheets.distribucionIngresos,
       QTAS.sheets.compraOrigenesFondos
@@ -152,6 +155,7 @@ function layoutLibroQTAS_() {
       QTAS.sheets.productoReglasCosto,
       QTAS.sheets.distribucionReglas,
       QTAS.sheets.origenesFondosReglas,
+      QTAS.sheets.inventarioControl,
       QTAS.sheets.costosReferencia,
       QTAS.sheets.costoProductoCalculado
     ],

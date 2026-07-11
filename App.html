@@ -625,6 +625,9 @@
             <button class="btn ghost app-nav-btn" type="button" data-view="compras" onclick="mostrarVistaApp('compras')">
               Compras
             </button>
+            <button class="btn ghost app-nav-btn" type="button" data-view="inventario" onclick="mostrarVistaApp('inventario')">
+              Inventario
+            </button>
             <button
               class="btn ghost app-nav-btn icon-only"
               type="button"
@@ -965,6 +968,131 @@
       </div>
     </section>
 
+    <section class="app-view hidden" data-view="inventario">
+      <div class="layout">
+        <main>
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <h2>Produccion por lote</h2>
+              </div>
+            </div>
+
+            <div class="grid-3">
+              <div>
+                <label>Fecha de produccion</label>
+                <input id="invFechaProduccion" type="date">
+              </div>
+              <div>
+                <label>Producto fabricado</label>
+                <select id="invProductoFabricado" onchange="actualizarUnidadProduccionInventario_()">
+                  <option value="">Seleccionar producto...</option>
+                </select>
+              </div>
+              <div>
+                <label>Unidad</label>
+                <input id="invUnidadProduccion" class="readonly" readonly>
+              </div>
+            </div>
+
+            <div class="grid-2">
+              <div>
+                <label>Cantidad fabricada</label>
+                <input id="invCantidadProduccion" type="number" step="1" placeholder="0">
+              </div>
+              <div>
+                <label>Comentario</label>
+                <input id="invComentarioProduccion" placeholder="Lote, referencia, observacion...">
+              </div>
+            </div>
+
+            <button id="guardarProduccionBtn" class="btn full" type="button" onclick="guardarProduccionInventario()">
+              Registrar produccion
+            </button>
+            <div id="estadoInventario" class="status-box">Carga inventario para revisar stock, alertas y registrar produccion.</div>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <h2>Stock actual</h2>
+              </div>
+              <button class="btn ghost" type="button" onclick="cargarInventario(false)">Recargar</button>
+            </div>
+
+            <div id="inventarioStockLista" class="list list-scroll">
+              <div class="muted">Cargando stock...</div>
+            </div>
+          </section>
+        </main>
+
+        <aside>
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <h2>Resumen</h2>
+              </div>
+            </div>
+
+            <div class="metrics">
+              <div class="metric primary">
+                <div class="metric-label">Items activos</div>
+                <div class="metric-value" id="invItemsActivos">0</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Alertas</div>
+                <div class="metric-value" id="invAlertasTotal">0</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Sin stock</div>
+                <div class="metric-value" id="invSinStockTotal">0</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Fabricados</div>
+                <div class="metric-value" id="invFabricadosTotal">0</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <h2>Alertas</h2>
+              </div>
+            </div>
+
+            <div id="inventarioAlertasLista" class="list">
+              <div class="muted">Sin alertas.</div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <h2>Movimientos recientes</h2>
+              </div>
+            </div>
+
+            <div id="inventarioMovimientosLista" class="list">
+              <div class="muted">Cargando movimientos...</div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <h2>Producciones recientes</h2>
+              </div>
+            </div>
+
+            <div id="inventarioProduccionesLista" class="list">
+              <div class="muted">Cargando producciones...</div>
+            </div>
+          </section>
+        </aside>
+      </div>
+    </section>
+
     <section class="app-view hidden" data-view="config">
       <section class="card">
         <div class="section-head">
@@ -1248,6 +1376,10 @@
         eyebrow: 'Psylo Scibio | SuperQTAS',
         title: 'Compras y costos'
       },
+      inventario: {
+        eyebrow: 'Psylo Scibio | SuperQTAS',
+        title: 'Inventario y produccion'
+      },
       config: {
         eyebrow: 'Psylo Scibio | SuperQTAS',
         title: 'Configuracion operativa'
@@ -1259,6 +1391,7 @@
       started: {
         ventas: false,
         compras: false,
+        inventario: false,
         config: false
       }
     };
@@ -1296,6 +1429,7 @@
       if (!appState.started[nextView]) {
         if (nextView === 'ventas') initVentas();
         if (nextView === 'compras') initCompras();
+        if (nextView === 'inventario') initInventario();
         if (nextView === 'config') initConfig();
         appState.started[nextView] = true;
       }
@@ -1314,6 +1448,11 @@
 
       if (appState.currentView === 'compras') {
         cargarCatalogoCompras(false);
+        return;
+      }
+
+      if (appState.currentView === 'inventario') {
+        cargarInventario(false);
         return;
       }
 
@@ -3272,6 +3411,233 @@
           <div class="helper">Desde ${escapeHtml(row.fechaDesde || '')}${row.proveedor ? ` | ${escapeHtml(row.proveedor)}` : ''}</div>
         </div>
       `).join('');
+    }
+
+    let inventarioDashboard = {
+      resumen: {
+        itemsActivos: 0,
+        alertas: 0,
+        sinStock: 0,
+        fabricados: 0,
+        controlesPendientes: 0
+      },
+      stockInicialPendiente: false,
+      alertas: [],
+      stock: [],
+      movimientosRecientes: [],
+      produccionesRecientes: [],
+      productosFabricados: []
+    };
+
+    function initInventario() {
+      document.getElementById('invFechaProduccion').value = '';
+      cargarInventario(true);
+    }
+
+    function cargarInventario(inicial) {
+      document.getElementById('estadoInventario').innerText = 'Cargando inventario...';
+
+      google.script.run
+        .withSuccessHandler(data => {
+          inventarioDashboard = data || inventarioDashboard;
+
+          if (!document.getElementById('invFechaProduccion').value) {
+            document.getElementById('invFechaProduccion').value = inventarioDashboard.hoy || fechaHoyLocal_();
+          }
+
+          renderResumenInventario_();
+          renderProductosFabricadosInventario_();
+          renderAlertasInventario_();
+          renderStockInventario_();
+          renderMovimientosInventario_();
+          renderProduccionesRecientesInventario_();
+
+          if (inicial) {
+            document.getElementById('invCantidadProduccion').value = '';
+            document.getElementById('invComentarioProduccion').value = '';
+          }
+
+          document.getElementById('estadoInventario').innerText = inventarioDashboard.stockInicialPendiente
+            ? 'Inventario actualizado. Puede haber negativos mientras cargas conteos iniciales o lotes ya fabricados.'
+            : 'Inventario actualizado.';
+        })
+        .withFailureHandler(err => {
+          document.getElementById('estadoInventario').innerText = construirMensajeEstadoError_('No se pudo cargar inventario', err);
+        })
+        .getDashboardInventarioQTAS();
+    }
+
+    function renderResumenInventario_() {
+      const resumen = inventarioDashboard.resumen || {};
+      document.getElementById('invItemsActivos').innerText = String(resumen.itemsActivos || 0);
+      document.getElementById('invAlertasTotal').innerText = String(resumen.alertas || 0);
+      document.getElementById('invSinStockTotal').innerText = String(resumen.sinStock || 0);
+      document.getElementById('invFabricadosTotal').innerText = String(resumen.fabricados || 0);
+    }
+
+    function renderProductosFabricadosInventario_() {
+      const select = document.getElementById('invProductoFabricado');
+      const selected = select.value;
+      const rows = inventarioDashboard.productosFabricados || [];
+
+      select.innerHTML = ['<option value="">Seleccionar producto...</option>']
+        .concat(rows.map(row =>
+          `<option value="${escapeHtml(row.producto)}">${escapeHtml(row.producto)} (${escapeHtml(row.unidad || '')})</option>`
+        ))
+        .join('');
+
+      if (selected && rows.some(row => row.producto === selected)) {
+        select.value = selected;
+      } else if (rows.length) {
+        select.value = rows[0].producto;
+      }
+
+      actualizarUnidadProduccionInventario_();
+    }
+
+    function actualizarUnidadProduccionInventario_() {
+      const producto = document.getElementById('invProductoFabricado').value;
+      const item = (inventarioDashboard.productosFabricados || []).find(row => row.producto === producto) || null;
+      document.getElementById('invUnidadProduccion').value = item ? (item.unidad || '') : '';
+    }
+
+    function renderAlertasInventario_() {
+      const cont = document.getElementById('inventarioAlertasLista');
+      const rows = inventarioDashboard.alertas || [];
+
+      if (!rows.length) {
+        cont.innerHTML = '<div class="muted">Sin alertas activas.</div>';
+        return;
+      }
+
+      cont.innerHTML = rows.slice(0, 20).map(row => `
+        <div class="list-item">
+          <strong>${escapeHtml(row.item || '')}</strong>
+          <div>${escapeHtml(row.tipoItem || '')} | ${escapeHtml(row.unidad || '')}</div>
+          <div><span class="status-pill ${claseEstadoStockInventario_(row.estadoStock)}">${escapeHtml(row.estadoStock || 'OK')}</span></div>
+          <div class="helper">
+            Stock ${escapeHtml(cantidadTextoInventario_(row.stockActual))}${row.stockMinimo > 0 ? ` | Min ${escapeHtml(cantidadTextoInventario_(row.stockMinimo))}` : ''}${row.stockObjetivo > 0 ? ` | Objetivo ${escapeHtml(cantidadTextoInventario_(row.stockObjetivo))}` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderStockInventario_() {
+      const cont = document.getElementById('inventarioStockLista');
+      const rows = inventarioDashboard.stock || [];
+
+      if (!rows.length) {
+        cont.innerHTML = '<div class="muted">Sin stock calculado todavia.</div>';
+        return;
+      }
+
+      cont.innerHTML = rows.map(row => `
+        <div class="list-item">
+          <strong>${escapeHtml(row.item || '')}</strong>
+          <div>${escapeHtml(row.tipoItem || '')} | ${escapeHtml(row.unidad || '')} | Modo ${escapeHtml(row.modoStock || '')}</div>
+          <div><b>${escapeHtml(cantidadTextoInventario_(row.stockActual))}</b></div>
+          <div class="helper">
+            ${row.stockMinimo > 0 ? `Min ${escapeHtml(cantidadTextoInventario_(row.stockMinimo))}` : 'Sin minimo'}${row.stockObjetivo > 0 ? ` | Objetivo ${escapeHtml(cantidadTextoInventario_(row.stockObjetivo))}` : ''}${row.ultimoMovimiento ? ` | Ult. mov. ${escapeHtml(row.ultimoMovimiento)}` : ''}
+          </div>
+          <div><span class="status-pill ${claseEstadoStockInventario_(row.estadoStock)}">${escapeHtml(row.estadoStock || 'OK')}</span></div>
+        </div>
+      `).join('');
+    }
+
+    function renderMovimientosInventario_() {
+      const cont = document.getElementById('inventarioMovimientosLista');
+      const rows = inventarioDashboard.movimientosRecientes || [];
+
+      if (!rows.length) {
+        cont.innerHTML = '<div class="muted">Sin movimientos recientes.</div>';
+        return;
+      }
+
+      cont.innerHTML = rows.map(row => `
+        <div class="list-item">
+          <strong>${escapeHtml(row.item || '')}</strong>
+          <div>${escapeHtml(row.fechaMovimiento || '')} | ${escapeHtml(row.fuenteTipo || '')}</div>
+          <div>${row.cantidadSignada >= 0 ? '+' : ''}${escapeHtml(cantidadTextoInventario_(row.cantidadSignada))} ${escapeHtml(row.unidad || '')}</div>
+          <div class="helper">${escapeHtml(row.nota || '')}</div>
+        </div>
+      `).join('');
+    }
+
+    function renderProduccionesRecientesInventario_() {
+      const cont = document.getElementById('inventarioProduccionesLista');
+      const rows = inventarioDashboard.produccionesRecientes || [];
+
+      if (!rows.length) {
+        cont.innerHTML = '<div class="muted">Sin producciones recientes.</div>';
+        return;
+      }
+
+      cont.innerHTML = rows.map(row => `
+        <div class="list-item">
+          <strong>${escapeHtml(row.produccionId || '')} | ${escapeHtml(row.producto || '')}</strong>
+          <div>${escapeHtml(row.fechaProduccion || '')}</div>
+          <div><b>${escapeHtml(cantidadTextoInventario_(row.cantidad))}</b> ${escapeHtml(row.unidad || '')}</div>
+          <div class="helper">${escapeHtml(row.comentario || '')}</div>
+        </div>
+      `).join('');
+    }
+
+    function guardarProduccionInventario() {
+      const producto = document.getElementById('invProductoFabricado').value;
+      const unidad = document.getElementById('invUnidadProduccion').value;
+      const cantidad = numero_(document.getElementById('invCantidadProduccion').value);
+      const fechaProduccion = document.getElementById('invFechaProduccion').value;
+      const comentarioProduccion = document.getElementById('invComentarioProduccion').value.trim();
+
+      if (!producto) {
+        alert('Selecciona el producto fabricado.');
+        return;
+      }
+      if (cantidad <= 0) {
+        alert('Ingresa una cantidad fabricada mayor a cero.');
+        return;
+      }
+
+      document.getElementById('estadoInventario').innerText = 'Registrando produccion...';
+
+      google.script.run
+        .withSuccessHandler(resp => {
+          inventarioDashboard = resp.dashboard || inventarioDashboard;
+          renderResumenInventario_();
+          renderProductosFabricadosInventario_();
+          renderAlertasInventario_();
+          renderStockInventario_();
+          renderMovimientosInventario_();
+          renderProduccionesRecientesInventario_();
+          document.getElementById('invCantidadProduccion').value = '';
+          document.getElementById('invComentarioProduccion').value = '';
+          document.getElementById('estadoInventario').innerText =
+            `Produccion ${resp.produccionId} registrada: ${resp.producto} ${cantidadTextoInventario_(resp.cantidad)} ${resp.unidad}.`;
+        })
+        .withFailureHandler(err => {
+          document.getElementById('estadoInventario').innerText = construirMensajeEstadoError_('No se pudo registrar la produccion', err);
+        })
+        .registrarProduccionQTAS({
+          fechaProduccion: fechaProduccion,
+          producto: producto,
+          unidad: unidad,
+          cantidad: cantidad,
+          comentarioProduccion: comentarioProduccion
+        });
+    }
+
+    function cantidadTextoInventario_(value) {
+      const num = Number(value || 0);
+      if (!isFinite(num)) return '0';
+      if (Math.abs(num - Math.round(num)) < 0.0001) return String(Math.round(num));
+      return num.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    }
+
+    function claseEstadoStockInventario_(estado) {
+      const text = String(estado || '').trim();
+      if (text === 'Sin stock') return 'status-bad';
+      if (text === 'Bajo minimo' || text === 'Por reponer') return 'status-warn';
+      return 'status-ok';
     }
 
     let adminData = adminDefaults_();
