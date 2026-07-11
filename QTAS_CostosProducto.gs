@@ -1630,6 +1630,17 @@ function claveReglaPackagingPsyloScibioQTAS_(row) {
   ].join('|');
 }
 
+function crearCostoDirectoBaseQTAS_(item, tipoItem, unidad, costoUnitario, nota, referencia) {
+  return {
+    item: texto_(item),
+    tipoItem: normalizarTipoCompraItemQTAS_(tipoItem),
+    unidad: normalizarUnidadCanonicaQTAS_(unidad),
+    costoUnitario: redondear_(numero_(costoUnitario)),
+    nota: texto_(nota),
+    referencia: texto_(referencia)
+  };
+}
+
 function crearSeedsCostosPackagingPsyloScibioQTAS_(costosCache, fechaBase) {
   const costoCalca = estimarCostoUnitarioCalcaPsyloScibioQTAS_(costosCache);
   const costoBolsaBarata = resolverCostoPlaceholderPackagingPsyloScibioQTAS_(costosCache, 'Bolsa_Barata', 'und', 'Insumo', 300);
