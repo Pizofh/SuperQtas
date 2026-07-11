@@ -225,6 +225,24 @@ function registrarVentaQTAS(payload) {
         }
       });
 
+      let inventario = null;
+      inventario = medirBloqueRendimientoQTAS_(performance, 'inventario', () => {
+        try {
+          return sincronizarInventarioDesdeVentaQTAS_({
+            ss: ss,
+            detalleRows: lineasPreparadas.map(item => item.row)
+          });
+        } catch (error) {
+          Logger.log(`No se pudo sincronizar inventario para Venta ${ventaId}: ${error.message}`);
+          return {
+            ok: false,
+            skipped: true,
+            reason: error.message,
+            movimientos: 0
+          };
+        }
+      });
+
       let estadoEnvio = '';
       if (payload && payload.pendienteEnvio === true) {
         estadoEnvio = medirBloqueRendimientoQTAS_(performance, 'registrarEnvioPendiente', () => {
@@ -259,6 +277,7 @@ function registrarVentaQTAS(payload) {
         estadoEnvio,
         productosResumen,
         analiticaCostos,
+        inventario,
         dashboard,
         performance: finalizarPerfilRendimientoQTAS_(performance, { ventaId: ventaId })
       };
@@ -564,6 +583,9 @@ function eliminarVentaRecienteQTAS(payload) {
       ventasSheet,
       'Venta_ID'
     );
+    const inventario = reconstruirInventarioInternoQTAS_({
+      ss: ss
+    });
     limpiarCachesEjecucionQTAS_();
 
     return {
@@ -579,6 +601,7 @@ function eliminarVentaRecienteQTAS(payload) {
         ventasEnvio: ventasEnvioAntes.length - ventasEnvioDespues.length,
         ventaDetalleCostosCalculado: costoDetalleAntes.length - costoDetalleDespues.length
       },
+      inventario: inventario,
       dashboard: dashboardVentasConsistenteQTAS_()
     };
   });

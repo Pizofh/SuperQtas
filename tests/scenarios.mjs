@@ -951,5 +951,144 @@ export const SCENARIOS = [
       });
       ctx.equal(ctx.sheetRows(state, 'Ventas').length, 2, 'Deben quedar dos ventas activas tras reingresar la corregida.');
     }
+  },
+  {
+    id: 'inventario_compra_directa_actualiza_snapshot',
+    title: 'Compra directa alimenta inventario y snapshot',
+    tags: ['inventario', 'compras'],
+    run: async ctx => {
+      await ctx.reset();
+
+      const compra = await ctx.call('registrarCompraQTAS', compraPayloadBase({
+        proveedor: 'Proveedor Inventario Test',
+        lineas: [
+          compraLinea('Insumo', 'Alcohol', 100, 'g', 2000, true, 'Stock alcohol'),
+          compraLinea('Insumo', 'Bolsa_Barata', 20, 'und', 6000, true, 'Stock bolsas')
+        ]
+      }));
+
+      ctx.assert(compra.inventario && compra.inventario.ok, 'La compra debe sincronizar inventario.');
+
+      const state = await snapshotLigero(ctx, {
+        sheetNames: ['Inventario_Movimientos', 'Inventario_Snapshot']
+      });
+      const movimientos = ctx.sheetRows(state, 'Inventario_Movimientos');
+      const snapshot = ctx.sheetRows(state, 'Inventario_Snapshot');
+      const alcohol = snapshot.find(row => row.Item === 'Alcohol' && row.Unidad === 'g');
+      const bolsas = snapshot.find(row => row.Item === 'Bolsa_Barata' && row.Unidad === 'und');
+
+      ctx.equal(movimientos.length, 2, 'La compra debe crear dos movimientos de inventario.');
+      ctx.assert(alcohol, 'Alcohol debe existir en snapshot.');
+      ctx.assert(bolsas, 'Bolsa_Barata debe existir en snapshot.');
+      ctx.equal(ctx.num(alcohol.Stock_Actual), 100, 'Alcohol debe quedar con stock 100.');
+      ctx.equal(ctx.num(bolsas.Stock_Actual), 20, 'Bolsa_Barata debe quedar con stock 20.');
+    }
+  },
+  {
+    id: 'inventario_produccion_y_venta_fabricada',
+    title: 'Produccion consume materia prima y venta baja terminado',
+    tags: ['inventario', 'produccion', 'smoke'],
+    run: async ctx => {
+      await ctx.reset();
+      await ctx.call('guardarComponenteProductoQTAS', {
+        producto: '100mg',
+        unidadVenta: 'und',
+        orden: 10,
+        tipoComponente: 'Producto',
+        itemComponente: 'AcMed',
+        cantidadComponente: 0.1,
+        unidadComponente: 'g',
+        mermaPct: 0,
+        nota: 'Receta test inventario',
+        activo: true
+      });
+      await ctx.call('guardarComponenteProductoQTAS', {
+        producto: '100mg',
+        unidadVenta: 'und',
+        orden: 20,
+        tipoComponente: 'Insumo',
+        itemComponente: 'Capsulas',
+        cantidadComponente: 1,
+        unidadComponente: 'und',
+        mermaPct: 0,
+        nota: 'Receta test inventario',
+        activo: true
+      });
+      await ctx.call('guardarReglaCostoProductoQTAS', {
+        producto: '100mg',
+        unidadVenta: 'und',
+        cantidadMin: 1,
+        cantidadMax: 24,
+        orden: 10,
+        tipoComponente: 'Insumo',
+        itemComponente: 'Bolsa_Barata',
+        cantidadComponente: 2,
+        unidadComponente: 'und',
+        aplicacion: 'PorLinea',
+        mermaPct: 0,
+        nota: 'Regla test inventario',
+        activo: true
+      });
+      await ctx.call('guardarReglaCostoProductoQTAS', {
+        producto: '100mg',
+        unidadVenta: 'und',
+        cantidadMin: 1,
+        cantidadMax: 24,
+        orden: 20,
+        tipoComponente: 'Insumo',
+        itemComponente: 'Calcas',
+        cantidadComponente: 1,
+        unidadComponente: 'und',
+        aplicacion: 'PorLinea',
+        mermaPct: 0,
+        nota: 'Regla test inventario',
+        activo: true
+      });
+
+      await ctx.call('registrarCompraQTAS', compraPayloadBase({
+        proveedor: 'Proveedor Produccion Test',
+        lineas: [
+          compraLinea('Producto', 'AcMed', 10, 'g', 140000, true, 'Base activa'),
+          compraLinea('Insumo', 'Capsulas', 100, 'und', 1500, true, 'Capsulas vacias'),
+          compraLinea('Insumo', 'Bolsa_Barata', 10, 'und', 3000, true, 'Empaque venta'),
+          compraLinea('Insumo', 'Calcas', 10, 'und', 5000, true, 'Calcas venta')
+        ]
+      }));
+
+      const produccion = await ctx.call('registrarProduccionQTAS', {
+        fechaProduccion: '2026-06-20',
+        producto: '100mg',
+        unidad: 'und',
+        cantidad: 10,
+        comentarioProduccion: 'Lote automatizado'
+      });
+
+      ctx.assert(produccion.ok, 'La produccion debe registrarse correctamente.');
+
+      await ctx.call('registrarVentaQTAS', ventaPayloadBase({
+        cliente: { nombre: 'Cliente Inventario Fabricado' },
+        lineas: [
+          ventaLinea('100mg', 2, 'und', 2000)
+        ]
+      }));
+
+      const state = await snapshotLigero(ctx, {
+        sheetNames: ['Inventario_Movimientos', 'Inventario_Snapshot', 'Producciones', 'Produccion_Detalle']
+      });
+      const snapshot = ctx.sheetRows(state, 'Inventario_Snapshot');
+      const stock100 = snapshot.find(row => row.Item === '100mg' && row.Unidad === 'und');
+      const stockAcMed = snapshot.find(row => row.Item === 'AcMed' && row.Unidad === 'g');
+      const stockCapsulas = snapshot.find(row => row.Item === 'Capsulas' && row.Unidad === 'und');
+      const stockBolsas = snapshot.find(row => row.Item === 'Bolsa_Barata' && row.Unidad === 'und');
+      const stockCalcas = snapshot.find(row => row.Item === 'Calcas' && row.Unidad === 'und');
+
+      ctx.equal(ctx.sheetRows(state, 'Producciones').length, 1, 'Debe existir un encabezado de produccion.');
+      ctx.assert(ctx.sheetRows(state, 'Produccion_Detalle').length >= 3, 'La produccion debe materializar entradas y salidas.');
+      ctx.equal(ctx.num(stock100.Stock_Actual), 8, 'El terminado 100mg debe quedar en 8.');
+      ctx.equal(ctx.num(stockAcMed.Stock_Actual), 9, 'AcMed debe bajar por la produccion del lote.');
+      ctx.equal(ctx.num(stockCapsulas.Stock_Actual), 90, 'Capsulas debe bajar por la produccion.');
+      ctx.equal(ctx.num(stockBolsas.Stock_Actual), 8, 'La venta debe consumir bolsas por la regla comercial.');
+      ctx.equal(ctx.num(stockCalcas.Stock_Actual), 9, 'La venta debe consumir calcas por la regla comercial.');
+    }
   }
 ];

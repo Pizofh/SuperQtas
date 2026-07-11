@@ -13,6 +13,7 @@ function asegurarModeloOperativoQTAS_(options) {
   sembrarProductosYPrecios_();
   sembrarReglasDistribucion_();
   sembrarConfig_();
+  asegurarControlesInventarioBaseQTAS_();
 
   if (config.aplicarFormatos) {
     aplicarFormatosModeloQTAS_(ss);
