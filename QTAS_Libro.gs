@@ -71,6 +71,123 @@ function mostrarTodasLasHojasQTAS() {
   return result;
 }
 
+function prepararLibroPsyloScibioQTAS(payload) {
+  const settings = Object.assign({
+    borrarHojasLegacy: false,
+    dryRunHojasLegacy: true,
+    forceSheetNames: []
+  }, payload || {});
+
+  const packaging = ajustarPackagingPsyloScibioQTAS();
+  const hojasLegacy = depurarHojasNoOficialesQTAS({
+    dryRun: settings.borrarHojasLegacy === true ? false : settings.dryRunHojasLegacy !== false,
+    forceSheetNames: settings.forceSheetNames
+  });
+
+  return {
+    ok: true,
+    packaging: packaging,
+    hojasLegacy: hojasLegacy,
+    assumptions: unirUnicos_(
+      []
+        .concat(packaging && packaging.assumptions || [])
+        .concat([
+          'Las hojas oficiales del ERP se conservan aunque hoy tengan una sola fila.',
+          'Las hojas no oficiales con datos y nombres no reconocidos se dejan en revision manual por seguridad.'
+        ])
+    )
+  };
+}
+
+function prepararLibroPsyloScibioQTAS_Log() {
+  const result = prepararLibroPsyloScibioQTAS();
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+function prepararLibroPsyloScibioConBorradoQTAS_Log() {
+  const result = prepararLibroPsyloScibioQTAS({
+    borrarHojasLegacy: true,
+    dryRunHojasLegacy: false
+  });
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+function depurarHojasNoOficialesQTAS(payload) {
+  const settings = Object.assign({
+    dryRun: true,
+    forceSheetNames: []
+  }, payload || {});
+  if (settings.dryRun !== true) {
+    assertOperacionDestructivaPermitidaQTAS_('depurar hojas no oficiales');
+  }
+
+  const ss = SpreadsheetApp.getActive();
+  const officialMap = nombresHojasOficialesQTAS_();
+  const forceMap = {};
+  const autoCandidates = [];
+  const manualReview = [];
+  const deleted = [];
+
+  (settings.forceSheetNames || []).forEach(name => {
+    const key = normalizarClaveTexto_(name);
+    if (key) forceMap[key] = true;
+  });
+
+  ss.getSheets().forEach(sheet => {
+    const audit = auditarHojaNoOficialQTAS_(sheet, officialMap, forceMap);
+    if (audit.status === 'official') return;
+    if (audit.status === 'auto_candidate') {
+      autoCandidates.push(audit);
+      return;
+    }
+    manualReview.push(audit);
+  });
+
+  if (settings.dryRun !== true) {
+    autoCandidates.forEach(item => {
+      const sheet = ss.getSheetByName(item.name);
+      if (!sheet) return;
+      ss.deleteSheet(sheet);
+      deleted.push(item.name);
+    });
+  }
+
+  return {
+    ok: true,
+    dryRun: settings.dryRun !== false,
+    officialSheets: Object.keys(officialMap).sort((a, b) => a.localeCompare(b)),
+    autoCandidates: autoCandidates.map(item => ({
+      name: item.name,
+      rows: item.rows,
+      columns: item.columns,
+      hidden: item.hidden,
+      reasons: item.reasons
+    })),
+    manualReview: manualReview.map(item => ({
+      name: item.name,
+      rows: item.rows,
+      columns: item.columns,
+      hidden: item.hidden,
+      reasons: item.reasons
+    })),
+    deleted: deleted
+  };
+}
+
+function depurarHojasNoOficialesQTAS_Log() {
+  const result = depurarHojasNoOficialesQTAS();
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+function depurarHojasNoOficialesQTAS_Borrar_Log() {
+  const result = depurarHojasNoOficialesQTAS({ dryRun: false });
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
 function exportarLibroTSVQTAS() {
   const ss = SpreadsheetApp.getActive();
   const sourceFile = DriveApp.getFileById(ss.getId());
@@ -245,6 +362,105 @@ function construirResumenExportLibroQTAS_(ss, rows, folder, stampText) {
   lines.push('- `backend`: hojas ocultables para reducir ruido del libro.');
 
   return lines.join('\n');
+}
+
+function nombresHojasOficialesQTAS_() {
+  return Object.keys(QTAS.schemas).reduce((acc, sheetName) => {
+    const name = texto_(sheetName);
+    if (name) acc[name] = true;
+    return acc;
+  }, {});
+}
+
+function auditarHojaNoOficialQTAS_(sheet, officialMap, forceMap) {
+  const name = sheet ? sheet.getName() : '';
+  const normalized = normalizarClaveTexto_(name);
+  const rows = sheet ? sheet.getLastRow() : 0;
+  const columns = sheet ? sheet.getLastColumn() : 0;
+  const hidden = sheet ? sheet.isSheetHidden() : false;
+  const reasons = [];
+
+  if (!sheet || !name) {
+    return {
+      status: 'manual_review',
+      name: name,
+      rows: rows,
+      columns: columns,
+      hidden: hidden,
+      reasons: ['Hoja invalida o sin nombre.']
+    };
+  }
+
+  if (officialMap && officialMap[name]) {
+    return {
+      status: 'official',
+      name: name,
+      rows: rows,
+      columns: columns,
+      hidden: hidden,
+      reasons: ['Hoja oficial del ERP.']
+    };
+  }
+
+  if (forceMap && forceMap[normalized]) {
+    reasons.push('Incluida manualmente en forceSheetNames.');
+    return {
+      status: 'auto_candidate',
+      name: name,
+      rows: rows,
+      columns: columns,
+      hidden: hidden,
+      reasons: reasons
+    };
+  }
+
+  if (esNombreHojaLegacyQTAS_(name)) {
+    reasons.push('Nombre compatible con copia, hoja temporal o legacy.');
+  }
+  if (rows <= 1) {
+    reasons.push('Sin datos operativos; solo encabezado o vacia.');
+  }
+  if (columns <= 1) {
+    reasons.push('Estructura minima no operativa.');
+  }
+
+  if (reasons.length && (esNombreHojaLegacyQTAS_(name) || rows <= 1 || columns <= 1)) {
+    return {
+      status: 'auto_candidate',
+      name: name,
+      rows: rows,
+      columns: columns,
+      hidden: hidden,
+      reasons: reasons
+    };
+  }
+
+  return {
+    status: 'manual_review',
+    name: name,
+    rows: rows,
+    columns: columns,
+    hidden: hidden,
+    reasons: ['No es oficial, pero no cumple criterios seguros de borrado automatico.']
+  };
+}
+
+function esNombreHojaLegacyQTAS_(name) {
+  const value = texto_(name);
+  return [
+    /^copia de /i,
+    /^copy of /i,
+    /^hoja\s*\d+$/i,
+    /^sheet\s*\d+$/i,
+    /^tmp[_\s-]/i,
+    /^temp[_\s-]/i,
+    /^backup[_\s-]/i,
+    /^old[_\s-]/i,
+    /^legacy[_\s-]/i,
+    /_old$/i,
+    /_legacy$/i,
+    /_backup$/i
+  ].some(pattern => pattern.test(value));
 }
 
 function etiquetaCategoriaLibroQTAS_(category) {
