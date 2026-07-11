@@ -1090,5 +1090,107 @@ export const SCENARIOS = [
       ctx.equal(ctx.num(stockBolsas.Stock_Actual), 8, 'La venta debe consumir bolsas por la regla comercial.');
       ctx.equal(ctx.num(stockCalcas.Stock_Actual), 9, 'La venta debe consumir calcas por la regla comercial.');
     }
+  },
+  {
+    id: 'inventario_extracto_usa_receta_alineada',
+    title: 'Produccion de extracto consume insumos especificos de la receta alineada',
+    tags: ['inventario', 'produccion', 'extractos', 'smoke'],
+    run: async ctx => {
+      await ctx.reset();
+
+      const alineacion = await ctx.call('alinearRecetasExtractosBaseQTAS');
+      ctx.assert(alineacion.ok, 'La alineacion de recetas base de extractos debe responder ok.');
+      await ctx.call('guardarControlInventarioQTAS', {
+        tipoItem: 'Insumo',
+        item: 'Agua',
+        unidad: 'g',
+        modoStock: 'NoControlado',
+        stockMinimo: 0,
+        stockObjetivo: 0,
+        activo: true,
+        nota: 'Configuracion test extractos'
+      });
+
+      await ctx.call('registrarCompraQTAS', compraPayloadBase({
+        proveedor: 'Proveedor Extracto Test',
+        lineas: [
+          compraLinea('Producto', 'Cordy', 100, 'g', 31000, true, 'Hongo base extracto'),
+          compraLinea('Insumo', 'Alcohol', 200, 'g', 2526, true, 'Alcohol extracto'),
+          compraLinea('Insumo', 'Goteros', 10, 'und', 10000, true, 'Goteros extracto'),
+          compraLinea('Insumo', 'Bolsa_Papel_1lb', 10, 'und', 5000, true, 'Bolsa papel extracto'),
+          compraLinea('Insumo', 'Calca_Cordy_Ext', 10, 'und', 5000, true, 'Calca extracto')
+        ]
+      }));
+
+      const produccion = await ctx.call('registrarProduccionQTAS', {
+        fechaProduccion: '2026-06-20',
+        producto: 'CordyExt',
+        unidad: 'und',
+        cantidad: 2,
+        comentarioProduccion: 'Lote extracto receta alineada'
+      });
+
+      ctx.assert(produccion.ok, 'La produccion del extracto debe registrarse correctamente.');
+
+      const state = await snapshotLigero(ctx, {
+        sheetNames: ['Inventario_Movimientos', 'Inventario_Snapshot', 'Producciones', 'Produccion_Detalle']
+      });
+      const snapshot = ctx.sheetRows(state, 'Inventario_Snapshot');
+      const movimientos = ctx.sheetRows(state, 'Inventario_Movimientos')
+        .filter(row => String(row.Produccion_ID || '') === String(produccion.produccionId || ''));
+      const detalle = ctx.sheetRows(state, 'Produccion_Detalle')
+        .filter(row => String(row.Produccion_ID || '') === String(produccion.produccionId || ''));
+
+      const stockCordyExt = snapshot.find(row => row.Item === 'CordyExt' && row.Unidad === 'und');
+      const stockCordy = snapshot.find(row => row.Item === 'Cordy' && row.Unidad === 'g');
+      const stockAlcohol = snapshot.find(row => row.Item === 'Alcohol' && row.Unidad === 'g');
+      const stockGoteros = snapshot.find(row => row.Item === 'Goteros' && row.Unidad === 'und');
+      const stockBolsaPapel = snapshot.find(row => row.Item === 'Bolsa_Papel_1lb' && row.Unidad === 'und');
+      const stockCalcaCordyExt = snapshot.find(row => row.Item === 'Calca_Cordy_Ext' && row.Unidad === 'und');
+
+      ctx.equal(detalle.length, 6, 'La produccion debe materializar 1 entrada y 5 salidas inventariables.');
+      ctx.assert(stockCordyExt, 'CordyExt debe existir en snapshot.');
+      ctx.assert(stockCordy, 'Cordy debe existir en snapshot.');
+      ctx.assert(stockAlcohol, 'Alcohol debe existir en snapshot.');
+      ctx.assert(stockGoteros, 'Goteros debe existir en snapshot.');
+      ctx.assert(stockBolsaPapel, 'Bolsa_Papel_1lb debe existir en snapshot.');
+      ctx.assert(stockCalcaCordyExt, 'Calca_Cordy_Ext debe existir en snapshot.');
+
+      ctx.equal(ctx.num(stockCordyExt.Stock_Actual), 2, 'CordyExt fabricado debe quedar en 2.');
+      ctx.equal(ctx.num(stockCordy.Stock_Actual), 85, 'Cordy debe bajar 15 g por 2 extractos.');
+      ctx.equal(ctx.num(stockAlcohol.Stock_Actual), 160, 'Alcohol debe bajar 40 g por 2 extractos.');
+      ctx.equal(ctx.num(stockGoteros.Stock_Actual), 8, 'Goteros debe bajar 2 unidades.');
+      ctx.equal(ctx.num(stockBolsaPapel.Stock_Actual), 8, 'Bolsa_Papel_1lb debe bajar 2 unidades.');
+      ctx.equal(ctx.num(stockCalcaCordyExt.Stock_Actual), 8, 'Calca_Cordy_Ext debe bajar 2 unidades.');
+
+      ctx.assert(
+        movimientos.some(row => row.Item === 'Cordy' && row.Operacion === 'Salida'),
+        'La produccion debe consumir Cordy como base.'
+      );
+      ctx.assert(
+        movimientos.some(row => row.Item === 'Alcohol' && row.Operacion === 'Salida'),
+        'La produccion debe consumir Alcohol.'
+      );
+      ctx.assert(
+        movimientos.some(row => row.Item === 'Goteros' && row.Operacion === 'Salida'),
+        'La produccion debe consumir Goteros.'
+      );
+      ctx.assert(
+        movimientos.some(row => row.Item === 'Bolsa_Papel_1lb' && row.Operacion === 'Salida'),
+        'La produccion debe consumir Bolsa_Papel_1lb.'
+      );
+      ctx.assert(
+        movimientos.some(row => row.Item === 'Calca_Cordy_Ext' && row.Operacion === 'Salida'),
+        'La produccion debe consumir Calca_Cordy_Ext.'
+      );
+      ctx.assert(
+        !movimientos.some(row => row.Item === 'Bolsa_Barata' || row.Item === 'Calcas'),
+        'La produccion del extracto no debe usar empaques o calcas genericas.'
+      );
+      ctx.assert(
+        !movimientos.some(row => row.Item === 'Agua'),
+        'Agua no debe generar movimiento porque quedo NoControlado.'
+      );
+    }
   }
 ];
