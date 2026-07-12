@@ -1362,7 +1362,8 @@ function ajustarPackagingPsyloScibioQTAS() {
         .concat(costos && costos.assumptions || [])
         .concat(reglas && reglas.assumptions || [])
         .concat([
-          'AcAlt, AcMed, AcSup y Choco no se tocan en este ajuste porque falta confirmar la separacion final de empaque por tamano.',
+          'Choco usa zip plateada y calca especifica por unidad; la bolsa kraft externa se asume mediana hasta 6 unidades y grande desde 7.',
+          'AcAlt, AcMed y AcSup usan bolsa kraft zip por rango de gramos y una bolsa de papel de 1 lb por pedido.',
           'El borrado de hojas legacy se deja en un script aparte con dryRun por seguridad.'
         ])
     )
@@ -1531,7 +1532,9 @@ function construirReglasPackagingPsyloScibioQTAS_() {
   const assumptions = [
     'Micros de 1 a 24 unidades consumen zip negra + bolsa papel 0.5 lb + calca logo.',
     'Micros de 25 o mas siempre consumen bolsa papel 0.5 lb + calca logo; 100mg, 200mg y 300mg ademas consumen frasco y calca de instrucciones.',
-    'Polvos y hongos en gramos consumen bolsa kraft con zip mediana hasta 50 g y grande por encima de 50 g, mas su calca especifica de bolsa.'
+    'Polvos y hongos en gramos consumen bolsa kraft con zip mediana hasta 50 g y grande por encima de 50 g, mas su calca especifica de bolsa.',
+    'AcAlt, AcMed y AcSup consumen una bolsa kraft zip por rango de gramos y una bolsa de papel de 1 lb por pedido.',
+    'Choco consume una bolsa zip plateada y una calca especifica por unidad; se asume bolsa kraft mediana hasta 6 unidades y grande desde 7.'
   ];
   const micros = ['50mg', '100mg', '150mg', '200mg', '300mg', '500mg'];
   const microsConFrasco = {
@@ -1539,6 +1542,7 @@ function construirReglasPackagingPsyloScibioQTAS_() {
     '200mg': true,
     '300mg': true
   };
+  const basesGramos = ['AcAlt', 'AcMed', 'AcSup'];
   const polvos = [
     { producto: 'ColaDP', calca: 'Calca_ColaDP_Bolsa' },
     { producto: 'ColaDPPow', calca: 'Calca_ColaDP_Bolsa' },
@@ -1574,6 +1578,20 @@ function construirReglasPackagingPsyloScibioQTAS_() {
     rows.push(crearReglaPackagingPsyloScibioQTAS_(item.producto, 'g', 50.0001, '', 10, 'Insumo', 'Bolsa_Kraft_Zip_Grande', 1, 'und', 'PorLinea', 'Mas de 50 g: bolsa kraft zip grande.'));
     rows.push(crearReglaPackagingPsyloScibioQTAS_(item.producto, 'g', 50.0001, '', 20, 'Insumo', item.calca, 1, 'und', 'PorLinea', 'Mas de 50 g: una calca especifica de bolsa.'));
   });
+
+  basesGramos.forEach(producto => {
+    productosObjetivo.push(producto);
+    rows.push(crearReglaPackagingPsyloScibioQTAS_(producto, 'g', '', 50, 10, 'Insumo', 'Bolsa_Kraft_Zip_Mediana', 1, 'und', 'PorLinea', 'Hasta 50 g: bolsa kraft zip mediana.'));
+    rows.push(crearReglaPackagingPsyloScibioQTAS_(producto, 'g', '', 50, 20, 'Insumo', 'Bolsa_Papel_1lb', 1, 'und', 'PorLinea', 'Hasta 50 g: una bolsa de papel de 1 lb.'));
+    rows.push(crearReglaPackagingPsyloScibioQTAS_(producto, 'g', 50.0001, '', 10, 'Insumo', 'Bolsa_Kraft_Zip_Grande', 1, 'und', 'PorLinea', 'Mas de 50 g: bolsa kraft zip grande.'));
+    rows.push(crearReglaPackagingPsyloScibioQTAS_(producto, 'g', 50.0001, '', 20, 'Insumo', 'Bolsa_Papel_1lb', 1, 'und', 'PorLinea', 'Mas de 50 g: una bolsa de papel de 1 lb.'));
+  });
+
+  productosObjetivo.push('Choco');
+  rows.push(crearReglaPackagingPsyloScibioQTAS_('Choco', 'und', '', '', 10, 'Insumo', 'Bolsa_Zip_Plateada', 1, 'und', 'PorUnidad', 'Una bolsa zip plateada por unidad.'));
+  rows.push(crearReglaPackagingPsyloScibioQTAS_('Choco', 'und', '', '', 20, 'Insumo', 'Calca_Choco', 1, 'und', 'PorUnidad', 'Una calca Choco por unidad.'));
+  rows.push(crearReglaPackagingPsyloScibioQTAS_('Choco', 'und', 1, 6, 30, 'Insumo', 'Bolsa_Kraft_Zip_Mediana', 1, 'und', 'PorLinea', 'Hasta 6 unidades: una bolsa kraft zip mediana por pedido.'));
+  rows.push(crearReglaPackagingPsyloScibioQTAS_('Choco', 'und', 7, '', 30, 'Insumo', 'Bolsa_Kraft_Zip_Grande', 1, 'und', 'PorLinea', 'Desde 7 unidades: una bolsa kraft zip grande por pedido.'));
 
   return {
     rows: rows,
