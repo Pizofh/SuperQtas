@@ -1036,6 +1036,7 @@ function construirCandidatosControlInventarioQTAS_(ss) {
 
   leerObjetos_(spreadsheet.getSheetByName(QTAS.sheets.productos))
     .filter(row => texto_(row.Producto_Estandar))
+    .filter(row => estaActivo_(row.Activo))
     .forEach(row => add('Producto', row.Producto_Estandar, row.Unidad_Default));
 
   leerComponentesProductoActivosQTAS_().forEach(row => {
@@ -1318,8 +1319,8 @@ function ajustarStockInicialPsyloScibioQTAS(payload) {
       itemsObjetivo: seeds.stock.length,
       caveats: [
         'Agua queda como NoControlado por decision operativa.',
-        'ShiiExt y Chocordy quedan fuera de control automatico por ahora.',
-        'Las bolsas y calcas detalladas quedan cargadas como inventario real; las reglas comerciales genericas aun pueden requerir una segunda pasada.'
+        'ShiiExt queda controlado como Fabricado igual que las otras extracciones.',
+        'Las bolsas y calcas detalladas quedan cargadas como inventario real; Chocordy queda fuera del catalogo operativo actual.'
       ]
     };
   });
@@ -1399,8 +1400,7 @@ function construirStockInicialPsyloScibioQTAS_() {
   const controles = [
     { tipoItem: 'Insumo', item: 'Agua', unidad: 'g', modoStock: 'NoControlado', nota: 'Se excluye del control operativo.' },
     { tipoItem: 'Insumo', item: 'Agua', unidad: 'und', modoStock: 'NoControlado', nota: 'Se excluye del control operativo.' },
-    { tipoItem: 'Producto', item: 'ShiiExt', unidad: 'und', modoStock: 'NoControlado', nota: 'Producto pausado; sin control operativo por ahora.' },
-    { tipoItem: 'Producto', item: 'Chocordy', unidad: 'und', modoStock: 'NoControlado', nota: 'Producto pausado; sin control operativo por ahora.' },
+    { tipoItem: 'Producto', item: 'ShiiExt', unidad: 'und', modoStock: 'Fabricado', nota: 'Se controla igual que las otras extracciones.' },
     { tipoItem: 'Insumo', item: 'Bolsa_Kraft_Zip_Grande', unidad: 'und', modoStock: 'Directo' },
     { tipoItem: 'Insumo', item: 'Bolsa_Kraft_Zip_Mediana', unidad: 'und', modoStock: 'Directo' },
     { tipoItem: 'Insumo', item: 'Bolsa_Papel_1lb', unidad: 'und', modoStock: 'Directo' },
@@ -1480,7 +1480,6 @@ function construirStockInicialPsyloScibioQTAS_() {
     { tipoItem: 'Producto', item: '300mg', unidad: 'und', cantidad: 0 },
     { tipoItem: 'Producto', item: '500mg', unidad: 'und', cantidad: 0 },
     { tipoItem: 'Producto', item: 'Choco', unidad: 'und', cantidad: 7, nota: 'Listos para embolsar.' },
-    { tipoItem: 'Producto', item: 'Chocordy', unidad: 'und', cantidad: 0 },
     { tipoItem: 'Producto', item: 'ColaDPExt', unidad: 'und', cantidad: 10 },
     { tipoItem: 'Producto', item: 'CordyExt', unidad: 'und', cantidad: 9 },
     { tipoItem: 'Producto', item: 'GanoExt', unidad: 'und', cantidad: 2 },
