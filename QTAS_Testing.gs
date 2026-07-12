@@ -124,6 +124,25 @@ function testSnapshotQTAS(payload) {
   return testSerializarValorQTAS_(snapshot);
 }
 
+function testEjecutarLoteQTAS(payload) {
+  const settings = payload || {};
+  const steps = Array.isArray(settings.steps) ? settings.steps : [];
+
+  return testSerializarValorQTAS_({
+    ok: true,
+    results: steps.map((step, index) => {
+      const functionName = texto_(step && (step.functionName || step.fn));
+      const parameters = Array.isArray(step && step.parameters) ? step.parameters : [];
+      if (!functionName) {
+        throw new Error(`Falta functionName en el paso ${index + 1}.`);
+      }
+
+      const target = testResolverFuncionLoteQTAS_(functionName);
+      return target.apply(null, parameters);
+    })
+  });
+}
+
 function testHojasSoportadasQTAS_() {
   return [
     QTAS.sheets.productos,
@@ -179,4 +198,30 @@ function testSerializarValorQTAS_(value) {
     return output;
   }
   return value;
+}
+
+function testResolverFuncionLoteQTAS_(functionName) {
+  let target = null;
+
+  try {
+    if (typeof globalThis !== 'undefined' && globalThis) {
+      target = globalThis[functionName];
+    }
+  } catch (error) {
+    target = null;
+  }
+
+  if (typeof target !== 'function') {
+    try {
+      target = eval(functionName);
+    } catch (error) {
+      target = null;
+    }
+  }
+
+  if (typeof target !== 'function') {
+    throw new Error(`No existe la funcion ${functionName} para lote de testing.`);
+  }
+
+  return target;
 }

@@ -249,6 +249,12 @@ function listarReglasCostoProductoQTAS_() {
     });
 }
 
+function reconstruirCostoProductoCalculadoQTAS(payload) {
+  return withScriptLock_('reconstruir costo producto calculado', () =>
+    reconstruirCostoProductoCalculadoInternoQTAS_(payload)
+  );
+}
+
 function reconstruirCostoProductoCalculadoInternoQTAS_(payload) {
   const settings = Object.assign({
     fechaBase: new Date(),
@@ -292,6 +298,12 @@ function reconstruirCostoProductoCalculadoInternoQTAS_(payload) {
   };
 }
 
+function reconstruirVentaDetalleCostosCalculadoQTAS(payload) {
+  return withScriptLock_('reconstruir venta detalle costos calculado', () =>
+    reconstruirVentaDetalleCostosCalculadoInternoQTAS_(payload)
+  );
+}
+
 function reconstruirVentaDetalleCostosCalculadoInternoQTAS_(payload) {
   const settings = Object.assign({
     ss: SpreadsheetApp.getActive()
@@ -330,6 +342,26 @@ function reconstruirVentaDetalleCostosCalculadoInternoQTAS_(payload) {
     updated: upsert.updated,
     stale: upsert.stale
   };
+}
+
+function reconstruirAnaliticaCostosQTAS(payload) {
+  return withScriptLock_('reconstruir analitica costos', () => {
+    const settings = Object.assign({
+      fechaBase: new Date()
+    }, payload || {});
+
+    return {
+      ok: true,
+      costoProducto: reconstruirCostoProductoCalculadoInternoQTAS_(settings),
+      ventaDetalle: reconstruirVentaDetalleCostosCalculadoInternoQTAS_(settings)
+    };
+  });
+}
+
+function reconstruirAnaliticaCostosQTAS_Log() {
+  const result = reconstruirAnaliticaCostosQTAS();
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
 }
 
 function sincronizarVentaDetalleCostosLoteQTAS_(detalleRows, payload) {
