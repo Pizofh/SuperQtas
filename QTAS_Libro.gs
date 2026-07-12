@@ -82,9 +82,9 @@ function prepararLibroPsyloScibioQTAS(payload) {
   const catalogoOperativo = alinearCatalogoOperativoPsyloScibioQTAS_();
   const packaging = ajustarPackagingPsyloScibioQTAS();
   const inventarioCanonico = canonizarInventarioPsyloScibioQTAS({ silent: true });
-  const costoProducto = reconstruirCostoProductoCalculadoQTAS({ silent: true });
+  const costoProducto = reconstruirCostoProductoCalculadoInternoQTAS_({ silent: true });
   const ventaDetalleCostos = settings.fullHistorico === true
-    ? reconstruirVentaDetalleCostosCalculadoQTAS({ silent: true })
+    ? reconstruirVentaDetalleCostosCalculadoInternoQTAS_({ silent: true })
     : {
       ok: true,
       skipped: true,

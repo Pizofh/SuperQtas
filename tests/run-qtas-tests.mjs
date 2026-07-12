@@ -246,6 +246,11 @@ function createScenarioContext(config, scriptClient) {
       return this.call('testSnapshotQTAS', options);
     },
 
+    async batch(steps = []) {
+      const response = await this.call('testEjecutarLoteQTAS', { steps });
+      return Array.isArray(response?.results) ? response.results : [];
+    },
+
     async probe() {
       const report = {
         ok: true,
