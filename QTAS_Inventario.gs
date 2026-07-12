@@ -556,10 +556,6 @@ function construirSnapshotInventarioQTAS_(movimientosRaw, controlsIndex) {
     keys[key] = true;
   });
 
-  movimientos.forEach(row => {
-    keys[claveControlInventarioQTAS_(row.tipoItem, row.item, row.unidad)] = true;
-  });
-
   return Object.keys(keys)
     .map(key => construirFilaSnapshotInventarioQTAS_(key, movimientos, controlsIndex))
     .filter(Boolean)
@@ -1025,6 +1021,7 @@ function asignarIdsMovimientosInventarioQTAS_(rows) {
 function construirCandidatosControlInventarioQTAS_(ss) {
   const spreadsheet = ss || SpreadsheetApp.getActive();
   const mapa = {};
+  const seeds = construirStockInicialPsyloScibioQTAS_();
   const add = function(tipoItem, item, unidad) {
     const tipo = normalizarTipoCompraItemQTAS_(tipoItem);
     const nombre = texto_(item);
@@ -1041,16 +1038,20 @@ function construirCandidatosControlInventarioQTAS_(ss) {
     .filter(row => texto_(row.Producto_Estandar))
     .forEach(row => add('Producto', row.Producto_Estandar, row.Unidad_Default));
 
-  leerObjetos_(spreadsheet.getSheetByName(QTAS.sheets.compraDetalle))
-    .filter(row => texto_(row.Item) && texto_(row.Unidad))
-    .forEach(row => add(row.Tipo_Item, row.Item, row.Unidad));
-
   leerComponentesProductoActivosQTAS_().forEach(row => {
     add(row.tipoComponente, row.itemComponente, row.unidadComponente);
   });
 
   leerReglasCostoProductoActivasQTAS_().forEach(row => {
     add(row.tipoComponente, row.itemComponente, row.unidadComponente);
+  });
+
+  (seeds.controles || []).forEach(row => {
+    add(row.tipoItem, row.item, row.unidad);
+  });
+
+  (seeds.stock || []).forEach(row => {
+    add(row.tipoItem, row.item, row.unidad);
   });
 
   return Object.keys(mapa).map(key => mapa[key]);
@@ -1330,9 +1331,74 @@ function ajustarStockInicialPsyloScibioQTAS_Log() {
   return result;
 }
 
+function canonizarInventarioPsyloScibioQTAS(payload) {
+  return withScriptLock_('canonizar inventario psylo scibio', () => {
+    assertOperacionDestructivaPermitidaQTAS_('canonizar inventario psylo scibio');
+    asegurarModeloOperativoQTAS_();
+
+    const settings = Object.assign({
+      silent: false
+    }, payload || {});
+    const ss = SpreadsheetApp.getActive();
+    const controlRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.inventarioControl);
+    const snapshotRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.inventarioSnapshot);
+    if (!controlRef.ok || !snapshotRef.ok) {
+      return {
+        ok: false,
+        skipped: true,
+        reason: unirUnicos_([controlRef.reason, snapshotRef.reason])
+      };
+    }
+
+    const before = leerObjetos_(controlRef.sheet).map(row => normalizarControlInventarioQTAS_(row));
+    const canonical = construirControlesCanonicosInventarioPsyloScibioQTAS_(ss, before);
+    const afterKeys = {};
+    canonical.forEach(row => {
+      afterKeys[claveControlInventarioQTAS_(row.Tipo_Item, row.Item, row.Unidad)] = true;
+    });
+
+    const removed = before
+      .filter(row => !afterKeys[claveControlInventarioQTAS_(row.tipoItem, row.item, row.unidad)])
+      .map(row => `${row.tipoItem} | ${row.item} | ${row.unidad}`)
+      .sort((a, b) => a.localeCompare(b));
+
+    sobrescribirObjetosHojaQTAS_(controlRef.sheet, controlRef.headers, canonical);
+    const snapshot = reconstruirSnapshotInventarioQTAS_({ ss: ss });
+    limpiarCachesEjecucionQTAS_();
+
+    if (!settings.silent) {
+      maybeAlert_(
+        `Inventario canonizado. Controles=${canonical.length}, ` +
+        `snapshot=${snapshot.length}, removidos=${removed.length}.`
+      );
+    }
+
+    return {
+      ok: true,
+      skipped: false,
+      controlesAntes: before.length,
+      controlesDespues: canonical.length,
+      snapshot: snapshot.length,
+      removidos: removed,
+      caveats: [
+        'Inventario_Control queda limitado al set canonico actual de Psylo Scibio.',
+        'Inventario_Snapshot ya no muestra claves legacy que no tengan control activo.',
+        'Inventario_Movimientos historico no se borra; solo deja de contaminar el snapshot si la clave no es canonica.'
+      ]
+    };
+  });
+}
+
+function canonizarInventarioPsyloScibioQTAS_Log() {
+  const result = canonizarInventarioPsyloScibioQTAS({ silent: true });
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
 function construirStockInicialPsyloScibioQTAS_() {
   const controles = [
     { tipoItem: 'Insumo', item: 'Agua', unidad: 'g', modoStock: 'NoControlado', nota: 'Se excluye del control operativo.' },
+    { tipoItem: 'Insumo', item: 'Agua', unidad: 'und', modoStock: 'NoControlado', nota: 'Se excluye del control operativo.' },
     { tipoItem: 'Producto', item: 'ShiiExt', unidad: 'und', modoStock: 'NoControlado', nota: 'Producto pausado; sin control operativo por ahora.' },
     { tipoItem: 'Producto', item: 'Chocordy', unidad: 'und', modoStock: 'NoControlado', nota: 'Producto pausado; sin control operativo por ahora.' },
     { tipoItem: 'Insumo', item: 'Bolsa_Kraft_Zip_Grande', unidad: 'und', modoStock: 'Directo' },
@@ -1429,6 +1495,53 @@ function construirStockInicialPsyloScibioQTAS_() {
     controles: controles,
     stock: stock
   };
+}
+
+function construirControlesCanonicosInventarioPsyloScibioQTAS_(ss, beforeRows) {
+  const spreadsheet = ss || SpreadsheetApp.getActive();
+  const actuales = beforeRows || [];
+  const actualesPorClave = construirIndiceControlesInventarioQTAS_(actuales);
+  const seeds = construirStockInicialPsyloScibioQTAS_();
+  const seedsPorClave = {};
+  const controlSheet = spreadsheet.getSheetByName(QTAS.sheets.inventarioControl);
+  let nextId = controlSheet
+    ? siguienteIdConPrefijo_(controlSheet, 'Control_ID', 'INVCTRL-', 4)
+    : 'INVCTRL-0001';
+
+  (seeds.controles || []).forEach(seed => {
+    seedsPorClave[claveControlInventarioQTAS_(seed.tipoItem, seed.item, seed.unidad)] = seed;
+  });
+
+  return construirCandidatosControlInventarioQTAS_(spreadsheet)
+    .map(candidato => {
+      const key = claveControlInventarioQTAS_(candidato.tipoItem, candidato.item, candidato.unidad);
+      const existente = actualesPorClave[key];
+      const semilla = seedsPorClave[key] || null;
+      const base = existente || semilla || candidato;
+      const row = {
+        Control_ID: existente && existente.controlId ? existente.controlId : nextId,
+        Tipo_Item: normalizarTipoCompraItemQTAS_(candidato.tipoItem),
+        Item: texto_(candidato.item),
+        Unidad: normalizarUnidadCanonicaQTAS_(candidato.unidad),
+        Modo_Stock: normalizarModoStockInventarioQTAS_(
+          semilla && semilla.modoStock ? semilla.modoStock : base.modoStock
+        ),
+        Stock_Minimo: redondear_(Math.max(0, numero_(existente ? existente.stockMinimo : base.stockMinimo))),
+        Stock_Objetivo: redondear_(Math.max(0, numero_(existente ? existente.stockObjetivo : base.stockObjetivo))),
+        Activo: semilla && semilla.activo === false ? false : (existente ? existente.activo !== false : true),
+        Nota: texto_(semilla && semilla.nota ? semilla.nota : (existente ? existente.nota : base.nota))
+      };
+
+      if (!(existente && existente.controlId)) {
+        nextId = siguienteIdConPrefijoDesdeValorQTAS_(nextId, 'INVCTRL-', 4);
+      }
+      return row;
+    })
+    .sort((a, b) => {
+      if (texto_(a.Tipo_Item) !== texto_(b.Tipo_Item)) return texto_(a.Tipo_Item).localeCompare(texto_(b.Tipo_Item));
+      if (texto_(a.Item) !== texto_(b.Item)) return texto_(a.Item).localeCompare(texto_(b.Item));
+      return texto_(a.Unidad).localeCompare(texto_(b.Unidad));
+    });
 }
 
 function upsertControlesInventarioSemillaQTAS_(sheet, headers, seeds) {
