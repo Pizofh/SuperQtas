@@ -23,7 +23,15 @@ const TARGETS = {
       'QTAS_UI.gs',
       'QTAS_Utils.gs',
       'QTAS_Ventas.gs'
-    ]
+    ],
+    stripFunctionsByFile: {
+      'QTAS_CostosProducto.gs': [
+        'reconstruirCostoProductoCalculadoQTAS',
+        'reconstruirVentaDetalleCostosCalculadoQTAS',
+        'reconstruirAnaliticaCostosQTAS',
+        'reconstruirAnaliticaCostosQTAS_Log'
+      ]
+    }
   }
 };
 
