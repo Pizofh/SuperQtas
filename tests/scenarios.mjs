@@ -82,22 +82,23 @@ export const SCENARIOS = [
 
       const producto = 'ProdTestAuto';
       const unidad = 'und';
-      await ctx.call('guardarProductoConfiguracionQTAS', {
-        producto,
-        unidad,
-        nota: 'Creado por test',
-        activo: true
-      });
-
-      await ctx.call('guardarCambioPrecioFrontendQTAS', {
-        producto,
-        unidad,
-        precio: 12345,
-        fechaDesde: '2026-06-20',
-        nota: 'Precio de prueba'
-      });
-
-      const catalogo = await ctx.call('getCatalogoQTAS', '2026-06-21');
+      const results = await ctx.batch([
+        batchStep('guardarProductoConfiguracionQTAS', {
+          producto,
+          unidad,
+          nota: 'Creado por test',
+          activo: true
+        }),
+        batchStep('guardarCambioPrecioFrontendQTAS', {
+          producto,
+          unidad,
+          precio: 12345,
+          fechaDesde: '2026-06-20',
+          nota: 'Precio de prueba'
+        }),
+        batchStep('getCatalogoQTAS', '2026-06-21')
+      ]);
+      const catalogo = results[2];
       const encontrado = (catalogo.productos || []).find(item => item.producto === producto);
       ctx.assert(encontrado, 'El producto nuevo debe aparecer en el catalogo de ventas.');
       ctx.equal(ctx.num(encontrado.precio), 12345, 'El precio configurado debe verse en el catalogo.');
@@ -178,7 +179,7 @@ export const SCENARIOS = [
   {
     id: 'venta_pagada_con_envio_pendiente',
     title: 'Venta pagada que sigue pendiente de envio',
-    tags: ['ventas', 'envios', 'sin-deuda'],
+    tags: ['ventas', 'envios', 'sin-deuda', 'smoke'],
     run: async ctx => {
       await ctx.reset();
 
@@ -564,14 +565,16 @@ export const SCENARIOS = [
     run: async ctx => {
       await ctx.reset();
 
-      await ctx.call('registrarCompraQTAS', compraPayloadBase({
-        proveedor: 'Proveedor Catalogo Test',
-        lineas: [
-          compraLinea('Insumo', 'BolsaCatalogo', 10, 'und', 5000, true, 'Alta catalogo')
-        ]
-      }));
-
-      const catalogo = await ctx.call('getCatalogoComprasQTAS');
+      const results = await ctx.batch([
+        batchStep('registrarCompraQTAS', compraPayloadBase({
+          proveedor: 'Proveedor Catalogo Test',
+          lineas: [
+            compraLinea('Insumo', 'BolsaCatalogo', 10, 'und', 5000, true, 'Alta catalogo')
+          ]
+        })),
+        batchStep('getCatalogoComprasQTAS')
+      ]);
+      const catalogo = results[1];
       const sugerencia = (catalogo.itemsSugeridos || []).find(row =>
         row.tipoItem === 'Insumo' && row.item === 'BolsaCatalogo'
       );
@@ -604,67 +607,63 @@ export const SCENARIOS = [
       await ctx.reset();
 
       const producto = 'ProdCostoCompuestoReceta';
-      await ctx.call('guardarProductoConfiguracionQTAS', {
-        producto,
-        unidad: 'und',
-        nota: 'Creado por test',
-        activo: true
-      });
-
-      await ctx.call('guardarCambioPrecioFrontendQTAS', {
-        producto,
-        unidad: 'und',
-        precio: 2000,
-        fechaDesde: '2026-06-20',
-        nota: 'Precio producto compuesto'
-      });
-
-      await ctx.call('registrarCompraQTAS', compraPayloadBase({
-        proveedor: 'Proveedor Receta Test',
-        lineas: [
-          compraLinea('Insumo', 'CajaTest', 10, 'und', 5000, true, 'Caja para test')
-        ]
-      }));
-
-      await ctx.call('registrarCompraQTAS', compraPayloadBase({
-        proveedor: 'Proveedor Receta Test',
-        lineas: [
-          compraLinea('Insumo', 'EtiquetaTest', 20, 'und', 2000, true, 'Etiqueta para test')
-        ]
-      }));
-
-      await ctx.call('guardarComponenteProductoQTAS', {
-        producto,
-        unidadVenta: 'und',
-        orden: 1,
-        tipoComponente: 'Insumo',
-        itemComponente: 'CajaTest',
-        cantidadComponente: 1,
-        unidadComponente: 'und',
-        mermaPct: 0,
-        nota: 'Componente de prueba',
-        activo: true
-      });
-
-      await ctx.call('guardarComponenteProductoQTAS', {
-        producto,
-        unidadVenta: 'und',
-        orden: 2,
-        tipoComponente: 'Insumo',
-        itemComponente: 'EtiquetaTest',
-        cantidadComponente: 2,
-        unidadComponente: 'und',
-        mermaPct: 0,
-        nota: 'Componente de prueba',
-        activo: true
-      });
-
-      await ctx.call('registrarVentaQTAS', ventaPayloadBase({
-        cliente: { nombre: 'Cliente Test' },
-        lineas: [
-          ventaLinea(producto, 1, 'und', 2000)
-        ]
-      }));
+      await ctx.batch([
+        batchStep('guardarProductoConfiguracionQTAS', {
+          producto,
+          unidad: 'und',
+          nota: 'Creado por test',
+          activo: true
+        }),
+        batchStep('guardarCambioPrecioFrontendQTAS', {
+          producto,
+          unidad: 'und',
+          precio: 2000,
+          fechaDesde: '2026-06-20',
+          nota: 'Precio producto compuesto'
+        }),
+        batchStep('registrarCompraQTAS', compraPayloadBase({
+          proveedor: 'Proveedor Receta Test',
+          lineas: [
+            compraLinea('Insumo', 'CajaTest', 10, 'und', 5000, true, 'Caja para test')
+          ]
+        })),
+        batchStep('registrarCompraQTAS', compraPayloadBase({
+          proveedor: 'Proveedor Receta Test',
+          lineas: [
+            compraLinea('Insumo', 'EtiquetaTest', 20, 'und', 2000, true, 'Etiqueta para test')
+          ]
+        })),
+        batchStep('guardarComponenteProductoQTAS', {
+          producto,
+          unidadVenta: 'und',
+          orden: 1,
+          tipoComponente: 'Insumo',
+          itemComponente: 'CajaTest',
+          cantidadComponente: 1,
+          unidadComponente: 'und',
+          mermaPct: 0,
+          nota: 'Componente de prueba',
+          activo: true
+        }),
+        batchStep('guardarComponenteProductoQTAS', {
+          producto,
+          unidadVenta: 'und',
+          orden: 2,
+          tipoComponente: 'Insumo',
+          itemComponente: 'EtiquetaTest',
+          cantidadComponente: 2,
+          unidadComponente: 'und',
+          mermaPct: 0,
+          nota: 'Componente de prueba',
+          activo: true
+        }),
+        batchStep('registrarVentaQTAS', ventaPayloadBase({
+          cliente: { nombre: 'Cliente Test' },
+          lineas: [
+            ventaLinea(producto, 1, 'und', 2000)
+          ]
+        }))
+      ]);
 
       const state = await snapshotLigero(ctx, {
         sheetNames: ['Costo_Producto_Calc', 'Venta_Detalle_Costos_Calc']
@@ -745,24 +744,24 @@ export const SCENARIOS = [
       await ctx.reset();
 
       const medio = 'TransferTest';
-      await ctx.call('guardarMedioPagoQTAS', {
-        medioPago: medio,
-        nota: 'Creado por test',
-        activo: true
-      });
-
-      await ctx.call('registrarCompraQTAS', compraPayloadBase({
-        proveedor: 'Proveedor Medio Test',
-        medioPago: medio,
-        lineas: [
-          compraLinea('Producto', 'AcSup', 2, 'g', 18000, true, 'Compra con medio nuevo')
-        ]
-      }));
-
-      await ctx.call('cambiarEstadoMedioPagoQTAS', {
-        medioPago: medio,
-        activo: false
-      });
+      await ctx.batch([
+        batchStep('guardarMedioPagoQTAS', {
+          medioPago: medio,
+          nota: 'Creado por test',
+          activo: true
+        }),
+        batchStep('registrarCompraQTAS', compraPayloadBase({
+          proveedor: 'Proveedor Medio Test',
+          medioPago: medio,
+          lineas: [
+            compraLinea('Producto', 'AcSup', 2, 'g', 18000, true, 'Compra con medio nuevo')
+          ]
+        })),
+        batchStep('cambiarEstadoMedioPagoQTAS', {
+          medioPago: medio,
+          activo: false
+        })
+      ]);
 
       await ctx.expectError(
         'registrarCompraQTAS',
@@ -794,29 +793,31 @@ export const SCENARIOS = [
     run: async ctx => {
       await ctx.reset();
 
-      await ctx.call('guardarReglaOrigenFondosFrontendQTAS', {
-        origenFondos: 'SM',
-        fechaDesde: '2026-06-01',
-        steve: 50,
-        majo: 50,
-        mush: 0,
-        nota: 'Base historica SM'
-      });
-
-      const compra = await ctx.call('registrarCompraQTAS', compraPayloadBase({
-        fechaCompra: '2026-06-20',
-        proveedor: 'Proveedor Fondo Historico Test',
-        lineas: [
-          compraLinea('Insumo', 'CajaHistorica', 2, 'und', 10000, true, 'Compra sin reparto inicial')
-        ]
-      }));
-
-      const reconstruccion = await ctx.call('reconstruirOrigenesFondosComprasHistoricasQTAS', {
-        fechaDesde: '2026-06-01',
-        fechaHasta: '2026-06-30',
-        origenFondosDefault: 'SM',
-        replaceExisting: false
-      });
+      const results = await ctx.batch([
+        batchStep('guardarReglaOrigenFondosFrontendQTAS', {
+          origenFondos: 'SM',
+          fechaDesde: '2026-06-01',
+          steve: 50,
+          majo: 50,
+          mush: 0,
+          nota: 'Base historica SM'
+        }),
+        batchStep('registrarCompraQTAS', compraPayloadBase({
+          fechaCompra: '2026-06-20',
+          proveedor: 'Proveedor Fondo Historico Test',
+          lineas: [
+            compraLinea('Insumo', 'CajaHistorica', 2, 'und', 10000, true, 'Compra sin reparto inicial')
+          ]
+        })),
+        batchStep('reconstruirOrigenesFondosComprasHistoricasQTAS', {
+          fechaDesde: '2026-06-01',
+          fechaHasta: '2026-06-30',
+          origenFondosDefault: 'SM',
+          replaceExisting: false
+        })
+      ]);
+      const compra = results[1];
+      const reconstruccion = results[2];
 
       ctx.equal(ctx.num(reconstruccion.procesadas), 1, 'Debe procesarse una compra historica.');
       ctx.equal(ctx.num(reconstruccion.asignaciones), 2, 'La reconstruccion debe generar dos asignaciones.');
@@ -906,24 +907,26 @@ export const SCENARIOS = [
     run: async ctx => {
       await ctx.reset();
 
-      await ctx.call('registrarVentaQTAS', ventaPayloadBase({
-        cliente: { nombre: 'Cliente Delete Base' },
-        pendienteEnvio: true,
-        lineas: [
-          ventaLinea('AcSup', 1, 'g', 20000)
-        ],
-        pagos: [
-          pagoLinea('Efectivo', 20000, 'Pago base')
-        ]
-      }));
-
-      const venta2 = await ctx.call('registrarVentaQTAS', ventaPayloadBase({
-        cliente: { nombre: 'Cliente Delete Target' },
-        pendienteEnvio: true,
-        lineas: [
-          ventaLinea('AcSup', 1, 'g', 22000)
-        ]
-      }));
+      const results = await ctx.batch([
+        batchStep('registrarVentaQTAS', ventaPayloadBase({
+          cliente: { nombre: 'Cliente Delete Base' },
+          pendienteEnvio: true,
+          lineas: [
+            ventaLinea('AcSup', 1, 'g', 20000)
+          ],
+          pagos: [
+            pagoLinea('Efectivo', 20000, 'Pago base')
+          ]
+        })),
+        batchStep('registrarVentaQTAS', ventaPayloadBase({
+          cliente: { nombre: 'Cliente Delete Target' },
+          pendienteEnvio: true,
+          lineas: [
+            ventaLinea('AcSup', 1, 'g', 22000)
+          ]
+        }))
+      ]);
+      const venta2 = results[1];
 
       const eliminacion = await ctx.call('eliminarVentaRecienteQTAS', {
         ventaId: venta2.ventaId
@@ -977,7 +980,7 @@ export const SCENARIOS = [
         proveedor: 'Proveedor Inventario Test',
         lineas: [
           compraLinea('Insumo', 'Alcohol', 100, 'g', 2000, true, 'Stock alcohol'),
-          compraLinea('Insumo', 'Bolsa_Barata', 20, 'und', 6000, true, 'Stock bolsas')
+          compraLinea('Insumo', 'Bolsa_Zip_Negra', 20, 'und', 6000, true, 'Stock bolsas micros')
         ]
       }));
 
@@ -989,120 +992,114 @@ export const SCENARIOS = [
       const movimientos = ctx.sheetRows(state, 'Inventario_Movimientos');
       const snapshot = ctx.sheetRows(state, 'Inventario_Snapshot');
       const alcohol = snapshot.find(row => row.Item === 'Alcohol' && row.Unidad === 'g');
-      const bolsas = snapshot.find(row => row.Item === 'Bolsa_Barata' && row.Unidad === 'und');
+      const bolsas = snapshot.find(row => row.Item === 'Bolsa_Zip_Negra' && row.Unidad === 'und');
 
       ctx.equal(movimientos.length, 2, 'La compra debe crear dos movimientos de inventario.');
       ctx.assert(alcohol, 'Alcohol debe existir en snapshot.');
-      ctx.assert(bolsas, 'Bolsa_Barata debe existir en snapshot.');
+      ctx.assert(bolsas, 'Bolsa_Zip_Negra debe existir en snapshot.');
       ctx.equal(ctx.num(alcohol.Stock_Actual), 100, 'Alcohol debe quedar con stock 100.');
-      ctx.equal(ctx.num(bolsas.Stock_Actual), 20, 'Bolsa_Barata debe quedar con stock 20.');
+      ctx.equal(ctx.num(bolsas.Stock_Actual), 20, 'Bolsa_Zip_Negra debe quedar con stock 20.');
     }
   },
   {
     id: 'inventario_produccion_y_venta_fabricada',
     title: 'Produccion consume materia prima y venta baja terminado',
-    tags: ['inventario', 'produccion'],
+    tags: ['inventario', 'produccion', 'smoke'],
     run: async ctx => {
       await ctx.reset();
-      const results = await ctx.batch([
-        batchStep('guardarComponenteProductoQTAS', {
-          producto: '100mg',
-          unidadVenta: 'und',
-          orden: 10,
-          tipoComponente: 'Producto',
-          itemComponente: 'AcMed',
-          cantidadComponente: 0.1,
-          unidadComponente: 'g',
-          mermaPct: 0,
-          nota: 'Receta test inventario',
-          activo: true
-        }),
-        batchStep('guardarComponenteProductoQTAS', {
-          producto: '100mg',
-          unidadVenta: 'und',
-          orden: 20,
-          tipoComponente: 'Insumo',
-          itemComponente: 'Capsulas',
-          cantidadComponente: 1,
-          unidadComponente: 'und',
-          mermaPct: 0,
-          nota: 'Receta test inventario',
-          activo: true
-        }),
-        batchStep('guardarReglaCostoProductoQTAS', {
-          producto: '100mg',
-          unidadVenta: 'und',
-          cantidadMin: 1,
-          cantidadMax: 24,
-          orden: 10,
-          tipoComponente: 'Insumo',
-          itemComponente: 'Bolsa_Barata',
-          cantidadComponente: 2,
-          unidadComponente: 'und',
-          aplicacion: 'PorLinea',
-          mermaPct: 0,
-          nota: 'Regla test inventario',
-          activo: true
-        }),
-        batchStep('guardarReglaCostoProductoQTAS', {
-          producto: '100mg',
-          unidadVenta: 'und',
-          cantidadMin: 1,
-          cantidadMax: 24,
-          orden: 20,
-          tipoComponente: 'Insumo',
-          itemComponente: 'Calcas',
-          cantidadComponente: 1,
-          unidadComponente: 'und',
-          aplicacion: 'PorLinea',
-          mermaPct: 0,
-          nota: 'Regla test inventario',
-          activo: true
-        }),
-        batchStep('registrarCompraQTAS', compraPayloadBase({
-          proveedor: 'Proveedor Produccion Test',
-          lineas: [
-            compraLinea('Producto', 'AcMed', 10, 'g', 140000, true, 'Base activa'),
-            compraLinea('Insumo', 'Capsulas', 100, 'und', 1500, true, 'Capsulas vacias'),
-            compraLinea('Insumo', 'Bolsa_Barata', 10, 'und', 3000, true, 'Empaque venta'),
-            compraLinea('Insumo', 'Calcas', 10, 'und', 5000, true, 'Calcas venta')
-          ]
-        })),
-        batchStep('registrarProduccionQTAS', {
-          fechaProduccion: '2026-06-20',
-          producto: '100mg',
-          unidad: 'und',
-          cantidad: 10,
-          comentarioProduccion: 'Lote automatizado'
-        }),
-        batchStep('registrarVentaQTAS', ventaPayloadBase({
-          cliente: { nombre: 'Cliente Inventario Fabricado' },
-          lineas: [
-            ventaLinea('100mg', 2, 'und', 2000)
-          ]
-        }))
-      ]);
-      const produccion = results[5];
+      await ctx.call('guardarComponenteProductoQTAS', {
+        producto: '100mg',
+        unidadVenta: 'und',
+        orden: 10,
+        tipoComponente: 'Producto',
+        itemComponente: 'AcMed',
+        cantidadComponente: 0.1,
+        unidadComponente: 'g',
+        mermaPct: 0,
+        nota: 'Receta test inventario',
+        activo: true
+      });
+      await ctx.call('guardarComponenteProductoQTAS', {
+        producto: '100mg',
+        unidadVenta: 'und',
+        orden: 20,
+        tipoComponente: 'Insumo',
+        itemComponente: 'Capsulas',
+        cantidadComponente: 1,
+        unidadComponente: 'und',
+        mermaPct: 0,
+        nota: 'Receta test inventario',
+        activo: true
+      });
+      const reglasPackaging = await ctx.call('alinearReglasPackagingPsyloScibioQTAS');
+      await ctx.call('registrarCompraQTAS', compraPayloadBase({
+        proveedor: 'Proveedor Produccion Test',
+        lineas: [
+          compraLinea('Producto', 'AcMed', 10, 'g', 140000, true, 'Base activa'),
+          compraLinea('Insumo', 'Capsulas', 100, 'und', 1500, true, 'Capsulas vacias'),
+          compraLinea('Insumo', 'Bolsa_Zip_Negra', 10, 'und', 3000, true, 'Zip negra micros'),
+          compraLinea('Insumo', 'Bolsa_Papel_0_5lb', 10, 'und', 3000, true, 'Bolsa papel micros'),
+          compraLinea('Insumo', 'Calca_Micros_Logo', 10, 'und', 5000, true, 'Calca logo micros')
+        ]
+      }));
+      const produccion = await ctx.call('registrarProduccionQTAS', {
+        fechaProduccion: '2026-06-20',
+        producto: '100mg',
+        unidad: 'und',
+        cantidad: 10,
+        comentarioProduccion: 'Lote automatizado'
+      });
+      const venta = await ctx.call('registrarVentaQTAS', ventaPayloadBase({
+        cliente: { nombre: 'Cliente Inventario Fabricado' },
+        lineas: [
+          ventaLinea('100mg', 2, 'und', 2000)
+        ]
+      }));
 
+      ctx.assert(reglasPackaging.ok, 'La alineacion de packaging debe responder ok.');
       ctx.assert(produccion.ok, 'La produccion debe registrarse correctamente.');
 
       const state = await snapshotLigero(ctx, {
         sheetNames: ['Inventario_Movimientos', 'Inventario_Snapshot', 'Producciones', 'Produccion_Detalle']
       });
       const snapshot = ctx.sheetRows(state, 'Inventario_Snapshot');
+      const movimientosVenta = ctx.sheetRows(state, 'Inventario_Movimientos')
+        .filter(row => ctx.num(row.Venta_ID) === ctx.num(venta.ventaId));
       const stock100 = snapshot.find(row => row.Item === '100mg' && row.Unidad === 'und');
       const stockAcMed = snapshot.find(row => row.Item === 'AcMed' && row.Unidad === 'g');
       const stockCapsulas = snapshot.find(row => row.Item === 'Capsulas' && row.Unidad === 'und');
-      const stockBolsas = snapshot.find(row => row.Item === 'Bolsa_Barata' && row.Unidad === 'und');
-      const stockCalcas = snapshot.find(row => row.Item === 'Calcas' && row.Unidad === 'und');
+      const stockZipNegra = snapshot.find(row => row.Item === 'Bolsa_Zip_Negra' && row.Unidad === 'und');
+      const stockBolsaPapel = snapshot.find(row => row.Item === 'Bolsa_Papel_0_5lb' && row.Unidad === 'und');
+      const stockCalcaMicros = snapshot.find(row => row.Item === 'Calca_Micros_Logo' && row.Unidad === 'und');
 
       ctx.equal(ctx.sheetRows(state, 'Producciones').length, 1, 'Debe existir un encabezado de produccion.');
       ctx.assert(ctx.sheetRows(state, 'Produccion_Detalle').length >= 3, 'La produccion debe materializar entradas y salidas.');
       ctx.equal(ctx.num(stock100.Stock_Actual), 8, 'El terminado 100mg debe quedar en 8.');
       ctx.equal(ctx.num(stockAcMed.Stock_Actual), 9, 'AcMed debe bajar por la produccion del lote.');
       ctx.equal(ctx.num(stockCapsulas.Stock_Actual), 90, 'Capsulas debe bajar por la produccion.');
-      ctx.equal(ctx.num(stockBolsas.Stock_Actual), 8, 'La venta debe consumir bolsas por la regla comercial.');
-      ctx.equal(ctx.num(stockCalcas.Stock_Actual), 9, 'La venta debe consumir calcas por la regla comercial.');
+      ctx.equal(ctx.num(stockZipNegra.Stock_Actual), 9, 'La venta debe consumir una zip negra por el pedido.');
+      ctx.equal(ctx.num(stockBolsaPapel.Stock_Actual), 9, 'La venta debe consumir una bolsa papel 0.5 lb por el pedido.');
+      ctx.equal(ctx.num(stockCalcaMicros.Stock_Actual), 9, 'La venta debe consumir una calca logo por el pedido.');
+      ctx.assert(
+        movimientosVenta.some(row => row.Item === 'Bolsa_Zip_Negra' && row.Operacion === 'Salida'),
+        'La venta debe consumir Bolsa_Zip_Negra.'
+      );
+      ctx.assert(
+        movimientosVenta.some(row => row.Item === 'Bolsa_Papel_0_5lb' && row.Operacion === 'Salida'),
+        'La venta debe consumir Bolsa_Papel_0_5lb.'
+      );
+      ctx.assert(
+        movimientosVenta.some(row => row.Item === 'Calca_Micros_Logo' && row.Operacion === 'Salida'),
+        'La venta debe consumir Calca_Micros_Logo.'
+      );
+      ctx.assert(
+        !movimientosVenta.some(row => row.Item === 'Bolsa_Barata' || row.Item === 'Calcas'),
+        'La venta ya no debe consumir empaques o calcas genericas legacy.'
+      );
+      ctx.assert(
+        !movimientosVenta.some(row => row.Item === 'Frasco_Capsulas' || row.Item === 'Calca_Micros_Instrucciones'),
+        'Las ventas menores a 25 unidades no deben consumir frasco ni calca de instrucciones.'
+      );
     }
   },
   {
@@ -1112,39 +1109,33 @@ export const SCENARIOS = [
     run: async ctx => {
       await ctx.reset();
 
-      const results = await ctx.batch([
-        batchStep('alinearRecetasExtractosBaseQTAS'),
-        batchStep('guardarControlInventarioQTAS', {
-          tipoItem: 'Insumo',
-          item: 'Agua',
-          unidad: 'g',
-          modoStock: 'NoControlado',
-          stockMinimo: 0,
-          stockObjetivo: 0,
-          activo: true,
-          nota: 'Configuracion test extractos'
-        }),
-        batchStep('registrarCompraQTAS', compraPayloadBase({
-          proveedor: 'Proveedor Extracto Test',
-          lineas: [
-            compraLinea('Producto', 'Cordy', 100, 'g', 31000, true, 'Hongo base extracto'),
-            compraLinea('Insumo', 'Alcohol', 200, 'g', 2526, true, 'Alcohol extracto'),
-            compraLinea('Insumo', 'Goteros', 10, 'und', 10000, true, 'Goteros extracto'),
-            compraLinea('Insumo', 'Bolsa_Papel_1lb', 10, 'und', 5000, true, 'Bolsa papel extracto'),
-            compraLinea('Insumo', 'Calca_Cordy_Ext', 10, 'und', 5000, true, 'Calca extracto')
-          ]
-        })),
-        batchStep('registrarProduccionQTAS', {
-          fechaProduccion: '2026-06-20',
-          producto: 'CordyExt',
-          unidad: 'und',
-          cantidad: 2,
-          comentarioProduccion: 'Lote extracto receta alineada'
-        })
-      ]);
-      const alineacion = results[0];
-      const produccion = results[3];
-      ctx.assert(alineacion.ok, 'La alineacion de recetas base de extractos debe responder ok.');
+      const preparacion = await ctx.call('prepararLibroPsyloScibioQTAS', {
+        borrarHojasLegacy: false,
+        dryRunHojasLegacy: true,
+        fullHistorico: false
+      });
+      await ctx.call('registrarCompraQTAS', compraPayloadBase({
+        proveedor: 'Proveedor Extracto Test',
+        lineas: [
+          compraLinea('Producto', 'Cordy', 100, 'g', 31000, true, 'Hongo base extracto'),
+          compraLinea('Insumo', 'Alcohol', 200, 'g', 2526, true, 'Alcohol extracto'),
+          compraLinea('Insumo', 'Goteros', 10, 'und', 10000, true, 'Goteros extracto'),
+          compraLinea('Insumo', 'Bolsa_Papel_1lb', 10, 'und', 5000, true, 'Bolsa papel extracto'),
+          compraLinea('Insumo', 'Calca_Cordy_Ext', 10, 'und', 5000, true, 'Calca extracto')
+        ]
+      }));
+      const produccion = await ctx.call('registrarProduccionQTAS', {
+        fechaProduccion: '2026-06-20',
+        producto: 'CordyExt',
+        unidad: 'und',
+        cantidad: 2,
+        comentarioProduccion: 'Lote extracto receta alineada'
+      });
+      ctx.assert(preparacion.ok, 'La preparacion operativa del libro debe responder ok.');
+      ctx.assert(preparacion.catalogoOperativo && preparacion.catalogoOperativo.ok, 'La preparacion debe dejar catalogo operativo ok.');
+      ctx.assert(preparacion.packaging && preparacion.packaging.ok, 'La preparacion debe dejar packaging ok.');
+      ctx.assert(preparacion.inventarioCanonico && preparacion.inventarioCanonico.ok, 'La preparacion debe dejar inventario canonico ok.');
+      ctx.assert(preparacion.costoProducto && preparacion.costoProducto.ok, 'La preparacion debe recalcular costo producto sin fallar.');
 
       ctx.assert(produccion.ok, 'La produccion del extracto debe registrarse correctamente.');
 
