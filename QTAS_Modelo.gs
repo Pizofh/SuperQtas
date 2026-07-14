@@ -1,3 +1,12 @@
+function habilitarDestructivoTemporalQTAS() {
+  PropertiesService.getScriptProperties().setProperty('QTAS_ALLOW_DESTRUCTIVE', 'true');
+  Logger.log(PropertiesService.getScriptProperties().getProperty('QTAS_ALLOW_DESTRUCTIVE'));
+}
+
+function deshabilitarDestructivoTemporalQTAS() {
+  PropertiesService.getScriptProperties().deleteProperty('QTAS_ALLOW_DESTRUCTIVE');
+  Logger.log('QTAS_ALLOW_DESTRUCTIVE eliminado');
+}
 function asegurarModeloOperativoQTAS_(options) {
   const config = Object.assign({
     aplicarFormatos: false
