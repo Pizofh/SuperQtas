@@ -125,6 +125,11 @@ The repository already works with a real separation between QA and production.
 - The full suite can be enabled manually or through a repository/environment variable.
 - Production deployment is triggered manually from GitHub Actions.
 
+QA push validation is controlled with GitHub Actions repository variables:
+
+- `QTAS_RUN_SMOKE_SUITE_ON_QA_PUSH=true` enables the smoke suite.
+- `QTAS_RUN_FULL_SUITE_ON_QA_PUSH=true` enables the complete suite and automatically skips the separate smoke run because those scenarios are already included.
+
 Production also uses a reduced bundle:
 
 - It excludes testing helpers from the production bundle.
