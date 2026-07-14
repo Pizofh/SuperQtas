@@ -265,7 +265,11 @@ function sincronizarInventarioDesdeCompraQTAS_(context) {
   }, context || {});
   const ss = settings.ss || SpreadsheetApp.getActive();
 
-  asegurarControlesInventarioBaseQTAS_();
+  asegurarControlesInventarioBaseQTAS_((settings.lineas || []).map(linea => ({
+    tipoItem: linea.Tipo_Item,
+    item: linea.Item,
+    unidad: linea.Unidad
+  })));
 
   const movimientosRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.inventarioMovimientos);
   if (!movimientosRef.ok) {
@@ -365,7 +369,7 @@ function sincronizarInventarioDesdeProduccionDetalleQTAS_(context) {
   };
 }
 
-function asegurarControlesInventarioBaseQTAS_() {
+function asegurarControlesInventarioBaseQTAS_(candidatosAdicionales) {
   const ss = SpreadsheetApp.getActive();
   const sheet = ss.getSheetByName(QTAS.sheets.inventarioControl);
   if (!sheet) return [];
@@ -375,13 +379,18 @@ function asegurarControlesInventarioBaseQTAS_() {
   const index = construirIndiceControlesInventarioQTAS_(
     existentes.map(row => normalizarControlInventarioQTAS_(row))
   );
-  const candidatos = construirCandidatosControlInventarioQTAS_(ss);
+  const candidatos = construirCandidatosControlInventarioQTAS_(ss)
+    .concat((candidatosAdicionales || []).map(row => ({
+      tipoItem: normalizarTipoCompraItemQTAS_(row.tipoItem || row.Tipo_Item),
+      item: texto_(row.item || row.Item),
+      unidad: normalizarUnidadCanonicaQTAS_(row.unidad || row.Unidad)
+    })));
   const nuevos = [];
   let nextId = siguienteIdConPrefijo_(sheet, 'Control_ID', 'INVCTRL-', 4);
 
   candidatos.forEach(candidato => {
     const key = claveControlInventarioQTAS_(candidato.tipoItem, candidato.item, candidato.unidad);
-    if (!key || index[key]) return;
+    if (!candidato.item || !candidato.unidad || candidato.tipoItem === 'Gasto' || !key || index[key]) return;
 
     nuevos.push(filaDesdeHeaders_(headers, {
       Control_ID: nextId,

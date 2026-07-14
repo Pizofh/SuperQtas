@@ -925,7 +925,7 @@ export const SCENARIOS = [
   {
     id: 'inventario_compra_directa_actualiza_snapshot',
     title: 'Compra directa alimenta inventario y snapshot',
-    tags: ['inventario', 'compras'],
+    tags: ['inventario', 'compras', 'smoke'],
     run: async ctx => {
       await ctx.reset();
 
