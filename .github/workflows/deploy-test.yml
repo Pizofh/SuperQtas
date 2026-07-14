@@ -6,6 +6,11 @@ on:
       - qa
   workflow_dispatch:
     inputs:
+      run_smoke_suite:
+        description: Ejecutar la suite smoke de QA
+        required: false
+        default: true
+        type: boolean
       run_full_suite:
         description: Ejecutar la suite completa de QA
         required: false
@@ -69,6 +74,7 @@ jobs:
           npm run test:qtas:probe:qa
 
       - name: Run headless Apps Script smoke suite
+        if: ${{ ((github.event_name == 'workflow_dispatch' && github.event.inputs.run_smoke_suite == 'true') || (github.event_name == 'push' && vars.QTAS_RUN_SMOKE_SUITE_ON_QA_PUSH == 'true')) && !((github.event_name == 'workflow_dispatch' && github.event.inputs.run_full_suite == 'true') || (github.event_name == 'push' && vars.QTAS_RUN_FULL_SUITE_ON_QA_PUSH == 'true')) }}
         env:
           QTAS_TEST_CONFIG_JSON: ${{ secrets.QTAS_TEST_CONFIG_JSON }}
           GOOGLE_AUTHORIZED_USER_JSON: ${{ secrets.GOOGLE_AUTHORIZED_USER_JSON_TEST }}

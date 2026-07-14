@@ -384,12 +384,17 @@ export const SCENARIOS = [
     run: async ctx => {
       await ctx.reset();
 
-      const resp = await ctx.call('registrarCompraQTAS', compraPayloadBase({
-        proveedor: 'Proveedor Costo Test',
-        lineas: [
-          compraLinea('Producto', 'AcSup', 10, 'g', 100000, true, 'Refresh incremental de costo producto')
-        ]
-      }));
+      const results = await ctx.batch([
+        batchStep('registrarCompraQTAS', compraPayloadBase({
+          proveedor: 'Proveedor Costo Test',
+          lineas: [
+            compraLinea('Producto', 'AcSup', 10, 'g', 100000, true, 'Refresh incremental de costo producto')
+          ]
+        })),
+        batchStep('auditarIntegridadFinancieraQTAS')
+      ]);
+      const resp = results[0];
+      const auditoria = results[1];
 
       ctx.assert(
         resp.costoProductoCalculado && resp.costoProductoCalculado.ok === true,
@@ -398,6 +403,16 @@ export const SCENARIOS = [
       ctx.assert(
         ctx.num(resp.costoProductoCalculado.rows) > 0,
         'El refresh incremental debe recalcular al menos una fila de costo producto.'
+      );
+      ctx.equal(
+        ctx.num(auditoria.compras.costoUnitarioInconsistente),
+        0,
+        'Una compra operativa no debe dejar costos unitarios inconsistentes.'
+      );
+      ctx.equal(
+        ctx.num(auditoria.compras.fondosDescuadrados),
+        0,
+        'Una compra operativa no debe dejar fondos descuadrados.'
       );
 
       const state = await snapshotLigero(ctx, {
