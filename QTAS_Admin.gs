@@ -563,6 +563,9 @@ function construirPlanIntegridadFinancieraQTAS_(ss) {
   const compraDetalle = leerObjetos_(spreadsheet.getSheetByName(QTAS.sheets.compraDetalle));
   const fondos = leerObjetos_(spreadsheet.getSheetByName(QTAS.sheets.compraOrigenesFondos));
   const costos = leerObjetos_(spreadsheet.getSheetByName(QTAS.sheets.costosReferencia));
+  const costoProducto = leerObjetos_(
+    spreadsheet.getSheetByName(QTAS.sheets.costoProductoCalculado)
+  );
   const ventas = leerObjetos_(spreadsheet.getSheetByName(QTAS.sheets.ventas));
   const ventaDetalle = leerObjetos_(spreadsheet.getSheetByName(QTAS.sheets.detalle));
   const pagos = leerObjetos_(spreadsheet.getSheetByName(QTAS.sheets.pagos));
@@ -638,7 +641,10 @@ function construirPlanIntegridadFinancieraQTAS_(ss) {
     }))
     .sort((a, b) => b.total - a.total);
   const preciosAtipicos = auditarPreciosVentaAtipicosQTAS_(ventaDetalle);
-  const costosAnaliticosExtremos = auditarCostosAnaliticosExtremosQTAS_(ventaDetalleCostos);
+  const costosAnaliticosExtremos = auditarCostosAnaliticosExtremosQTAS_(
+    ventaDetalleCostos,
+    costoProducto
+  );
   const staleAnalitica = ventaDetalleCostos.filter(row =>
     texto_(row.Detalle_ID) && !detalleVentaIds[texto_(row.Detalle_ID)]
   );
@@ -646,7 +652,7 @@ function construirPlanIntegridadFinancieraQTAS_(ss) {
     correccionesImpactoCosto.length ||
     correccionesCoberturaPackaging.length ||
     correccionesVentaDetalle.length ||
-    costosAnaliticosExtremos.length
+    costosAnaliticosExtremos.total
   ) {
     ventaDetalle.forEach(row => {
       const id = texto_(row.Detalle_ID);
@@ -673,7 +679,7 @@ function construirPlanIntegridadFinancieraQTAS_(ss) {
         correccionesCoberturaPackaging.length === 0 &&
         planFondos.compras.length === 0 &&
         correccionesVentaDetalle.length === 0 &&
-        costosAnaliticosExtremos.length === 0 &&
+        costosAnaliticosExtremos.total === 0 &&
         ventasTotales.length === 0 &&
         comprasTotales.length === 0 &&
         staleAnalitica.length === 0,
@@ -717,7 +723,7 @@ function construirPlanIntegridadFinancieraQTAS_(ss) {
         mayoresAUnMillon: ventasAltas.length,
         preciosAtipicos: preciosAtipicos.length,
         detalleNoCanonico: correccionesVentaDetalle.length,
-        costosAnaliticosExtremos: costosAnaliticosExtremos.length,
+        costosAnaliticosExtremos: costosAnaliticosExtremos.total,
         analiticaARecalcular: Object.keys(detalleIdsAnalitica).length,
         analiticaStale: staleAnalitica.length
       },
@@ -725,7 +731,7 @@ function construirPlanIntegridadFinancieraQTAS_(ss) {
         ventasMayoresAUnMillon: ventasAltas,
         preciosVentaAtipicos: preciosAtipicos,
         ventaDetalleNoCanonico: correccionesVentaDetalle,
-        costosAnaliticosExtremos: costosAnaliticosExtremos,
+        costosAnaliticosExtremos: costosAnaliticosExtremos.rows,
         pagosDescuadrados: pagosDescuadrados,
         ventasTotalesDescuadrados: ventasTotales,
         comprasTotalesDescuadrados: comprasTotales,
@@ -1303,9 +1309,15 @@ function auditarPreciosVentaAtipicosQTAS_(detalle) {
     .slice(0, 30);
 }
 
-function auditarCostosAnaliticosExtremosQTAS_(rows) {
-  return (rows || [])
-    .filter(row => numero_(row.Costo_Unitario_Usado) >= 1000000)
+function auditarCostosAnaliticosExtremosQTAS_(rows, costosProducto) {
+  const costoActualPorProducto = {};
+  (costosProducto || []).forEach(row => {
+    const key = normalizarClaveProductoQTAS_(row.Producto_Estandar, row.Unidad_Venta);
+    const costo = numero_(row.Costo_Unitario_Total);
+    if (key && costo > 0) costoActualPorProducto[key] = costo;
+  });
+
+  const atipicos = (rows || [])
     .map(row => ({
       detalleId: texto_(row.Detalle_ID),
       ventaId: numero_(row.Venta_ID),
@@ -1316,8 +1328,32 @@ function auditarCostosAnaliticosExtremosQTAS_(rows) {
       costoUnitario: redondear_(numero_(row.Costo_Unitario_Usado)),
       costoTotal: redondear_(numero_(row.Costo_Total_Estimado)),
       subtotalNeto: redondear_(numero_(row.Subtotal_Neto)),
-      actualizadoEn: texto_(row.Actualizado_En)
+      actualizadoEn: texto_(row.Actualizado_En),
+      costoActualReferencia: redondear_(numero_(costoActualPorProducto[
+        normalizarClaveProductoQTAS_(row.Producto_Estandar, row.Unidad)
+      ]))
     }))
-    .sort((a, b) => b.costoUnitario - a.costoUnitario)
-    .slice(0, 50);
+    .map(row => Object.assign({}, row, {
+      vecesCostoActual: row.costoActualReferencia > 0
+        ? redondear_(row.costoUnitario / row.costoActualReferencia)
+        : 0,
+      vecesVenta: row.subtotalNeto > 0
+        ? redondear_(row.costoTotal / row.subtotalNeto)
+        : 0
+    }))
+    .filter(row =>
+      row.costoUnitario >= 1000000 ||
+      row.vecesCostoActual >= 5 ||
+      row.vecesVenta >= 5
+    )
+    .sort((a, b) => {
+      const severidadA = Math.max(a.vecesCostoActual, a.vecesVenta);
+      const severidadB = Math.max(b.vecesCostoActual, b.vecesVenta);
+      return severidadB - severidadA;
+    });
+
+  return {
+    total: atipicos.length,
+    rows: atipicos.slice(0, 50)
+  };
 }
