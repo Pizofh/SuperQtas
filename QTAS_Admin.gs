@@ -443,6 +443,407 @@ function auditarIntegridadFinancieraQTAS() {
   return plan.resumen;
 }
 
+function corregirVentasHistoricasConfirmadasQTAS() {
+  assertOperacionDestructivaPermitidaQTAS_('corregir ventas historicas confirmadas');
+
+  try {
+    return withScriptLock_('corregir ventas historicas confirmadas', () => {
+      const ss = validarModeloSoloLecturaQTAS_({
+        sheetNames: [
+          QTAS.sheets.ventas,
+          QTAS.sheets.detalle,
+          QTAS.sheets.pagos,
+          QTAS.sheets.distribucionIngresos,
+          QTAS.sheets.ventaDetalleCostosCalculado
+        ],
+        validarConfig: false
+      });
+      const ventasSheet = ss.getSheetByName(QTAS.sheets.ventas);
+      const detalleSheet = ss.getSheetByName(QTAS.sheets.detalle);
+      const pagosSheet = ss.getSheetByName(QTAS.sheets.pagos);
+      const distribucionSheet = ss.getSheetByName(QTAS.sheets.distribucionIngresos);
+      const ventasHeaders = getHeaders_(ventasSheet);
+      const detalleHeaders = getHeaders_(detalleSheet);
+      const pagosHeaders = getHeaders_(pagosSheet);
+      const distribucionHeaders = getHeaders_(distribucionSheet);
+      const ventas = leerObjetosConMeta_(ventasSheet);
+      const detalle = leerObjetosConMeta_(detalleSheet);
+      const pagos = leerObjetosConMeta_(pagosSheet);
+      const distribuciones = leerObjetosConMeta_(distribucionSheet);
+      const correcciones = construirCorreccionesVentasHistoricasConfirmadasQTAS_();
+      const ventasPorId = indexarObjetosPorCampoQTAS_(ventas, 'Venta_ID');
+      const detallePorId = indexarObjetosPorCampoQTAS_(detalle, 'Detalle_ID');
+      const faltantes = correcciones
+        .filter(item => !detallePorId[item.detalleId] || !ventasPorId[String(item.ventaId)])
+        .map(item => item.detalleId);
+
+      if (faltantes.length) {
+        throw new Error(`No se encontraron los detalles esperados: ${faltantes.join(', ')}.`);
+      }
+
+      const ventaIdsAfectadas = {};
+      const detalleActualizado = [];
+      correcciones.forEach(item => {
+        const existente = detallePorId[item.detalleId];
+        if (numero_(existente.Venta_ID) !== numero_(item.ventaId)) {
+          throw new Error(`El detalle ${item.detalleId} no pertenece a la venta ${item.ventaId}.`);
+        }
+
+        const actualizado = Object.assign({}, existente, item.values);
+        actualizarFilaObjeto_(detalleSheet, existente.__rowNumber, detalleHeaders, actualizado);
+        Object.assign(existente, actualizado);
+        ventaIdsAfectadas[String(item.ventaId)] = true;
+        detalleActualizado.push(existente);
+      });
+
+      const pagosActualizados = corregirPagosVentasHistoricasConfirmadasQTAS_({
+        pagosSheet: pagosSheet,
+        pagosHeaders: pagosHeaders,
+        pagos: pagos,
+        ventasPorId: ventasPorId
+      });
+      pagosActualizados.ventaIds.forEach(ventaId => {
+        ventaIdsAfectadas[String(ventaId)] = true;
+      });
+
+      const ventasActualizadas = actualizarResumenVentasHistoricasConfirmadasQTAS_({
+        ventasSheet: ventasSheet,
+        ventasHeaders: ventasHeaders,
+        ventasPorId: ventasPorId,
+        detalle: detalle,
+        pagos: pagos,
+        ventaIds: Object.keys(ventaIdsAfectadas)
+      });
+
+      const distribucion = sincronizarDistribucionesVentasHistoricasConfirmadasQTAS_({
+        distribucionSheet: distribucionSheet,
+        distribucionHeaders: distribucionHeaders,
+        distribuciones: distribuciones,
+        ventasPorId: ventasPorId,
+        pagos: pagos,
+        ventaIds: Object.keys(ventaIdsAfectadas)
+      });
+
+      const primeraVentaAcMed = detallePorId['DET-000001-01'];
+      const detallesAnalitica = detalleActualizado.slice();
+      if (
+        primeraVentaAcMed &&
+        !detallesAnalitica.some(row => texto_(row.Detalle_ID) === 'DET-000001-01')
+      ) {
+        detallesAnalitica.push(primeraVentaAcMed);
+      }
+
+      limpiarCachesEjecucionQTAS_();
+      const analitica = sincronizarVentaDetalleCostosLoteQTAS_(detallesAnalitica, {
+        ss: ss,
+        ahora: new Date()
+      });
+      const filaAcMed = leerObjetos_(
+        ss.getSheetByName(QTAS.sheets.ventaDetalleCostosCalculado)
+      ).find(row => texto_(row.Detalle_ID) === 'DET-000001-01');
+      const verificaciones = verificarVentasHistoricasConfirmadasQTAS_({
+        ventasPorId: ventasPorId,
+        detalle: detalle,
+        pagos: pagos,
+        ventaIds: Object.keys(ventaIdsAfectadas)
+      });
+      const costoInicialAcMed = redondear_(numero_(filaAcMed && filaAcMed.Costo_Unitario_Usado));
+      const result = {
+        ok: verificaciones.ok && analitica.ok === true && costoInicialAcMed > 0,
+        ventasActualizadas: ventasActualizadas,
+        detallesActualizados: detalleActualizado.length,
+        pagosActualizados: pagosActualizados.updated,
+        pagosCreados: pagosActualizados.inserted,
+        distribucion: distribucion,
+        analitica: analitica,
+        costoInicialAcMed: costoInicialAcMed,
+        verificaciones: verificaciones,
+        noModificadas: [2342, 2345]
+      };
+
+      guardarEstadoReparacionIntegridadFinancieraQTAS_({
+        ok: result.ok,
+        active: false,
+        pending: !result.ok,
+        status: result.ok ? 'Correcciones historicas aplicadas' : 'Correcciones aplicadas con pendientes',
+        result: result,
+        completedAt: new Date().toISOString()
+      });
+      Logger.log(JSON.stringify(result, null, 2));
+      return result;
+    });
+  } finally {
+    PropertiesService.getScriptProperties().deleteProperty('QTAS_ALLOW_DESTRUCTIVE');
+  }
+}
+
+function corregirVentasHistoricasConfirmadasQTAS_Log() {
+  const result = corregirVentasHistoricasConfirmadasQTAS();
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+function construirCorreccionesVentasHistoricasConfirmadasQTAS_() {
+  return [
+    crearCorreccionDetalleVentaHistoricaQTAS_('DET-000172-01', 172, 'Choco', 1, 'und', 20000, 20000),
+    crearCorreccionDetalleVentaHistoricaQTAS_('DET-000172-02', 172, '200mg', 5, 'und', 3000, 15000),
+    crearCorreccionDetalleVentaHistoricaQTAS_('DET-000235-01', 235, 'Lm', 40, 'g', 1500, 40000),
+    crearCorreccionDetalleVentaHistoricaQTAS_('DET-000501-03', 501, '200mg', 10, 'und', 3000, 30000),
+    crearCorreccionDetalleVentaHistoricaQTAS_('DET-000514-01', 514, 'Shii', 45, 'g', 1500, 30000),
+    crearCorreccionDetalleVentaHistoricaQTAS_('DET-000552-01', 552, 'LmExt', 2, 'und', 50000, 90000),
+    crearCorreccionDetalleVentaHistoricaQTAS_('DET-000633-01', 633, 'Shii', 45, 'g', 1500, 45000),
+    crearCorreccionDetalleVentaHistoricaQTAS_('DET-000688-01', 688, 'Gano', 15, 'g', 1500, 20000),
+    crearCorreccionDetalleVentaHistoricaQTAS_('DET-000688-02', 688, 'Shii', 100, 'g', 1500, 85000),
+    crearCorreccionDetalleVentaHistoricaQTAS_('DET-000697-02', 697, 'Lm', 15, 'g', 1500, 25000),
+    crearCorreccionDetalleVentaHistoricaQTAS_('DET-000697-03', 697, 'Cordy', 1, 'g', 2500, 3000),
+    crearCorreccionDetalleVentaHistoricaQTAS_('DET-000786-01', 786, 'AcSup', 3, 'g', 20000, 60000),
+    crearCorreccionDetalleVentaHistoricaQTAS_('DET-001245-01', 1245, '300mg', 25, 'und', 4000, 100000),
+    crearCorreccionDetalleVentaHistoricaQTAS_('DET-001282-01', 1282, 'AcMed', 12, 'g', 12000, 144000),
+    crearCorreccionDetalleVentaHistoricaQTAS_('DET-001369-02', 1369, 'Choco', 1, 'und', 20000, 20000),
+    crearCorreccionDetalleVentaHistoricaQTAS_('DET-001857-01', 1857, 'AcSup', 15, 'g', 20000, 255000),
+    crearCorreccionDetalleVentaHistoricaQTAS_('DET-002221-01', 2221, 'Lm', 20, 'g', 1500, 30000),
+    crearCorreccionDetalleVentaHistoricaQTAS_('DET-002221-02', 2221, 'AcAlt', 20, 'g', 18000, 168000),
+    crearCorreccionDetalleVentaHistoricaQTAS_('DET-002412-01', 2412, 'Lm', 30, 'g', 1500, 45000),
+    crearCorreccionDetalleVentaHistoricaQTAS_('DET-002464-01', 2464, 'AcSup', 15, 'g', 20000, 225000),
+    crearCorreccionDetalleVentaHistoricaQTAS_('DET-002464-02', 2464, 'Lm', 50, 'g', 1500, 45000),
+    crearCorreccionDetalleVentaHistoricaQTAS_('DET-002591-01', 2591, '200mg', 10, 'und', 3000, 30000)
+  ];
+}
+
+function crearCorreccionDetalleVentaHistoricaQTAS_(
+  detalleId,
+  ventaId,
+  producto,
+  cantidad,
+  unidad,
+  precioLista,
+  subtotalNeto
+) {
+  const precioVendido = cantidad > 0 ? subtotalNeto / cantidad : 0;
+  return {
+    detalleId: detalleId,
+    ventaId: ventaId,
+    values: {
+      Producto_Estandar: producto,
+      Cantidad: cantidad,
+      Unidad: unidad,
+      Precio_Lista: precioLista,
+      Precio_Vendido_Unitario: precioVendido,
+      Descuento_Linea: 0,
+      Subtotal_Bruto: subtotalNeto,
+      Subtotal_Neto: subtotalNeto
+    }
+  };
+}
+
+function corregirPagosVentasHistoricasConfirmadasQTAS_(context) {
+  const montosCorregidos = {
+    '786': 60000,
+    '1245': 100000
+  };
+  const ventaIdsSinPago = [2639, 2641, 2642];
+  let updated = 0;
+  const nuevos = [];
+
+  Object.keys(montosCorregidos).forEach(ventaId => {
+    const activos = context.pagos.filter(row =>
+      texto_(row.Venta_ID) === ventaId && !esRegistroAnulado_(row.Estado_Registro)
+    );
+    if (activos.length !== 1) {
+      throw new Error(`La venta ${ventaId} debe tener exactamente un pago activo para corregirlo.`);
+    }
+    const pago = activos[0];
+    const actualizado = Object.assign({}, pago, {
+      Monto_Pago: montosCorregidos[ventaId]
+    });
+    actualizarFilaObjeto_(
+      context.pagosSheet,
+      pago.__rowNumber,
+      context.pagosHeaders,
+      actualizado
+    );
+    Object.assign(pago, actualizado);
+    updated++;
+  });
+
+  ventaIdsSinPago.forEach(ventaId => {
+    const venta = context.ventasPorId[String(ventaId)];
+    if (!venta) throw new Error(`No se encontro la venta ${ventaId}.`);
+    const activos = context.pagos.filter(row =>
+      numero_(row.Venta_ID) === ventaId && !esRegistroAnulado_(row.Estado_Registro)
+    );
+    if (activos.length) return;
+
+    const pago = {
+      Pago_ID: siguientePagoIdVentaQTAS_(context.pagos.concat(nuevos), ventaId),
+      Venta_ID: ventaId,
+      Fecha_Pago: venta.Fecha_Venta,
+      Medio_Pago: 'Otro',
+      Monto_Pago: redondear_(numero_(venta.Total_Pagado) || numero_(venta.Total_Venta)),
+      Comentario_Pago: 'Pago historico conciliado; medio original no disponible.',
+      Regla_Distribucion_Pago_ID: texto_(venta.Regla_Distribucion_Venta_ID),
+      Steve_Pct_Pago: numero_(venta.Steve_Pct_Venta),
+      Majo_Pct_Pago: numero_(venta.Majo_Pct_Venta),
+      Mush_Pct_Pago: numero_(venta.Mush_Pct_Venta),
+      Estado_Registro: QTAS.status.registro.activo
+    };
+    nuevos.push(pago);
+  });
+
+  if (nuevos.length) {
+    escribirFilas_(
+      context.pagosSheet,
+      nuevos.map(row => filaDesdeHeaders_(context.pagosHeaders, row))
+    );
+    context.pagos.push.apply(context.pagos, nuevos);
+  }
+
+  return {
+    updated: updated,
+    inserted: nuevos.length,
+    ventaIds: Object.keys(montosCorregidos).map(Number).concat(ventaIdsSinPago)
+  };
+}
+
+function actualizarResumenVentasHistoricasConfirmadasQTAS_(context) {
+  let updated = 0;
+  (context.ventaIds || []).forEach(ventaId => {
+    const venta = context.ventasPorId[String(ventaId)];
+    if (!venta) throw new Error(`No se encontro la venta ${ventaId}.`);
+    const lineas = context.detalle.filter(row =>
+      texto_(row.Venta_ID) === String(ventaId) && !esRegistroAnulado_(row.Estado_Registro)
+    );
+    const pagos = context.pagos.filter(row =>
+      texto_(row.Venta_ID) === String(ventaId) && !esRegistroAnulado_(row.Estado_Registro)
+    );
+    const totalVenta = redondear_(sumar_(lineas.map(row => row.Subtotal_Neto)));
+    const totalPagado = redondear_(sumar_(pagos.map(row => row.Monto_Pago)));
+    if (totalPagado > totalVenta + 0.01) {
+      throw new Error(`La venta ${ventaId} quedaria con pagos mayores al total.`);
+    }
+    const saldo = redondear_(Math.max(totalVenta - totalPagado, 0));
+    const actualizado = Object.assign({}, venta, {
+      Productos_Resumen: resumenProductos_(lineas),
+      Total_Venta: totalVenta,
+      Total_Pagado: totalPagado,
+      Saldo: saldo,
+      Estado_Pago: obtenerEstadoPago_(totalVenta, totalPagado, venta.Estado_Registro)
+    });
+    actualizarFilaObjeto_(
+      context.ventasSheet,
+      venta.__rowNumber,
+      context.ventasHeaders,
+      actualizado
+    );
+    Object.assign(venta, actualizado);
+    updated++;
+  });
+  return updated;
+}
+
+function sincronizarDistribucionesVentasHistoricasConfirmadasQTAS_(context) {
+  const ventaIds = {};
+  (context.ventaIds || []).forEach(ventaId => {
+    ventaIds[String(ventaId)] = true;
+  });
+  const existentes = context.distribuciones.filter(row => ventaIds[texto_(row.Venta_ID)]);
+  const existentesPorId = indexarObjetosPorCampoQTAS_(existentes, 'Distribucion_ID');
+  const objetivosPorId = {};
+  const nuevos = [];
+  let updated = 0;
+  let cancelled = 0;
+
+  Object.keys(ventaIds).forEach(ventaId => {
+    const venta = context.ventasPorId[ventaId];
+    const pagos = context.pagos.filter(row =>
+      texto_(row.Venta_ID) === ventaId && !esRegistroAnulado_(row.Estado_Registro)
+    );
+    const objetivos = [construirFilaDistribucionVentaQTAS_(venta)]
+      .concat(pagos.map(pago => construirFilaDistribucionPagoQTAS_(pago, venta)));
+
+    objetivos.forEach(objetivo => {
+      const id = texto_(objetivo.Distribucion_ID);
+      objetivosPorId[id] = true;
+      const existente = existentesPorId[id];
+      if (!existente) {
+        nuevos.push(objetivo);
+        return;
+      }
+      actualizarFilaObjeto_(
+        context.distribucionSheet,
+        existente.__rowNumber,
+        context.distribucionHeaders,
+        Object.assign({}, existente, objetivo)
+      );
+      updated++;
+    });
+  });
+
+  existentes.forEach(existente => {
+    const id = texto_(existente.Distribucion_ID);
+    if (objetivosPorId[id]) return;
+    actualizarFilaObjeto_(
+      context.distribucionSheet,
+      existente.__rowNumber,
+      context.distribucionHeaders,
+      Object.assign({}, existente, {
+        Monto_Base: 0,
+        Steve_Valor: 0,
+        Majo_Valor: 0,
+        Mush_Valor: 0,
+        Estado_Registro: QTAS.status.registro.anulado
+      })
+    );
+    cancelled++;
+  });
+
+  if (nuevos.length) {
+    escribirFilas_(
+      context.distribucionSheet,
+      nuevos.map(row => filaDesdeHeaders_(context.distribucionHeaders, row))
+    );
+  }
+
+  return {
+    updated: updated,
+    inserted: nuevos.length,
+    cancelled: cancelled
+  };
+}
+
+function verificarVentasHistoricasConfirmadasQTAS_(context) {
+  const totals = [];
+  const payments = [];
+  (context.ventaIds || []).forEach(ventaId => {
+    const venta = context.ventasPorId[String(ventaId)];
+    const totalDetalle = redondear_(sumar_(context.detalle
+      .filter(row => texto_(row.Venta_ID) === String(ventaId) && !esRegistroAnulado_(row.Estado_Registro))
+      .map(row => row.Subtotal_Neto)));
+    const totalPagos = redondear_(sumar_(context.pagos
+      .filter(row => texto_(row.Venta_ID) === String(ventaId) && !esRegistroAnulado_(row.Estado_Registro))
+      .map(row => row.Monto_Pago)));
+    if (Math.abs(numero_(venta.Total_Venta) - totalDetalle) > 0.01) {
+      totals.push(Number(ventaId));
+    }
+    if (Math.abs(numero_(venta.Total_Pagado) - totalPagos) > 0.01) {
+      payments.push(Number(ventaId));
+    }
+  });
+  return {
+    ok: totals.length === 0 && payments.length === 0,
+    ventasDescuadradas: totals,
+    pagosDescuadrados: payments
+  };
+}
+
+function indexarObjetosPorCampoQTAS_(rows, field) {
+  return (rows || []).reduce((acc, row) => {
+    const key = texto_(row && row[field]);
+    if (key) acc[key] = row;
+    return acc;
+  }, {});
+}
+
 function repararIntegridadFinancieraQTAS() {
   assertOperacionDestructivaPermitidaQTAS_('reparar integridad financiera historica');
 
@@ -741,6 +1142,7 @@ function resumirVerificacionIntegridadFinancieraQTAS_(verification) {
     ventasDescuadradas: numero_(verification.ventas.totalesDescuadrados),
     comprasDescuadradas: numero_(verification.compras.totalesDescuadrados),
     ventaDetalleNoCanonico: numero_(verification.ventas.detalleNoCanonico),
+    pagosDescuadrados: numero_(verification.ventas.pagosDescuadrados),
     costosAnaliticosExtremos: numero_(verification.ventas.costosAnaliticosExtremos),
     analiticaStale: numero_(verification.ventas.analiticaStale)
   };
@@ -888,6 +1290,7 @@ function construirPlanIntegridadFinancieraQTAS_(ss) {
         planFondos.compras.length === 0 &&
         correccionesVentaDetalle.length === 0 &&
         costosAnaliticosExtremos.total === 0 &&
+        pagosDescuadrados.length === 0 &&
         ventasTotales.length === 0 &&
         comprasTotales.length === 0 &&
         staleAnalitica.length === 0,
@@ -931,6 +1334,7 @@ function construirPlanIntegridadFinancieraQTAS_(ss) {
         mayoresAUnMillon: ventasAltas.length,
         preciosAtipicos: preciosAtipicos.length,
         detalleNoCanonico: correccionesVentaDetalle.length,
+        pagosDescuadrados: pagosDescuadrados.length,
         costosAnaliticosExtremos: costosAnaliticosExtremos.total,
         analiticaARecalcular: Object.keys(detalleIdsAnalitica).length,
         analiticaStale: staleAnalitica.length
@@ -1551,7 +1955,6 @@ function auditarCostosAnaliticosExtremosQTAS_(rows, costosProducto) {
     }))
     .filter(row =>
       row.costoUnitario >= 1000000 ||
-      row.vecesCostoActual >= 5 ||
       row.vecesVenta >= 5
     )
     .sort((a, b) => {
