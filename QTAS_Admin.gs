@@ -637,7 +637,7 @@ function continuarReparacionIntegridadFinancieraQTAS() {
         updatedAt: new Date().toISOString()
       });
       guardarEstadoReparacionIntegridadFinancieraQTAS_(waiting);
-      asegurarTriggerReparacionIntegridadFinancieraQTAS_();
+      programarContinuacionReparacionIntegridadFinancieraQTAS_();
       Logger.log(JSON.stringify(waiting, null, 2));
       return waiting;
     }
@@ -720,20 +720,6 @@ function programarContinuacionReparacionIntegridadFinancieraQTAS_() {
     .timeBased()
     .after(15000)
     .create();
-}
-
-function asegurarTriggerReparacionIntegridadFinancieraQTAS_() {
-  const existentes = ScriptApp.getProjectTriggers()
-    .filter(trigger =>
-      trigger.getHandlerFunction() === 'continuarReparacionIntegridadFinancieraQTAS'
-    );
-  if (existentes.length) return existentes.length;
-
-  ScriptApp.newTrigger('continuarReparacionIntegridadFinancieraQTAS')
-    .timeBased()
-    .after(15000)
-    .create();
-  return 1;
 }
 
 function limpiarTriggersReparacionIntegridadFinancieraQTAS_() {
