@@ -447,8 +447,30 @@ function repararIntegridadFinancieraQTAS() {
   assertOperacionDestructivaPermitidaQTAS_('reparar integridad financiera historica');
 
   return withScriptLock_('reparar integridad financiera historica', () => {
+    const estadoActivo = leerEstadoReparacionIntegridadFinancieraQTAS_();
+    if (estadoActivo && estadoActivo.active) {
+      return estadoActivo;
+    }
+
     const ss = validarHojasIntegridadFinancieraQTAS_();
     const plan = construirPlanIntegridadFinancieraQTAS_(ss);
+    if (plan.resumen.ok === true) {
+      limpiarTriggersReparacionIntegridadFinancieraQTAS_();
+      PropertiesService.getScriptProperties().deleteProperty('QTAS_ALLOW_DESTRUCTIVE');
+      const clean = {
+        ok: true,
+        aplicado: false,
+        active: false,
+        pending: false,
+        status: 'Sin cambios pendientes.',
+        verification: resumirVerificacionIntegridadFinancieraQTAS_(plan.resumen),
+        checkedAt: new Date().toISOString()
+      };
+      guardarEstadoReparacionIntegridadFinancieraQTAS_(clean);
+      Logger.log(JSON.stringify(clean, null, 2));
+      return clean;
+    }
+
     const detalleSheet = ss.getSheetByName(QTAS.sheets.compraDetalle);
     const fondosSheet = ss.getSheetByName(QTAS.sheets.compraOrigenesFondos);
     const costosSheet = ss.getSheetByName(QTAS.sheets.costosReferencia);
@@ -493,49 +515,206 @@ function repararIntegridadFinancieraQTAS() {
       fechaBase: new Date(),
       ahora: new Date()
     });
-    const ventaDetalleCostos = sincronizarAnaliticaIntegridadFinancieraQTAS_(
-      ss,
-      plan.detalleIdsAnalitica
-    );
     limpiarCachesEjecucionQTAS_();
 
-    const verificacion = construirPlanIntegridadFinancieraQTAS_(ss).resumen;
+    const cambios = {
+      compraDetalle: plan.correccionesCosto.length,
+      comprasSinCostoUnitarioFalso: plan.correccionesImpactoCosto.length,
+      costosReferenciaDerivados: plan.correccionesCostoDerivado.length,
+      costosPackagingConHistoria: plan.correccionesCoberturaPackaging.length,
+      compraOrigenesFondos: plan.correccionesFondos.length,
+      comprasConFondosCorregidos: plan.resumen.compras.fondosDescuadrados,
+      ventaDetalleCanonico: plan.correccionesVentaDetalle.length
+    };
+    const ventaDetalleCostos = iniciarReparacionAnaliticaIntegridadFinancieraQTAS_(
+      ss,
+      cambios
+    );
     const result = {
-      ok: verificacion.ok === true,
+      ok: true,
       aplicado: true,
-      cambios: {
-        compraDetalle: plan.correccionesCosto.length,
-        comprasSinCostoUnitarioFalso: plan.correccionesImpactoCosto.length,
-        costosReferenciaDerivados: plan.correccionesCostoDerivado.length,
-        costosPackagingConHistoria: plan.correccionesCoberturaPackaging.length,
-        compraOrigenesFondos: plan.correccionesFondos.length,
-        comprasConFondosCorregidos: plan.resumen.compras.fondosDescuadrados,
-        ventaDetalleCanonico: plan.correccionesVentaDetalle.length,
-        analiticaVentaRecalculada: ventaDetalleCostos.recalculadas,
-        analiticaVentaCreada: ventaDetalleCostos.creadas,
-        analiticaVentaStaleEliminada: ventaDetalleCostos.stale
-      },
+      pending: true,
+      cambios: cambios,
       reconstrucciones: {
         costosReferencia: costos,
         costoProducto: costoProducto,
         ventaDetalleCostos: ventaDetalleCostos
-      },
-      pendientesRevisionManual: verificacion.pendientesRevisionManual,
-      verificacion: {
-        costoUnitarioInconsistente: verificacion.compras.costoUnitarioInconsistente,
-        costosAgregadosComoUnitarios: verificacion.compras.costosAgregadosComoUnitarios,
-        packagingSinCoberturaHistorica: verificacion.costos.packagingSinCoberturaHistorica,
-        fondosDescuadrados: verificacion.compras.fondosDescuadrados,
-        ventasDescuadradas: verificacion.ventas.totalesDescuadrados,
-        comprasDescuadradas: verificacion.compras.totalesDescuadrados,
-        ventaDetalleNoCanonico: verificacion.ventas.detalleNoCanonico,
-        costosAnaliticosExtremos: verificacion.ventas.costosAnaliticosExtremos
       }
     };
 
     Logger.log(JSON.stringify(result, null, 2));
     return result;
   });
+}
+
+function continuarReparacionIntegridadFinancieraQTAS() {
+  try {
+    return withScriptLock_('continuar reparacion integridad financiera', () => {
+      const state = leerEstadoReparacionIntegridadFinancieraQTAS_();
+      if (!state || !state.active) {
+        limpiarTriggersReparacionIntegridadFinancieraQTAS_();
+        return state || {
+          ok: true,
+          active: false,
+          status: 'Sin proceso pendiente.'
+        };
+      }
+
+      const ss = SpreadsheetApp.openById(state.spreadsheetId);
+      const detalle = leerObjetos_(ss.getSheetByName(QTAS.sheets.detalle))
+        .filter(row => texto_(row.Detalle_ID));
+      const total = detalle.length;
+      const cursor = Math.max(0, Math.min(numero_(state.cursor), total));
+      const batchSize = Math.max(100, numero_(state.batchSize) || 500);
+      const end = Math.min(cursor + batchSize, total);
+      const ids = {};
+
+      detalle.slice(cursor, end).forEach(row => {
+        const id = texto_(row.Detalle_ID);
+        if (id) ids[id] = true;
+      });
+
+      const sync = sincronizarAnaliticaIntegridadFinancieraQTAS_(ss, ids);
+      const updated = Object.assign({}, state, {
+        ok: true,
+        active: end < total,
+        status: end < total ? 'Procesando' : 'Verificando',
+        cursor: end,
+        total: total,
+        processed: end,
+        remaining: Math.max(total - end, 0),
+        progressPct: total > 0 ? redondear_(end * 100 / total) : 100,
+        lastBatch: sync,
+        updatedAt: new Date().toISOString()
+      });
+
+      if (end < total) {
+        guardarEstadoReparacionIntegridadFinancieraQTAS_(updated);
+        programarContinuacionReparacionIntegridadFinancieraQTAS_();
+        Logger.log(JSON.stringify(updated, null, 2));
+        return updated;
+      }
+
+      limpiarCachesEjecucionQTAS_();
+      const verification = construirPlanIntegridadFinancieraQTAS_(ss).resumen;
+      const completed = Object.assign({}, updated, {
+        ok: verification.ok === true,
+        active: false,
+        pending: false,
+        status: verification.ok === true ? 'Completado' : 'Completado con pendientes',
+        verification: resumirVerificacionIntegridadFinancieraQTAS_(verification),
+        completedAt: new Date().toISOString()
+      });
+      guardarEstadoReparacionIntegridadFinancieraQTAS_(completed);
+      limpiarTriggersReparacionIntegridadFinancieraQTAS_();
+      PropertiesService.getScriptProperties().deleteProperty('QTAS_ALLOW_DESTRUCTIVE');
+      Logger.log(JSON.stringify(completed, null, 2));
+      return completed;
+    });
+  } catch (error) {
+    const state = leerEstadoReparacionIntegridadFinancieraQTAS_() || {};
+    const failed = Object.assign({}, state, {
+      ok: false,
+      active: false,
+      pending: false,
+      status: 'Error',
+      error: error.message,
+      failedAt: new Date().toISOString()
+    });
+    guardarEstadoReparacionIntegridadFinancieraQTAS_(failed);
+    limpiarTriggersReparacionIntegridadFinancieraQTAS_();
+    PropertiesService.getScriptProperties().deleteProperty('QTAS_ALLOW_DESTRUCTIVE');
+    Logger.log(JSON.stringify(failed, null, 2));
+    throw error;
+  }
+}
+
+function estadoReparacionIntegridadFinancieraQTAS() {
+  const state = leerEstadoReparacionIntegridadFinancieraQTAS_() || {
+    ok: true,
+    active: false,
+    pending: false,
+    status: 'Sin ejecucion registrada.'
+  };
+  Logger.log(JSON.stringify(state, null, 2));
+  return state;
+}
+
+function iniciarReparacionAnaliticaIntegridadFinancieraQTAS_(ss, cambios) {
+  const detalle = leerObjetos_(ss.getSheetByName(QTAS.sheets.detalle))
+    .filter(row => texto_(row.Detalle_ID));
+  const state = {
+    ok: true,
+    active: true,
+    pending: true,
+    status: 'Programado',
+    spreadsheetId: ss.getId(),
+    spreadsheetName: ss.getName(),
+    cursor: 0,
+    total: detalle.length,
+    processed: 0,
+    remaining: detalle.length,
+    progressPct: 0,
+    batchSize: 500,
+    cambios: cambios || {},
+    startedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  guardarEstadoReparacionIntegridadFinancieraQTAS_(state);
+  programarContinuacionReparacionIntegridadFinancieraQTAS_();
+  return state;
+}
+
+function leerEstadoReparacionIntegridadFinancieraQTAS_() {
+  const raw = PropertiesService.getScriptProperties().getProperty(
+    'QTAS_FINANCIAL_REPAIR_STATE'
+  );
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    return null;
+  }
+}
+
+function guardarEstadoReparacionIntegridadFinancieraQTAS_(state) {
+  PropertiesService.getScriptProperties().setProperty(
+    'QTAS_FINANCIAL_REPAIR_STATE',
+    JSON.stringify(state || {})
+  );
+}
+
+function programarContinuacionReparacionIntegridadFinancieraQTAS_() {
+  limpiarTriggersReparacionIntegridadFinancieraQTAS_();
+  ScriptApp.newTrigger('continuarReparacionIntegridadFinancieraQTAS')
+    .timeBased()
+    .after(15000)
+    .create();
+}
+
+function limpiarTriggersReparacionIntegridadFinancieraQTAS_() {
+  const triggers = ScriptApp.getProjectTriggers()
+    .filter(trigger =>
+      trigger.getHandlerFunction() === 'continuarReparacionIntegridadFinancieraQTAS'
+    );
+  triggers.forEach(trigger => ScriptApp.deleteTrigger(trigger));
+  return triggers.length;
+}
+
+function resumirVerificacionIntegridadFinancieraQTAS_(verification) {
+  return {
+    ok: verification.ok === true,
+    costoUnitarioInconsistente: numero_(verification.compras.costoUnitarioInconsistente),
+    costosAgregadosComoUnitarios: numero_(verification.compras.costosAgregadosComoUnitarios),
+    packagingSinCoberturaHistorica: numero_(verification.costos.packagingSinCoberturaHistorica),
+    fondosDescuadrados: numero_(verification.compras.fondosDescuadrados),
+    ventasDescuadradas: numero_(verification.ventas.totalesDescuadrados),
+    comprasDescuadradas: numero_(verification.compras.totalesDescuadrados),
+    ventaDetalleNoCanonico: numero_(verification.ventas.detalleNoCanonico),
+    costosAnaliticosExtremos: numero_(verification.ventas.costosAnaliticosExtremos),
+    analiticaStale: numero_(verification.ventas.analiticaStale)
+  };
 }
 
 function validarHojasIntegridadFinancieraQTAS_() {

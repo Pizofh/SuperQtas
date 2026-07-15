@@ -181,8 +181,8 @@ function guardarReglaCostoProductoQTAS(payload) {
   });
 }
 
-function listarComponentesProductoQTAS_() {
-  const ss = SpreadsheetApp.getActive();
+function listarComponentesProductoQTAS_(spreadsheet) {
+  const ss = spreadsheet || SpreadsheetApp.getActive();
   const sheet = ss.getSheetByName(QTAS.sheets.productoComponentes);
   if (!sheet) return [];
 
@@ -212,8 +212,8 @@ function listarComponentesProductoQTAS_() {
     });
 }
 
-function listarReglasCostoProductoQTAS_() {
-  const ss = SpreadsheetApp.getActive();
+function listarReglasCostoProductoQTAS_(spreadsheet) {
+  const ss = spreadsheet || SpreadsheetApp.getActive();
   const sheet = ss.getSheetByName(QTAS.sheets.productoReglasCosto);
   if (!sheet) return [];
 
@@ -456,9 +456,9 @@ function construirContextoAnaliticaCostosQTAS_(payload) {
   return {
     fechaBase: resolverFechaOperacion_(settings.fechaBase, new Date()),
     ahora: settings.ahora instanceof Date ? settings.ahora : new Date(),
-    costosCache: settings.costosCache || cargarCostosEnMemoria_(),
-    componentes: settings.componentes || leerComponentesProductoActivosQTAS_(),
-    reglas: settings.reglas || leerReglasCostoProductoActivasQTAS_()
+    costosCache: settings.costosCache || cargarCostosEnMemoria_(settings.ss),
+    componentes: settings.componentes || leerComponentesProductoActivosQTAS_(settings.ss),
+    reglas: settings.reglas || leerReglasCostoProductoActivasQTAS_(settings.ss)
   };
 }
 
@@ -859,14 +859,14 @@ function calcularCostoProductoEnFechaQTAS_(producto, unidadVenta, fechaBase, opt
   };
 }
 
-function leerComponentesProductoActivosQTAS_() {
-  return listarComponentesProductoQTAS_()
+function leerComponentesProductoActivosQTAS_(spreadsheet) {
+  return listarComponentesProductoQTAS_(spreadsheet)
     .filter(row => row.activo)
     .filter(row => row.producto && row.itemComponente && row.unidadVenta && row.unidadComponente);
 }
 
-function leerReglasCostoProductoActivasQTAS_() {
-  return listarReglasCostoProductoQTAS_()
+function leerReglasCostoProductoActivasQTAS_(spreadsheet) {
+  return listarReglasCostoProductoQTAS_(spreadsheet)
     .filter(row => row.activo)
     .filter(row => row.producto && row.itemComponente && row.unidadVenta && row.unidadComponente);
 }

@@ -296,8 +296,8 @@ function resolverItemCanonicoCompraQTAS_(itemsCatalogoIndex, tipoItem, item) {
   return itemsCatalogoIndex[key] || null;
 }
 
-function leerCostosHistoricosQTAS_() {
-  const ss = SpreadsheetApp.getActive();
+function leerCostosHistoricosQTAS_(spreadsheet) {
+  const ss = spreadsheet || SpreadsheetApp.getActive();
   const sheet = ss.getSheetByName(QTAS.sheets.costosReferencia);
 
   if (!sheet || sheet.getLastRow() < 2) {
@@ -329,8 +329,8 @@ function leerCostosHistoricosQTAS_() {
     .filter(row => row.item && row.unidad && row.costoUnitario > 0 && row.activo);
 }
 
-function cargarCostosEnMemoria_() {
-  return leerCostosHistoricosQTAS_()
+function cargarCostosEnMemoria_(spreadsheet) {
+  return leerCostosHistoricosQTAS_(spreadsheet)
     .filter(row => row.activo)
     .map(row => ({
       item: row.item,
