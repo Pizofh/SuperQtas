@@ -350,11 +350,11 @@ function obtenerCostoVigenteDesdeCache_(costosCache, item, unidad, fechaConsulta
   const itemUnidad = normalizarUnidadCanonicaQTAS_(unidad);
   const tipoItemKey = normalizarClaveTexto_(tipoItem);
 
-  const matches = (costosCache || []).filter(row => {
-    if (normalizarClaveTexto_(row.item) !== itemKey) return false;
-    if (normalizarUnidadCanonicaQTAS_(row.unidad) !== itemUnidad) return false;
-    return fechaBase >= row.desde && (!row.hasta || fechaBase <= row.hasta);
-  });
+  const cache = costosCache || [];
+  const index = obtenerIndiceCostosHistoricosQTAS_(cache);
+  const matches = (index[`${itemKey}|${itemUnidad}`] || []).filter(row =>
+    fechaBase >= row.desde && (!row.hasta || fechaBase <= row.hasta)
+  );
 
   if (!matches.length) return 0;
 
@@ -373,6 +373,31 @@ function obtenerCostoVigenteDesdeCache_(costosCache, item, unidad, fechaConsulta
 
   scopedMatches.sort((a, b) => b.desde - a.desde);
   return redondear_(numero_(scopedMatches[0].costoUnitario));
+}
+
+function obtenerIndiceCostosHistoricosQTAS_(costosCache) {
+  const cache = costosCache || [];
+  if (cache.__qtasCostosIndex) return cache.__qtasCostosIndex;
+
+  const index = {};
+  cache.forEach(row => {
+    const key = [
+      normalizarClaveTexto_(row.item),
+      normalizarUnidadCanonicaQTAS_(row.unidad)
+    ].join('|');
+    if (!index[key]) index[key] = [];
+    index[key].push(row);
+  });
+
+  Object.keys(index).forEach(key => {
+    index[key].sort((a, b) => b.desde - a.desde);
+  });
+  Object.defineProperty(cache, '__qtasCostosIndex', {
+    value: index,
+    enumerable: false,
+    configurable: true
+  });
+  return index;
 }
 
 function listarCostosVigentesQTAS_() {

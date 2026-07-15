@@ -452,8 +452,9 @@ function repararIntegridadFinancieraQTAS() {
     const detalleSheet = ss.getSheetByName(QTAS.sheets.compraDetalle);
     const fondosSheet = ss.getSheetByName(QTAS.sheets.compraOrigenesFondos);
     const costosSheet = ss.getSheetByName(QTAS.sheets.costosReferencia);
+    const ventaDetalleSheet = ss.getSheetByName(QTAS.sheets.detalle);
 
-    if (plan.correccionesCosto.length) {
+    if (plan.correccionesCosto.length || plan.correccionesImpactoCosto.length) {
       sobrescribirObjetosHojaQTAS_(
         detalleSheet,
         getHeaders_(detalleSheet),
@@ -469,11 +470,19 @@ function repararIntegridadFinancieraQTAS() {
       );
     }
 
-    if (plan.correccionesCostoDerivado.length) {
+    if (plan.correccionesCostoDerivado.length || plan.correccionesCoberturaPackaging.length) {
       sobrescribirObjetosHojaQTAS_(
         costosSheet,
         getHeaders_(costosSheet),
         plan.costosReferenciaProyectados
+      );
+    }
+
+    if (plan.correccionesVentaDetalle.length) {
+      sobrescribirObjetosHojaQTAS_(
+        ventaDetalleSheet,
+        getHeaders_(ventaDetalleSheet),
+        plan.ventaDetalleProyectado
       );
     }
 
@@ -492,14 +501,16 @@ function repararIntegridadFinancieraQTAS() {
 
     const verificacion = construirPlanIntegridadFinancieraQTAS_(ss).resumen;
     const result = {
-      ok: verificacion.compras.costoUnitarioInconsistente === 0 &&
-        verificacion.compras.fondosDescuadrados === 0,
+      ok: verificacion.ok === true,
       aplicado: true,
       cambios: {
         compraDetalle: plan.correccionesCosto.length,
+        comprasSinCostoUnitarioFalso: plan.correccionesImpactoCosto.length,
         costosReferenciaDerivados: plan.correccionesCostoDerivado.length,
+        costosPackagingConHistoria: plan.correccionesCoberturaPackaging.length,
         compraOrigenesFondos: plan.correccionesFondos.length,
         comprasConFondosCorregidos: plan.resumen.compras.fondosDescuadrados,
+        ventaDetalleCanonico: plan.correccionesVentaDetalle.length,
         analiticaVentaRecalculada: ventaDetalleCostos.recalculadas,
         analiticaVentaCreada: ventaDetalleCostos.creadas,
         analiticaVentaStaleEliminada: ventaDetalleCostos.stale
@@ -512,9 +523,13 @@ function repararIntegridadFinancieraQTAS() {
       pendientesRevisionManual: verificacion.pendientesRevisionManual,
       verificacion: {
         costoUnitarioInconsistente: verificacion.compras.costoUnitarioInconsistente,
+        costosAgregadosComoUnitarios: verificacion.compras.costosAgregadosComoUnitarios,
+        packagingSinCoberturaHistorica: verificacion.costos.packagingSinCoberturaHistorica,
         fondosDescuadrados: verificacion.compras.fondosDescuadrados,
         ventasDescuadradas: verificacion.ventas.totalesDescuadrados,
-        comprasDescuadradas: verificacion.compras.totalesDescuadrados
+        comprasDescuadradas: verificacion.compras.totalesDescuadrados,
+        ventaDetalleNoCanonico: verificacion.ventas.detalleNoCanonico,
+        costosAnaliticosExtremos: verificacion.ventas.costosAnaliticosExtremos
       }
     };
 
@@ -556,8 +571,18 @@ function construirPlanIntegridadFinancieraQTAS_(ss) {
   );
   const compraDetalleProyectado = compraDetalle.map(row => Object.assign({}, row));
   const correccionesCosto = corregirCostoUnitarioCompraProyectadoQTAS_(compraDetalleProyectado);
+  const correccionesImpactoCosto = corregirImpactoCostoAgregadoProyectadoQTAS_(
+    compraDetalleProyectado
+  );
   const planCostosDerivados = corregirCostosReferenciaDerivadosQTAS_(costos, correccionesCosto);
+  const correccionesCoberturaPackaging = corregirCoberturaHistoricaPackagingQTAS_(
+    planCostosDerivados.rows
+  );
   const planFondos = corregirFondosCompraProyectadosQTAS_(compras, compraDetalle, fondos);
+  const ventaDetalleProyectado = ventaDetalle.map(row => Object.assign({}, row));
+  const correccionesVentaDetalle = normalizarVentaDetalleCanonicoProyectadoQTAS_(
+    ventaDetalleProyectado
+  );
   const periodosCosto = construirPeriodosCostoCorregidosQTAS_(
     correccionesCosto.concat(planCostosDerivados.correcciones),
     costos
@@ -613,29 +638,51 @@ function construirPlanIntegridadFinancieraQTAS_(ss) {
     }))
     .sort((a, b) => b.total - a.total);
   const preciosAtipicos = auditarPreciosVentaAtipicosQTAS_(ventaDetalle);
+  const costosAnaliticosExtremos = auditarCostosAnaliticosExtremosQTAS_(ventaDetalleCostos);
   const staleAnalitica = ventaDetalleCostos.filter(row =>
     texto_(row.Detalle_ID) && !detalleVentaIds[texto_(row.Detalle_ID)]
   );
+  if (
+    correccionesImpactoCosto.length ||
+    correccionesCoberturaPackaging.length ||
+    correccionesVentaDetalle.length ||
+    costosAnaliticosExtremos.length
+  ) {
+    ventaDetalle.forEach(row => {
+      const id = texto_(row.Detalle_ID);
+      if (id) detalleIdsAnalitica[id] = true;
+    });
+  }
 
   return {
     compraDetalleProyectado: compraDetalleProyectado,
+    ventaDetalleProyectado: ventaDetalleProyectado,
     costosReferenciaProyectados: planCostosDerivados.rows,
     fondosProyectados: planFondos.rows,
     correccionesCosto: correccionesCosto,
+    correccionesImpactoCosto: correccionesImpactoCosto,
     correccionesCostoDerivado: planCostosDerivados.correcciones,
+    correccionesCoberturaPackaging: correccionesCoberturaPackaging,
     correccionesFondos: planFondos.correcciones,
+    correccionesVentaDetalle: correccionesVentaDetalle,
     detalleIdsAnalitica: detalleIdsAnalitica,
     resumen: {
       ok: correccionesCosto.length === 0 &&
+        correccionesImpactoCosto.length === 0 &&
         planCostosDerivados.correcciones.length === 0 &&
+        correccionesCoberturaPackaging.length === 0 &&
         planFondos.compras.length === 0 &&
+        correccionesVentaDetalle.length === 0 &&
+        costosAnaliticosExtremos.length === 0 &&
         ventasTotales.length === 0 &&
-        comprasTotales.length === 0,
+        comprasTotales.length === 0 &&
+        staleAnalitica.length === 0,
       compras: {
         filas: compras.length,
         detalle: compraDetalle.length,
         totalesDescuadrados: comprasTotales.length,
         costoUnitarioInconsistente: correccionesCosto.length,
+        costosAgregadosComoUnitarios: correccionesImpactoCosto.length,
         costosReferenciaDerivados: planCostosDerivados.correcciones.length,
         fondosDescuadrados: planFondos.compras.length,
         correccionesCosto: correccionesCosto.map(item => ({
@@ -656,7 +703,12 @@ function construirPlanIntegridadFinancieraQTAS_(ss) {
           costoUnitarioCorrecto: item.despues,
           fuenteId: item.compraDetalleId
         })),
-        correccionesFondos: planFondos.compras
+        correccionesFondos: planFondos.compras,
+        correccionesImpactoCosto: correccionesImpactoCosto
+      },
+      costos: {
+        packagingSinCoberturaHistorica: correccionesCoberturaPackaging.length,
+        correccionesCoberturaPackaging: correccionesCoberturaPackaging
       },
       ventas: {
         filas: ventas.length,
@@ -664,12 +716,16 @@ function construirPlanIntegridadFinancieraQTAS_(ss) {
         totalesDescuadrados: ventasTotales.length,
         mayoresAUnMillon: ventasAltas.length,
         preciosAtipicos: preciosAtipicos.length,
+        detalleNoCanonico: correccionesVentaDetalle.length,
+        costosAnaliticosExtremos: costosAnaliticosExtremos.length,
         analiticaARecalcular: Object.keys(detalleIdsAnalitica).length,
         analiticaStale: staleAnalitica.length
       },
       pendientesRevisionManual: {
         ventasMayoresAUnMillon: ventasAltas,
         preciosVentaAtipicos: preciosAtipicos,
+        ventaDetalleNoCanonico: correccionesVentaDetalle,
+        costosAnaliticosExtremos: costosAnaliticosExtremos,
         pagosDescuadrados: pagosDescuadrados,
         ventasTotalesDescuadrados: ventasTotales,
         comprasTotalesDescuadrados: comprasTotales,
@@ -726,6 +782,84 @@ function corregirCostoUnitarioCompraProyectadoQTAS_(rows) {
         `Cantidad historica confirmada: ${cantidad} ${texto_(row.Unidad)}.`
       ]);
     }
+  });
+
+  return correcciones;
+}
+
+function corregirImpactoCostoAgregadoProyectadoQTAS_(rows) {
+  const correcciones = [];
+  const idsAgregados = {
+    'COMDET-000038-01': 'Compra agregada de materia prima; no representa una unidad terminada de Choco.'
+  };
+
+  (rows || []).forEach(row => {
+    const compraDetalleId = texto_(row.Compra_Detalle_ID);
+    const motivo = idsAgregados[compraDetalleId];
+    const impactaCosto = row.Impacta_Costo === true ||
+      String(row.Impacta_Costo).toLowerCase() === 'true';
+    if (!motivo || !impactaCosto) return;
+
+    row.Impacta_Costo = false;
+    row.Comentario_Linea = unirUnicos_([texto_(row.Comentario_Linea), motivo]);
+    correcciones.push({
+      compraDetalleId: compraDetalleId,
+      compraId: numero_(row.Compra_ID),
+      item: texto_(row.Item),
+      costoUnitarioDescartado: redondear_(numero_(row.Costo_Unitario)),
+      motivo: motivo
+    });
+  });
+
+  return correcciones;
+}
+
+function corregirCoberturaHistoricaPackagingQTAS_(rows) {
+  const correcciones = [];
+  const fechaBase = resolverFechaOperacion_('2024-01-01', new Date());
+
+  (rows || []).forEach(row => {
+    const esPlaceholder = numero_(row.Compra_ID) === 0 &&
+      normalizarClaveTexto_(row.Fuente_Tipo) === normalizarClaveTexto_('Directo') &&
+      normalizarClaveTexto_(row.Proveedor) === normalizarClaveTexto_('Placeholder packaging Psylo Scibio');
+    if (!esPlaceholder || fechaTextoPlanoQTAS_(row.Fecha_Desde) === '2024-01-01') return;
+
+    correcciones.push({
+      costoId: texto_(row.Costo_ID),
+      item: texto_(row.Item),
+      unidad: normalizarUnidadCanonicaQTAS_(row.Unidad),
+      fechaDesdeAntes: fechaTextoPlanoQTAS_(row.Fecha_Desde),
+      fechaDesde: '2024-01-01',
+      costoUnitario: redondear_(numero_(row.Costo_Unitario))
+    });
+    row.Fecha_Desde = fechaBase;
+    row.Fecha_Hasta = '';
+  });
+
+  return correcciones;
+}
+
+function normalizarVentaDetalleCanonicoProyectadoQTAS_(rows) {
+  const correcciones = [];
+
+  (rows || []).forEach(row => {
+    if (!texto_(row.Detalle_ID)) return;
+    const contexto = resolverContextoCostoVentaLegacyQTAS_(row);
+    const productoAntes = texto_(row.Producto_Estandar);
+    const unidadAntes = normalizarUnidadCanonicaQTAS_(row.Unidad);
+    if (productoAntes === contexto.producto && unidadAntes === contexto.unidad) return;
+
+    row.Producto_Estandar = contexto.producto;
+    row.Unidad = contexto.unidad;
+    correcciones.push({
+      detalleId: texto_(row.Detalle_ID),
+      ventaId: numero_(row.Venta_ID),
+      productoAntes: productoAntes,
+      producto: contexto.producto,
+      unidadAntes: unidadAntes,
+      unidad: contexto.unidad,
+      cantidad: redondear_(numero_(row.Cantidad))
+    });
   });
 
   return correcciones;
@@ -1036,6 +1170,7 @@ function sincronizarAnaliticaIntegridadFinancieraQTAS_(ss, detalleIds) {
   const idsFuente = {};
   let recalculadas = 0;
   let creadas = 0;
+  const recalcularTodo = detalleIds === null || detalleIds === undefined;
 
   existentes.forEach(row => {
     const id = texto_(row.Detalle_ID);
@@ -1051,7 +1186,7 @@ function sincronizarAnaliticaIntegridadFinancieraQTAS_(ss, detalleIds) {
   });
   const rows = detalle.map(row => {
     const id = texto_(row.Detalle_ID);
-    if (detalleIds[id] || !porDetalle[id]) {
+    if (recalcularTodo || detalleIds[id] || !porDetalle[id]) {
       if (porDetalle[id]) recalculadas++;
       else creadas++;
       return construirFilaVentaDetalleCostoCalculadoQTAS_(row, contexto);
@@ -1166,4 +1301,23 @@ function auditarPreciosVentaAtipicosQTAS_(detalle) {
     .filter(row => row.vecesMediana >= 5)
     .sort((a, b) => b.vecesMediana - a.vecesMediana)
     .slice(0, 30);
+}
+
+function auditarCostosAnaliticosExtremosQTAS_(rows) {
+  return (rows || [])
+    .filter(row => numero_(row.Costo_Unitario_Usado) >= 1000000)
+    .map(row => ({
+      detalleId: texto_(row.Detalle_ID),
+      ventaId: numero_(row.Venta_ID),
+      fecha: fechaInput_(row.Fecha_Venta),
+      producto: texto_(row.Producto_Estandar),
+      cantidad: redondear_(numero_(row.Cantidad)),
+      unidad: texto_(row.Unidad),
+      costoUnitario: redondear_(numero_(row.Costo_Unitario_Usado)),
+      costoTotal: redondear_(numero_(row.Costo_Total_Estimado)),
+      subtotalNeto: redondear_(numero_(row.Subtotal_Neto)),
+      actualizadoEn: texto_(row.Actualizado_En)
+    }))
+    .sort((a, b) => b.costoUnitario - a.costoUnitario)
+    .slice(0, 50);
 }

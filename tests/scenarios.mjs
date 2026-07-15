@@ -414,6 +414,21 @@ export const SCENARIOS = [
         0,
         'Una compra operativa no debe dejar fondos descuadrados.'
       );
+      ctx.equal(
+        ctx.num(auditoria.costos?.packagingSinCoberturaHistorica),
+        0,
+        'Los costos de packaging deben cubrir el periodo historico configurado.'
+      );
+      ctx.equal(
+        ctx.num(auditoria.ventas?.detalleNoCanonico),
+        0,
+        'Venta_Detalle debe conservar productos y unidades canonicos.'
+      );
+      ctx.equal(
+        ctx.num(auditoria.ventas?.costosAnaliticosExtremos),
+        0,
+        'La analitica no debe contener costos unitarios extremos.'
+      );
 
       const state = await snapshotLigero(ctx, {
         sheetNames: ['Costo_Producto_Calc']
