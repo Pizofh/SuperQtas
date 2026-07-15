@@ -758,8 +758,55 @@ function fechaMomentoExactaQTAS_(value) {
     return null;
   }
 
+  // Historical imports store local timestamps without a timezone. Parsing
+  // them directly can move midnight to the previous day in America/Bogota.
+  const isoLocal = text.match(
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/
+  );
+  if (isoLocal) {
+    return crearFechaMomentoLocalQTAS_(
+      isoLocal[1],
+      numero_(isoLocal[2]) - 1,
+      isoLocal[3],
+      isoLocal[4],
+      isoLocal[5],
+      isoLocal[6],
+      isoLocal[7]
+    );
+  }
+
+  const latamLocal = text.match(
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4})[ T](\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/
+  );
+  if (latamLocal) {
+    return crearFechaMomentoLocalQTAS_(
+      latamLocal[3],
+      numero_(latamLocal[2]) - 1,
+      latamLocal[1],
+      latamLocal[4],
+      latamLocal[5],
+      latamLocal[6],
+      latamLocal[7]
+    );
+  }
+
   const parsed = new Date(text);
   return isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function crearFechaMomentoLocalQTAS_(year, month, day, hour, minute, second, millisecond) {
+  const milliseconds = Number(String(millisecond || '0').padEnd(3, '0'));
+  const date = new Date(
+    numero_(year),
+    numero_(month),
+    numero_(day),
+    numero_(hour),
+    numero_(minute),
+    numero_(second),
+    milliseconds
+  );
+
+  return isNaN(date.getTime()) ? null : date;
 }
 
 function valorFechaVentaCanonicaQTAS_(row, fallback) {

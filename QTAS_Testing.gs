@@ -1,10 +1,25 @@
 function testPingQTAS() {
   const ss = SpreadsheetApp.getActive();
+  const fechaHistoricaEsperada = '2024-01-01 00:00:00';
+  const fechaHistorica = fechaMomentoExactaQTAS_(fechaHistoricaEsperada);
+  const fechaHistoricaNormalizada = Utilities.formatDate(
+    fechaHistorica,
+    zonaHorariaQTAS_(),
+    'yyyy-MM-dd HH:mm:ss'
+  );
+
+  if (fechaHistoricaNormalizada !== fechaHistoricaEsperada) {
+    throw new Error(
+      `Fecha historica desplazada: ${fechaHistoricaEsperada} -> ${fechaHistoricaNormalizada}.`
+    );
+  }
+
   return testSerializarValorQTAS_({
     ok: true,
     spreadsheetId: ss.getId(),
     spreadsheetName: ss.getName(),
     timezone: ss.getSpreadsheetTimeZone(),
+    historicalDateParsing: fechaHistoricaNormalizada,
     sheets: ss.getSheets().map(sheet => sheet.getName())
   });
 }
