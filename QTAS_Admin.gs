@@ -550,7 +550,21 @@ function repararIntegridadFinancieraQTAS() {
 function continuarReparacionIntegridadFinancieraQTAS() {
   try {
     return withScriptLock_('continuar reparacion integridad financiera', () => {
-      const state = leerEstadoReparacionIntegridadFinancieraQTAS_();
+      let state = leerEstadoReparacionIntegridadFinancieraQTAS_();
+      const incompleto = state && numero_(state.cursor) < numero_(state.total);
+      if (state && !state.active && state.status === 'Error' && incompleto) {
+        state = Object.assign({}, state, {
+          ok: true,
+          active: true,
+          pending: true,
+          status: 'Reanudando',
+          error: '',
+          resumedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+        guardarEstadoReparacionIntegridadFinancieraQTAS_(state);
+      }
+
       if (!state || !state.active) {
         limpiarTriggersReparacionIntegridadFinancieraQTAS_();
         return state || {
@@ -613,6 +627,21 @@ function continuarReparacionIntegridadFinancieraQTAS() {
     });
   } catch (error) {
     const state = leerEstadoReparacionIntegridadFinancieraQTAS_() || {};
+    if (normalizarClaveTexto_(error.message).indexOf('lock timeout') >= 0) {
+      const waiting = Object.assign({}, state, {
+        ok: true,
+        active: true,
+        pending: true,
+        status: 'Esperando disponibilidad',
+        lastLockContentionAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+      guardarEstadoReparacionIntegridadFinancieraQTAS_(waiting);
+      asegurarTriggerReparacionIntegridadFinancieraQTAS_();
+      Logger.log(JSON.stringify(waiting, null, 2));
+      return waiting;
+    }
+
     const failed = Object.assign({}, state, {
       ok: false,
       active: false,
@@ -691,6 +720,20 @@ function programarContinuacionReparacionIntegridadFinancieraQTAS_() {
     .timeBased()
     .after(15000)
     .create();
+}
+
+function asegurarTriggerReparacionIntegridadFinancieraQTAS_() {
+  const existentes = ScriptApp.getProjectTriggers()
+    .filter(trigger =>
+      trigger.getHandlerFunction() === 'continuarReparacionIntegridadFinancieraQTAS'
+    );
+  if (existentes.length) return existentes.length;
+
+  ScriptApp.newTrigger('continuarReparacionIntegridadFinancieraQTAS')
+    .timeBased()
+    .after(15000)
+    .create();
+  return 1;
 }
 
 function limpiarTriggersReparacionIntegridadFinancieraQTAS_() {
