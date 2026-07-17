@@ -535,9 +535,26 @@ export const SCENARIOS = [
           lineas: [
             compraLinea('Insumo', 'Caja', 2, 'und', 10000, true, 'Compra con reparto')
           ]
+        })),
+        batchStep('guardarReglaOrigenFondosFrontendQTAS', {
+          origenFondos: 'Caja',
+          fechaDesde: '2026-06-01',
+          steve: 40,
+          majo: 40,
+          mush: 20,
+          nota: 'Caja distribuida entre titulares'
+        }),
+        batchStep('registrarCompraQTAS', compraPayloadBase({
+          fechaCompra: '2026-07-02',
+          proveedor: 'Proveedor Caja Test',
+          origenFondos: 'Caja',
+          lineas: [
+            compraLinea('Insumo', 'EmpaqueCajaTest', 1, 'und', 30000, true, 'Compra con Caja')
+          ]
         }))
       ]);
       const resp = results[2];
+      const compraCaja = results[4];
 
       ctx.equal(String(resp.origenFondos), 'SM', 'La compra debe conservar el origen de fondos usado.');
       ctx.equal(ctx.num(resp.origenesFondosAsignados), 2, 'La compra debe generar dos asignaciones de fondos.');
@@ -550,7 +567,11 @@ export const SCENARIOS = [
       const asignaciones = ctx.sheetRows(state, 'Compra_Origenes_Fondos')
         .filter(row => ctx.num(row.Compra_ID) === ctx.num(resp.compraId));
 
-      ctx.equal(reglas.length, 4, 'Deben existir cuatro filas historicas para las dos versiones de la regla SM.');
+      ctx.equal(
+        reglas.filter(row => row.Origen_Fondos === 'SM').length,
+        4,
+        'Deben existir cuatro filas historicas para las dos versiones de la regla SM.'
+      );
       ctx.equal(asignaciones.length, 2, 'La compra debe repartir una linea entre dos aportantes.');
 
       const filaSteve = asignaciones.find(row => row.Aportante === 'Steve');
@@ -570,6 +591,27 @@ export const SCENARIOS = [
         (state.comprasRecientes || []).some(row => ctx.num(row.compraId) === ctx.num(resp.compraId) && row.origenFondos === 'SM'),
         'Las compras recientes deben exponer el origen de fondos.'
       );
+
+      const asignacionesCaja = ctx.sheetRows(state, 'Compra_Origenes_Fondos')
+        .filter(row => ctx.num(row.Compra_ID) === ctx.num(compraCaja.compraId));
+      const esperadoCaja = {
+        Steve: { porcentaje: 40, monto: 12000 },
+        Majo: { porcentaje: 40, monto: 12000 },
+        Mush: { porcentaje: 20, monto: 6000 }
+      };
+
+      ctx.equal(ctx.num(compraCaja.origenesFondosAsignados), 3, 'Caja debe generar tres asignaciones.');
+      ctx.equal(asignacionesCaja.length, 3, 'Caja debe repartir una linea entre tres titulares.');
+      ctx.assert(
+        asignacionesCaja.every(row => row.Origen_Fondos === 'Caja' && row.Aportante !== 'Caja'),
+        'Caja debe quedar solo como origen y nunca como aportante.'
+      );
+      Object.entries(esperadoCaja).forEach(([aportante, esperado]) => {
+        const fila = asignacionesCaja.find(row => row.Aportante === aportante);
+        ctx.assert(fila, `Debe existir la asignacion de Caja para ${aportante}.`);
+        ctx.equal(ctx.num(fila.Porcentaje), esperado.porcentaje, `${aportante} debe recibir el porcentaje esperado.`);
+        ctx.equal(ctx.num(fila.Monto_Asignado), esperado.monto, `${aportante} debe recibir el monto esperado.`);
+      });
     }
   },
   {
