@@ -9,9 +9,11 @@ The project is intentionally lightweight. It does not try to mimic a large enter
 - Registers sales with multiple products, discounts, upfront payments, and open balances.
 - Keeps receivables live with pending sales, later payments, and debtor summaries.
 - Tracks pending shipments inside the same commercial workflow.
-- Registers purchases by line item, supplier, payment method, and operational note.
+- Registers purchases by line item, supplier, payment method, funding source, and operational note.
 - Updates historical reference costs from real purchase data.
 - Calculates costs and margins for composite products using recipes and cost rules.
+- Tracks direct, manufactured, and recipe-driven inventory through a stock ledger and snapshot.
+- Registers production batches and consumes the corresponding recipe components.
 - Lets users manage products, prices, payment methods, and distribution rules without editing code.
 - Keeps QA and production environments separated so changes can be tested before release.
 
@@ -50,6 +52,13 @@ In practice, the user opens the spreadsheet, launches the `QTAS ERP` menu, works
 - Incremental calculation of `Costo_Producto_Calc`.
 - Incremental calculation of `Venta_Detalle_Costos_Calc`.
 - Cost coverage, costing method, and estimated margin per sold line.
+
+### Inventory and Production
+
+- Inventory controls with direct, manufactured, recipe-driven, and non-controlled modes.
+- Immutable movement ledger and current-stock snapshot.
+- Production batches with component consumption and finished-product entries.
+- Inventory status for supply-chain monitoring.
 
 ### Operational Configuration
 
@@ -98,8 +107,15 @@ These are the most important operational sheets in the model:
 - `Producto_Reglas_Costo`
 - `Costo_Producto_Calc`
 - `Venta_Detalle_Costos_Calc`
+- `Inventario_Control`
+- `Inventario_Movimientos`
+- `Inventario_Snapshot`
+- `Producciones`
+- `Produccion_Detalle`
 - `Distribucion_Reglas`
 - `Distribucion_Ingresos`
+- `Origenes_Fondos_Reglas`
+- `Compra_Origenes_Fondos`
 - `Config_MediosPago`
 
 ## Repository Architecture
@@ -108,6 +124,7 @@ These are the most important operational sheets in the model:
 - [QTAS_Ventas.gs](./QTAS_Ventas.gs) contains the commercial flow for sales, payments, and shipments.
 - [QTAS_Compras.gs](./QTAS_Compras.gs) handles purchases and historical costs.
 - [QTAS_CostosProducto.gs](./QTAS_CostosProducto.gs) resolves recipes, composite costing, and margins.
+- [QTAS_Inventario.gs](./QTAS_Inventario.gs) manages inventory movements, current stock, and production batches.
 - [QTAS_Distribucion.gs](./QTAS_Distribucion.gs) calculates income distribution.
 - [QTAS_Admin.gs](./QTAS_Admin.gs) exposes advanced configuration to the front end.
 - [QTAS_Modelo.gs](./QTAS_Modelo.gs) ensures and validates the canonical structure.
@@ -198,6 +215,7 @@ The system already includes:
 - separated QA and production deployment
 - production bundle pruning
 - removal of old migration and export modules from the active codebase
+- inventory and production control
 
 ## Note
 

@@ -1,179 +1,111 @@
-# QTAS x Looker
+# SuperQTAS x Looker Studio
 
-Usa `Fecha_Venta`, `Fecha_Pago` y `Fecha_Base` como fuentes canonicas de tiempo.
+This guide uses the canonical operational sheets exported by SuperQTAS. Connect each sheet as its own Google Sheets data source; do not create spreadsheet formulas or duplicate data for reporting.
 
-## Fuentes recomendadas
+## Reporting Rules
 
-`Ventas`
-- Para ventas por dia, semana, mes, cliente, estado de pago y ticket promedio.
-- Campo de tiempo recomendado: `Fecha_Venta`.
+- A sale is revenue. A payment is cash collection. Never add `Ventas` and `Pagos` to calculate revenue.
+- A completed costed sale uses `Venta_Detalle_Costos_Calc`; only rows with `Estado_Costo = Completo` belong in the gross-margin calculation.
+- A purchase is not automatically cost of goods sold. Purchase lines update historical costs; the resulting cost reaches the margin through `Costo_Total_Estimado` when the product is sold.
+- `Compra_Origenes_Fondos` records who funded a purchase. It is useful for contributor/reimbursement reporting, not as a company expense total.
+- `Distribucion_Ingresos` has one row for the sale and one for every payment. Filter `Fuente_Tipo` to either `Venta` or `Pago`; never aggregate both in a single total.
 
-`Venta_Detalle`
-- Para analizar productos, cantidades, descuentos, precio vendido y subtotal neto.
-- Campo de tiempo recomendado: `Fecha_Venta`.
+## Dashboard 1: Sales And Collections
 
-`Pagos`
-- Para flujo de caja, medios de pago y cobros posteriores.
-- Campo de tiempo recomendado: `Fecha_Pago`.
+Sources: `Ventas`, `Pagos`, and `Venta_Detalle`.
 
-`Costo_Producto_Calc`
-- Para costo unitario vigente por producto, cobertura de receta y metodo de costeo.
-- Campo de tiempo recomendado: `Fecha_Calculo`.
+Use `Ventas.Fecha_Venta` for revenue dates and `Pagos.Fecha_Pago` for collection dates.
 
-`Venta_Detalle_Costos_Calc`
-- Para margen bruto estimado por linea vendida, comparando precio de venta vs costo calculado.
-- Campo de tiempo recomendado: `Fecha_Venta`.
+Recommended scorecards:
 
-`Compra_Origenes_Fondos`
-- Para analizar de donde salieron los gastos/compras y como se repartieron por aportante.
-- Campo de tiempo recomendado: `Fecha_Compra`.
+- Net sales: `SUM(Total_Venta)` from `Ventas`.
+- Cash collected: `SUM(Monto_Pago)` from `Pagos`.
+- Open balance: `SUM(Saldo)` from `Ventas`.
+- Number of sales: `COUNT_DISTINCT(Venta_ID)` from `Ventas`.
+- Average ticket: `SUM(Total_Venta) / COUNT_DISTINCT(Venta_ID)` from `Ventas`.
 
-`Distribucion_Ingresos`
-- Para analizar reparto Steve / Majo / Mush.
-- Campo de tiempo recomendado: `Fecha_Base`.
-- Tambien puedes usar `Fecha_Venta` o `Fecha_Pago` si quieres separar venta vs cobro real.
+Recommended charts:
 
-## Campos que no deberian ser canonicos en Looker
+- Time series for sales and collections in separate charts.
+- Sales by client and payment status.
+- Product quantity, discounts, and net sales from `Venta_Detalle`.
 
-No bases tus filtros principales en columnas auxiliares, backups o hojas historicas.
+## Dashboard 2: Gross Margin
 
-El analisis robusto debe salir de estos datetime canonicos:
-- `Ventas.Fecha_Venta`
-- `Venta_Detalle.Fecha_Venta`
-- `Pagos.Fecha_Pago`
-- `Distribucion_Ingresos.Fecha_Base`
-- `Distribucion_Ingresos.Fecha_Venta`
-- `Distribucion_Ingresos.Fecha_Pago`
+Source: `Venta_Detalle_Costos_Calc`.
 
-## Uso sugerido por hoja
+Apply this chart-level filter before calculating margin:
 
-`Ventas`
-- Dimensiones: fecha, cliente, estado de pago.
-- Metricas: `SUM(Total_Venta)`, `SUM(Total_Pagado)`, `SUM(Saldo)`, `COUNT_DISTINCT(Venta_ID)`.
+```text
+Estado_Costo = Completo
+```
 
-`Venta_Detalle`
-- Dimensiones: fecha, producto, unidad, cliente.
-- Metricas: `SUM(Cantidad)`, `SUM(Subtotal_Neto)`, `SUM(Descuento_Linea)`.
+Metrics:
 
-`Pagos`
-- Dimensiones: fecha, medio de pago.
-- Metricas: `SUM(Monto_Pago)`, `COUNT_DISTINCT(Pago_ID)`.
+```text
+Net revenue          = SUM(Subtotal_Neto)
+Estimated COGS       = SUM(Costo_Total_Estimado)
+Gross profit         = SUM(Margen_Bruto_Estimado)
+Gross margin percent = SUM(Margen_Bruto_Estimado) / SUM(Subtotal_Neto)
+```
 
-`Costo_Producto_Calc`
-- Dimensiones: producto, unidad, metodo, estado.
-- Metricas: `AVG(Costo_Unitario_Total)`, `AVG(Cobertura_Costo_Pct)`.
+Dimensions: `Fecha_Venta`, `Producto_Estandar`, `Cliente_ID`, `Metodo_Costo`, and `Unidad`.
 
-`Venta_Detalle_Costos_Calc`
-- Dimensiones: fecha, cliente, producto, metodo, estado.
-- Metricas: `SUM(Subtotal_Neto)`, `SUM(Costo_Total_Estimado)`, `SUM(Margen_Bruto_Estimado)`.
+Use `Estado_Costo` as a quality-control filter. Rows marked `Sin receta`, `Sin costo`, or `No costeable` should be reported separately instead of silently treated as zero cost.
 
-`Compra_Origenes_Fondos`
-- Dimensiones: fecha, origen de fondos, aportante.
-- Metricas: `SUM(Monto_Asignado)`, `COUNT_DISTINCT(Compra_Origen_ID)`.
+For a simple cash-oriented operating view, show `Compra_Detalle` lines where `Tipo_Item = Gasto` in a separate expense card. Do not subtract all purchases from revenue, because material purchases are already recognized through product cost when sold.
 
-`Distribucion_Ingresos`
-- Dimensiones: fecha, fuente tipo, medio de pago.
-- Metricas: `SUM(Steve_Valor)`, `SUM(Majo_Valor)`, `SUM(Mush_Valor)`, `SUM(Monto_Base)`.
+## Dashboard 3: Purchases And Funding
 
-## Hojas operativas vs analiticas
+Sources: `Compras`, `Compra_Detalle`, and `Compra_Origenes_Fondos`.
 
-Operativas:
-- `Productos`
-- `Precios_Referencia`
-- `Producto_Componentes`
-- `Compras`
-- `Compra_Detalle`
-- `Costos_Referencia`
-- `Clientes`
-- `Ventas`
-- `Venta_Detalle`
-- `Pagos`
-- `Ventas_Envio`
-- `Config_MediosPago`
+Recommended metrics:
 
-Configuracion / reglas:
-- `Distribucion_Reglas`
-- `Origenes_Fondos_Reglas`
+- Purchases: `SUM(Total_Compra)` from `Compras`.
+- Purchase lines: `SUM(Costo_Total_Linea)` from `Compra_Detalle`.
+- Funding by contributor: `SUM(Monto_Asignado)` from `Compra_Origenes_Fondos`.
+- Purchase count: `COUNT_DISTINCT(Compra_ID)` from `Compras`.
 
-Analiticas / salida:
-- `Costo_Producto_Calc`
-- `Venta_Detalle_Costos_Calc`
-- `Compra_Origenes_Fondos`
-- `Distribucion_Ingresos`
+Dimensions: `Fecha_Compra`, `Proveedor`, `Tipo_Item`, `Item`, `Origen_Fondos`, and `Aportante`.
 
-Historicas / soporte:
-- `ARCHIVO__Data_Limpia`
-- `Venta_Detalle_Costos`
-- cualquier hoja `ARCHIVO__...`
-- backups de precios
+Use this dashboard to reconcile a purchase against its sources of funds and to track reimbursements. It is a cash/funding dashboard, not a profit-and-loss calculation.
 
-Legacy para migracion o respaldo:
-- `Insumos`
-- `Costo_Producto`
-- `compras_resumen`
-- `costos_referencia_sugeridos`
-- `gastos_aportes_desglosado`
-- `gastos_compras_limpio`
-- `reglas_origen_fondos`
+## Dashboard 4: Inventory And Production
 
-## Vista sugerida del libro
+Sources: `Inventario_Snapshot`, `Inventario_Movimientos`, `Producciones`, and `Produccion_Detalle`.
 
-Deja visibles:
-- `Productos`
-- `Precios_Referencia`
-- `Producto_Componentes`
-- `Compras`
-- `Compra_Detalle`
-- `Costos_Referencia`
-- `Clientes`
-- `Ventas`
-- `Venta_Detalle`
-- `Pagos`
-- `Costo_Producto_Calc`
-- `Venta_Detalle_Costos_Calc`
-- `Compra_Origenes_Fondos`
-- `Distribucion_Reglas`
-- `Origenes_Fondos_Reglas`
-- `Config_MediosPago`
-- `Distribucion_Ingresos`
+Recommended scorecards:
 
-Puedes ocultar sin problema operativo:
-- `Insumos`
-- `Costo_Producto`
-- `Venta_Detalle_Costos`
-- `compras_resumen`
-- `costos_referencia_sugeridos`
-- `gastos_aportes_desglosado`
-- `gastos_compras_limpio`
-- `reglas_origen_fondos`
-- `Ventas_Envio` si no necesitas verla en el libro; su uso es operativo para seguimiento de envios, no analitico
+- Current stock: `SUM(Stock_Actual)` from `Inventario_Snapshot`.
+- Items below minimum: count records where `Estado_Stock = Bajo`.
+- Items out of stock: count records where `Estado_Stock = Agotado`.
+- Produced units: `SUM(Cantidad_Producida)` from `Producciones`.
 
-Candidatas a borrar despues, solo cuando ya no las necesites como respaldo:
-- `Config` legado, despues de migrar a `Config_MediosPago`
-- `Ventas_Resumen`
-- `Deudores`
-- `ARCHIVO__INV`
-- `ARCHIVO__Data_Limpia`
-- `ARCHIVO__mapa_stock_estandar`
-- `Precios_Referencia_Backup_20260`
+Use `Inventario_Snapshot` for the latest state and `Inventario_Movimientos` for history. Do not add both as if they were independent stock totals.
 
-## Recomendacion final
+## Dashboard 5: Distribution
 
-Para Looker, conecta minimo estas 4 hojas:
-- `Ventas`
-- `Venta_Detalle`
-- `Pagos`
-- `Distribucion_Ingresos`
+Source: `Distribucion_Ingresos`.
 
-Si quieres analisis real de costo vs precio de venta, suma tambien:
-- `Producto_Componentes`
-- `Costo_Producto_Calc`
-- `Venta_Detalle_Costos_Calc`
-- `Compras`
-- `Compra_Detalle`
-- `Costos_Referencia`
+Choose one perspective at a time:
 
-Si quieres simplicidad maxima, puedes empezar solo con:
-- `Ventas`
-- `Venta_Detalle`
-- `Pagos`
+- Accrued sale distribution: filter `Fuente_Tipo = Venta` and use `Fecha_Venta`.
+- Collected-cash distribution: filter `Fuente_Tipo = Pago` and use `Fecha_Pago`.
+
+Metrics: `SUM(Steve_Valor)`, `SUM(Majo_Valor)`, `SUM(Mush_Valor)`, and `SUM(Monto_Base)`.
+
+Dimensions: `Fecha_Base`, `Regla_ID_Usada`, `Medio_Pago`, and `Estado_Pago`.
+
+## Source Classification
+
+Operator-facing sheets:
+
+- `Ventas`, `Pagos`, `Compras`, `Ventas_Envio`, `Producciones`, and `Inventario_Snapshot`.
+
+Business-intelligence sheets:
+
+- `Venta_Detalle`, `Venta_Detalle_Costos_Calc`, `Compra_Detalle`, `Compra_Origenes_Fondos`, `Distribucion_Ingresos`, `Inventario_Movimientos`, and `Produccion_Detalle`.
+
+Backend/configuration sheets:
+
+- `Productos`, `Precios_Referencia`, `Clientes`, `Costos_Referencia`, `Producto_Componentes`, `Producto_Reglas_Costo`, `Costo_Producto_Calc`, `Inventario_Control`, `Distribucion_Reglas`, `Origenes_Fondos_Reglas`, and `Config_MediosPago`.
