@@ -6,6 +6,10 @@ function onOpen() {
     .addItem('Aplicar vista operador', 'aplicarVistaOperadorQTAS')
     .addItem('Mostrar todas las hojas', 'mostrarTodasLasHojasQTAS')
     .addItem('Exportar libro TSV', 'exportarLibroTSVQTAS')
+    .addSeparator()
+    .addItem('Pausar inventario para carga historica', 'pausarInventarioParaCargaHistoricaQTAS')
+    .addItem('Reanudar inventario operativo', 'reanudarInventarioOperativoQTAS')
+    .addItem('Ver estado de inventario', 'mostrarEstadoSincronizacionInventarioQTAS')
     .addToUi();
 }
 

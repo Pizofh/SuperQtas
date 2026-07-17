@@ -59,6 +59,7 @@ In practice, the user opens the spreadsheet, launches the `QTAS ERP` menu, works
 - Immutable movement ledger and current-stock snapshot.
 - Production batches with component consumption and finished-product entries.
 - Inventory status for supply-chain monitoring.
+- A reversible historical-load pause that records commercial data without changing stock until operations are current.
 
 ### Operational Configuration
 

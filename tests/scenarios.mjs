@@ -969,6 +969,64 @@ export const SCENARIOS = [
     }
   },
   {
+    id: 'inventario_carga_historica_no_mueve_stock',
+    title: 'Carga historica registra compra sin alterar inventario',
+    tags: ['inventario', 'carga-historica', 'smoke'],
+    run: async ctx => {
+      await ctx.reset();
+
+      const pausa = await ctx.call('pausarInventarioParaCargaHistoricaQTAS');
+      ctx.assert(pausa.habilitada === false, 'La pausa de inventario debe quedar activa.');
+
+      const historica = await ctx.call('registrarCompraQTAS', compraPayloadBase({
+        fechaCompra: '2026-05-20',
+        proveedor: 'Proveedor Historico Test',
+        lineas: [
+          compraLinea('Insumo', 'Alcohol', 100, 'g', 2000, true, 'Carga historica sin stock')
+        ]
+      }));
+      ctx.assert(
+        historica.inventario && historica.inventario.paused === true,
+        'La compra historica debe confirmar que inventario fue omitido.'
+      );
+
+      let state = await snapshotLigero(ctx, {
+        sheetNames: ['Inventario_Movimientos', 'Inventario_Snapshot']
+      });
+      ctx.equal(
+        ctx.sheetRows(state, 'Inventario_Movimientos').length,
+        0,
+        'La carga historica no debe crear movimientos de inventario.'
+      );
+
+      const reanudacion = await ctx.call('reanudarInventarioOperativoQTAS');
+      ctx.assert(reanudacion.habilitada === true, 'La sincronizacion de inventario debe reanudarse.');
+
+      const actual = await ctx.call('registrarCompraQTAS', compraPayloadBase({
+        proveedor: 'Proveedor Actual Test',
+        lineas: [
+          compraLinea('Insumo', 'Alcohol', 25, 'g', 600, true, 'Compra operativa con stock')
+        ]
+      }));
+      ctx.equal(ctx.num(actual.inventario.movimientos), 1, 'La compra posterior debe crear un movimiento.');
+
+      state = await snapshotLigero(ctx, {
+        sheetNames: ['Inventario_Movimientos', 'Inventario_Snapshot']
+      });
+      const alcohol = ctx.findRow(
+        state,
+        'Inventario_Snapshot',
+        row => row.Item === 'Alcohol' && row.Unidad === 'g',
+        'Alcohol debe existir en el snapshot tras reanudar inventario.'
+      );
+      ctx.equal(
+        ctx.num(alcohol.Stock_Actual),
+        25,
+        'El snapshot solo debe incluir la compra operativa, no la historica.'
+      );
+    }
+  },
+  {
     id: 'inventario_produccion_y_venta_fabricada',
     title: 'Produccion consume materia prima y venta baja terminado',
     tags: ['inventario', 'produccion', 'smoke'],

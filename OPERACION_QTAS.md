@@ -61,6 +61,26 @@ getEstadoBackupsQTAS()
 crearBackupManualQTAS()
 ```
 
+## Carga historica sin alterar inventario
+
+Si necesitas registrar compras, ventas o producciones atrasadas despues de haber contado el stock actual, pausa primero la sincronizacion de inventario. Los registros comerciales, costos, pagos y distribucion se guardan normalmente; solo se omiten sus movimientos de stock.
+
+Desde el menu `QTAS ERP` del libro selecciona:
+
+- `Pausar inventario para carga historica`
+- Registra el historico pendiente.
+- `Reanudar inventario operativo` cuando alcances el presente.
+
+Tambien puedes ejecutar estas funciones desde Apps Script:
+
+```javascript
+pausarInventarioParaCargaHistoricaQTAS()
+estadoSincronizacionInventarioQTAS()
+reanudarInventarioOperativoQTAS()
+```
+
+La pausa no reconstruye ni modifica el snapshot existente. Las operaciones ingresadas durante ella quedan deliberadamente fuera del inventario para conservar el conteo fisico actual; las operaciones nuevas despues de reanudar vuelven a actualizarlo.
+
 ## Nota importante sobre QA
 
 El archivo `QTAS_Testing.gs` sigue en el repo porque se usa para automatizacion, pero en `prod` ya no deberia poder vaciar hojas mientras `QTAS_ALLOW_DESTRUCTIVE` siga apagado.

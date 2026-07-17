@@ -583,8 +583,12 @@ function eliminarVentaRecienteQTAS(payload) {
       ventasSheet,
       'Venta_ID'
     );
-    const inventario = reconstruirInventarioInternoQTAS_({
-      ss: ss
+    const inventario = eliminarMovimientosInventarioPorFuentesQTAS_({
+      ss: ss,
+      ventaId: ventaId,
+      detalleIds: detalleAntes
+        .filter(row => numero_(row.Venta_ID) === ventaId)
+        .map(row => texto_(row.Detalle_ID))
     });
     limpiarCachesEjecucionQTAS_();
 

@@ -1173,8 +1173,9 @@ function eliminarCompraRecienteQTAS(payload) {
       fechaBase: new Date(),
       ahora: new Date()
     });
-    const inventario = reconstruirInventarioInternoQTAS_({
-      ss: ss
+    const inventario = eliminarMovimientosInventarioPorFuentesQTAS_({
+      ss: ss,
+      compraId: compraId
     });
 
     limpiarCachesEjecucionQTAS_();
