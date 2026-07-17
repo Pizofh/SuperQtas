@@ -36,7 +36,7 @@ function registrarCompraQTAS(payload) {
     const mediosActivos = leerMediosPagoConfiguradosQTAS_()
       .filter(row => row.activo)
       .map(row => normalizarClaveTexto_(row.medioPago));
-    const medioPago = texto_(payload.medioPago);
+    const medioPago = normalizarMedioPagoQTAS_(payload.medioPago);
 
     if (!mediosActivos.includes(normalizarClaveTexto_(medioPago))) {
       throw new Error('El medio de pago no esta disponible en la configuracion actual.');
@@ -54,7 +54,7 @@ function registrarCompraQTAS(payload) {
     const fechaCompra = combinarFechaYHora_(fechaCompraBase, ahora);
     const proveedor = texto_(payload.proveedor);
     const comentarioCompra = texto_(payload.comentarioCompra);
-    const origenFondos = texto_(payload.origenFondos);
+    const origenFondos = normalizarOrigenFondosQTAS_(payload.origenFondos);
     const productosActivos = leerProductosActivosCompraQTAS_(ss);
     const productosActivosIndex = construirIndiceProductosCompraQTAS_(productosActivos);
     const itemsCatalogoIndex = construirIndiceItemsSugeridosCompraQTAS_(
@@ -469,7 +469,7 @@ function listarOrigenesFondosDisponiblesQTAS_() {
   const vistos = {};
 
   return leerReglasOrigenesFondosQTAS_()
-    .map(row => texto_(row.origenFondos))
+    .map(row => normalizarOrigenFondosQTAS_(row.origenFondos))
     .filter(Boolean)
     .filter(origen => {
       const key = normalizarClaveTexto_(origen);
@@ -650,10 +650,10 @@ function ordenAportanteOrigenFondosQTAS_(aportante) {
 }
 
 function obtenerReglaOrigenFondosVigenteDesdeCacheQTAS_(reglasCache, origenFondos, fechaBase) {
-  const origenKey = normalizarClaveTexto_(origenFondos);
+  const origenKey = normalizarClaveTexto_(normalizarOrigenFondosQTAS_(origenFondos));
   const fechaConsulta = fechaInput_(resolverFechaOperacion_(fechaBase, new Date()));
   const candidatas = (reglasCache || [])
-    .filter(row => normalizarClaveTexto_(row.origenFondos) === origenKey);
+    .filter(row => normalizarClaveTexto_(normalizarOrigenFondosQTAS_(row.origenFondos)) === origenKey);
 
   const matches = candidatas.filter(regla =>
     fechaConsulta >= regla.desde &&
@@ -686,7 +686,7 @@ function obtenerSnapshotOrigenFondosDesdeCacheQTAS_(reglasCache, origenFondos, f
 
   return {
     reglaId: texto_(regla.reglaId),
-    origenFondos: texto_(regla.origenFondos),
+    origenFondos: normalizarOrigenFondosQTAS_(regla.origenFondos),
     steve: redondear_(numero_(regla.steve)),
     majo: redondear_(numero_(regla.majo)),
     mush: redondear_(numero_(regla.mush)),
@@ -695,7 +695,7 @@ function obtenerSnapshotOrigenFondosDesdeCacheQTAS_(reglasCache, origenFondos, f
 }
 
 function construirFilasCompraOrigenesFondosQTAS_(context) {
-  const origenFondos = texto_(context && context.origenFondos);
+  const origenFondos = normalizarOrigenFondosQTAS_(context && context.origenFondos);
   const lineas = context && context.lineas ? context.lineas : [];
   if (!origenFondos || !lineas.length) {
     return {

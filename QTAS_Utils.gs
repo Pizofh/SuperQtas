@@ -1130,6 +1130,22 @@ function normalizarClaveTexto_(value) {
     .trim();
 }
 
+function normalizarMedioPagoQTAS_(value) {
+  const medioPago = texto_(value);
+  if (normalizarClaveTexto_(medioPago) === 'efectivo') return 'Efectivo';
+  return medioPago;
+}
+
+function normalizarOrigenFondosQTAS_(value) {
+  const origenFondos = texto_(value);
+  const key = normalizarClaveTexto_(origenFondos);
+
+  if (key === 'sm' || key === 'ms') return 'SM';
+  if (key === 'mush') return 'Mush';
+  if (key === 'caja') return 'Caja';
+  return origenFondos;
+}
+
 function normalizarUnidadCanonicaQTAS_(value) {
   const original = texto_(value);
   const key = normalizarClaveTexto_(original);

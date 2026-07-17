@@ -159,7 +159,7 @@ export const SCENARIOS = [
           ventaLinea('AcSup', 1, 'g', 20000)
         ],
         pagos: [
-          pagoLinea('Efectivo', 20000, 'Pago total')
+          pagoLinea('efectivo', 20000, 'Pago total')
         ]
       }));
 
@@ -190,17 +190,23 @@ export const SCENARIOS = [
           ventaLinea('AcSup', 1, 'g', 20000)
         ],
         pagos: [
-          pagoLinea('Efectivo', 20000, 'Pago total')
+          pagoLinea('efectivo', 20000, 'Pago total')
         ]
       }));
 
       ctx.equal(String(venta.estadoEnvio), 'Pendiente', 'La venta debe quedar marcada como pendiente de envio.');
 
       let state = await snapshotLigero(ctx, {
+        sheetNames: ['Pagos'],
         includeDashboard: true
       });
       ctx.equal((state.dashboard.ventasPendientes || []).length, 0, 'La venta pagada no debe quedar como deuda.');
       ctx.equal((state.dashboard.enviosPendientes || []).length, 1, 'La venta debe aparecer en el panel de envios pendientes.');
+      ctx.equal(
+        String(ctx.sheetRows(state, 'Pagos')[0].Medio_Pago),
+        'Efectivo',
+        'El pago nuevo debe guardar Efectivo de forma canonica.'
+      );
 
       await ctx.call('actualizarEstadoEnvioVentaQTAS', {
         ventaId: venta.ventaId,
@@ -533,7 +539,7 @@ export const SCENARIOS = [
 
       const results = await ctx.batch([
         batchStep('guardarReglaOrigenFondosFrontendQTAS', {
-          origenFondos: 'SM',
+          origenFondos: 'MS',
           fechaDesde: '2026-06-01',
           steve: 50,
           majo: 50,
@@ -541,7 +547,7 @@ export const SCENARIOS = [
           nota: 'Base SM'
         }),
         batchStep('guardarReglaOrigenFondosFrontendQTAS', {
-          origenFondos: 'SM',
+          origenFondos: 'sm',
           fechaDesde: '2026-07-01',
           steve: 40,
           majo: 60,
@@ -551,7 +557,7 @@ export const SCENARIOS = [
         batchStep('registrarCompraQTAS', compraPayloadBase({
           fechaCompra: '2026-07-02',
           proveedor: 'Proveedor Fondo Test',
-          origenFondos: 'SM',
+          origenFondos: 'sm',
           lineas: [
             compraLinea('Insumo', 'Caja', 2, 'und', 10000, true, 'Compra con reparto')
           ]
@@ -582,6 +588,10 @@ export const SCENARIOS = [
       ctx.equal(ctx.num(filaMajo.Porcentaje), 60, 'Majo debe tomar 60% en la fecha nueva.');
       ctx.equal(ctx.num(filaSteve.Monto_Asignado), 4000, 'A Steve deben asignarse 4000.');
       ctx.equal(ctx.num(filaMajo.Monto_Asignado), 6000, 'A Majo deben asignarse 6000.');
+      ctx.assert(
+        asignaciones.every(row => row.Origen_Fondos === 'SM'),
+        'Las asignaciones nuevas deben guardar SM de forma canonica.'
+      );
       ctx.assert(
         (state.comprasRecientes || []).some(row => ctx.num(row.compraId) === ctx.num(resp.compraId) && row.origenFondos === 'SM'),
         'Las compras recientes deben exponer el origen de fondos.'
