@@ -117,7 +117,7 @@ function guardarMedioPagoQTAS(payload) {
   return withScriptLock_('guardar medio pago', () => {
     asegurarModeloOperativoQTAS_();
 
-    const medioPago = texto_(payload && payload.medioPago);
+    const medioPago = normalizarMedioPagoQTAS_(payload && payload.medioPago);
     const medioOriginal = texto_(payload && payload.medioOriginal);
     const nota = texto_(payload && payload.nota);
     const activo = payload && payload.activo !== false;
@@ -271,7 +271,7 @@ function guardarReglaOrigenFondosFrontendQTAS(payload) {
   return withScriptLock_('guardar regla origen fondos frontend', () => {
     asegurarModeloOperativoQTAS_();
 
-    const origenFondos = texto_(payload && payload.origenFondos);
+    const origenFondos = normalizarOrigenFondosQTAS_(payload && payload.origenFondos);
     const fechaDesde = resolverFechaOperacion_(payload && payload.fechaDesde, new Date());
     const steve = redondear_(numero_(payload && payload.steve));
     const majo = redondear_(numero_(payload && payload.majo));
@@ -441,6 +441,181 @@ function auditarIntegridadFinancieraQTAS() {
   const plan = construirPlanIntegridadFinancieraQTAS_(ss);
   Logger.log(JSON.stringify(plan.resumen, null, 2));
   return plan.resumen;
+}
+
+function corregirVenta2342TemporalQTAS() {
+  assertOperacionDestructivaPermitidaQTAS_('corregir venta 2342');
+
+  try {
+    return withScriptLock_('corregir venta 2342', () => {
+      const ss = validarModeloSoloLecturaQTAS_({
+        sheetNames: [
+          QTAS.sheets.ventas,
+          QTAS.sheets.detalle,
+          QTAS.sheets.pagos,
+          QTAS.sheets.distribucionIngresos,
+          QTAS.sheets.ventaDetalleCostosCalculado
+        ],
+        validarConfig: false
+      });
+      const ventaId = 2342;
+      const totalEsperado = 200000;
+      const ventasSheet = ss.getSheetByName(QTAS.sheets.ventas);
+      const detalleSheet = ss.getSheetByName(QTAS.sheets.detalle);
+      const pagosSheet = ss.getSheetByName(QTAS.sheets.pagos);
+      const ventasHeaders = getHeaders_(ventasSheet);
+      const detalleHeaders = getHeaders_(detalleSheet);
+      const pagosHeaders = getHeaders_(pagosSheet);
+      const ventas = leerObjetosConMeta_(ventasSheet);
+      const detalles = leerObjetosConMeta_(detalleSheet);
+      const pagos = leerObjetosConMeta_(pagosSheet);
+      const venta = ventas.find(row => numero_(row.Venta_ID) === ventaId);
+      const detallesActivos = detalles.filter(row =>
+        numero_(row.Venta_ID) === ventaId && !esRegistroAnulado_(row.Estado_Registro)
+      );
+      const pagosActivos = pagos.filter(row =>
+        numero_(row.Venta_ID) === ventaId && !esRegistroAnulado_(row.Estado_Registro)
+      );
+
+      if (!venta || detallesActivos.length !== 1 || pagosActivos.length !== 1) {
+        throw new Error(
+          'La V2342 debe tener exactamente una venta, un detalle activo y un pago activo para corregirse.'
+        );
+      }
+
+      const detalle = detallesActivos[0];
+      const pago = pagosActivos[0];
+      const reglaVentaAntes = texto_(venta.Regla_Distribucion_Venta_ID);
+      const reglaPagoAntes = texto_(pago.Regla_Distribucion_Pago_ID);
+      if (!reglaVentaAntes || !reglaPagoAntes) {
+        throw new Error('La V2342 no conserva snapshots historicos de distribucion completos.');
+      }
+
+      const detalleActualizado = Object.assign({}, detalle, {
+        Producto_Estandar: 'AcSup',
+        Cantidad: 10,
+        Unidad: 'g',
+        Precio_Lista: 20000,
+        Precio_Vendido_Unitario: 20000,
+        Descuento_Linea: 0,
+        Subtotal_Bruto: totalEsperado,
+        Subtotal_Neto: totalEsperado,
+        Estado_Registro: QTAS.status.registro.activo
+      });
+      const pagoActualizado = Object.assign({}, pago, {
+        Monto_Pago: totalEsperado,
+        Estado_Registro: QTAS.status.registro.activo
+      });
+      const ventaActualizada = Object.assign({}, venta, {
+        Productos_Resumen: resumenProductos_([detalleActualizado]),
+        Total_Venta: totalEsperado,
+        Total_Pagado: totalEsperado,
+        Saldo: 0,
+        Estado_Pago: obtenerEstadoPago_(totalEsperado, totalEsperado, QTAS.status.registro.activo),
+        Estado_Registro: QTAS.status.registro.activo
+      });
+
+      actualizarFilaObjeto_(detalleSheet, detalle.__rowNumber, detalleHeaders, detalleActualizado);
+      actualizarFilaObjeto_(pagosSheet, pago.__rowNumber, pagosHeaders, pagoActualizado);
+      actualizarFilaObjeto_(ventasSheet, venta.__rowNumber, ventasHeaders, ventaActualizada);
+
+      limpiarCachesEjecucionQTAS_();
+      invalidarCacheDocumentoQTAS_('distribucion_reglas_memoria');
+      const distribucion = sincronizarDistribucionVentaQTAS_(ventaId);
+      const analitica = sincronizarVentaDetalleCostosLoteQTAS_([detalleActualizado], {
+        ss: ss,
+        ahora: new Date()
+      });
+      const verificacion = verificarCorreccionVenta2342TemporalQTAS_({
+        ss: ss,
+        ventaId: ventaId,
+        totalEsperado: totalEsperado,
+        reglaVentaAntes: reglaVentaAntes,
+        reglaPagoAntes: reglaPagoAntes
+      });
+
+      const result = {
+        ok: distribucion.ok === true && analitica.ok === true && verificacion.ok === true,
+        ventaId: ventaId,
+        detalleId: texto_(detalle.Detalle_ID),
+        pagoId: texto_(pago.Pago_ID),
+        distribucion: distribucion,
+        analitica: analitica,
+        verificacion: verificacion
+      };
+      Logger.log(JSON.stringify(result, null, 2));
+      return result;
+    });
+  } finally {
+    PropertiesService.getScriptProperties().deleteProperty('QTAS_ALLOW_DESTRUCTIVE');
+  }
+}
+
+function corregirVenta2342TemporalQTAS_Log() {
+  const result = corregirVenta2342TemporalQTAS();
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+function verificarCorreccionVenta2342TemporalQTAS_(context) {
+  const ss = context.ss;
+  const ventaId = numero_(context.ventaId);
+  const totalEsperado = numero_(context.totalEsperado);
+  const venta = leerObjetos_(ss.getSheetByName(QTAS.sheets.ventas))
+    .find(row => numero_(row.Venta_ID) === ventaId);
+  const detalle = leerObjetos_(ss.getSheetByName(QTAS.sheets.detalle))
+    .filter(row => numero_(row.Venta_ID) === ventaId && !esRegistroAnulado_(row.Estado_Registro));
+  const pagos = leerObjetos_(ss.getSheetByName(QTAS.sheets.pagos))
+    .filter(row => numero_(row.Venta_ID) === ventaId && !esRegistroAnulado_(row.Estado_Registro));
+  const distribucion = leerObjetos_(ss.getSheetByName(QTAS.sheets.distribucionIngresos))
+    .filter(row => numero_(row.Venta_ID) === ventaId && !esRegistroAnulado_(row.Estado_Registro));
+  const analitica = leerObjetos_(ss.getSheetByName(QTAS.sheets.ventaDetalleCostosCalculado))
+    .filter(row => numero_(row.Venta_ID) === ventaId);
+  const distribucionVenta = distribucion.filter(row => texto_(row.Fuente_Tipo) === 'Venta');
+  const distribucionPago = distribucion.filter(row => texto_(row.Fuente_Tipo) === 'Pago');
+  const distribucionValida = rows => rows.length === 1 && rows.every(row =>
+    numero_(row.Monto_Base) === totalEsperado &&
+    Math.abs(totalEsperado - sumar_([
+      numero_(row.Steve_Valor),
+      numero_(row.Majo_Valor),
+      numero_(row.Mush_Valor)
+    ])) <= 0.01
+  );
+  const detalleValido = detalle.length === 1 &&
+    texto_(detalle[0].Producto_Estandar) === 'AcSup' &&
+    numero_(detalle[0].Cantidad) === 10 &&
+    normalizarUnidadCanonicaQTAS_(detalle[0].Unidad) === 'g' &&
+    numero_(detalle[0].Precio_Vendido_Unitario) === 20000 &&
+    numero_(detalle[0].Descuento_Linea) === 0 &&
+    numero_(detalle[0].Subtotal_Neto) === totalEsperado;
+  const pagosValidos = pagos.length === 1 && numero_(pagos[0].Monto_Pago) === totalEsperado;
+  const ventaValida = venta &&
+    numero_(venta.Total_Venta) === totalEsperado &&
+    numero_(venta.Total_Pagado) === totalEsperado &&
+    numero_(venta.Saldo) === 0 &&
+    texto_(venta.Estado_Pago) === QTAS.status.pago.pagado;
+  const reglasPreservadas = venta && pagos[0] &&
+    texto_(venta.Regla_Distribucion_Venta_ID) === texto_(context.reglaVentaAntes) &&
+    texto_(pagos[0].Regla_Distribucion_Pago_ID) === texto_(context.reglaPagoAntes);
+  const analiticaValida = analitica.length === 1 &&
+    texto_(analitica[0].Producto_Estandar) === 'AcSup' &&
+    numero_(analitica[0].Cantidad) === 10 &&
+    numero_(analitica[0].Subtotal_Neto) === totalEsperado &&
+    numero_(analitica[0].Costo_Total_Estimado) > 0;
+
+  return {
+    ok: Boolean(
+      ventaValida && detalleValido && pagosValidos && reglasPreservadas &&
+      distribucionValida(distribucionVenta) && distribucionValida(distribucionPago) && analiticaValida
+    ),
+    ventaValida: Boolean(ventaValida),
+    detalleValido: Boolean(detalleValido),
+    pagosValidos: Boolean(pagosValidos),
+    reglasPreservadas: Boolean(reglasPreservadas),
+    distribucionVentaValida: distribucionValida(distribucionVenta),
+    distribucionPagoValida: distribucionValida(distribucionPago),
+    analiticaValida: Boolean(analiticaValida)
+  };
 }
 
 function corregirVentasHistoricasConfirmadasQTAS() {
