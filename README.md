@@ -144,9 +144,10 @@ The repository already works with a real separation between QA and production.
 
 QA push validation is controlled with GitHub Actions repository variables:
 
-- `QTAS_RUN_TESTS_ON_QA_PUSH=true` enables QA checks. Set it to `false` to deploy QA without running the harness, probe, smoke suite, or full suite.
-- `QTAS_RUN_SMOKE_SUITE_ON_QA_PUSH=true` enables the smoke suite when QA checks are enabled.
-- `QTAS_RUN_FULL_SUITE_ON_QA_PUSH=true` enables the complete suite and automatically skips the separate smoke run because those scenarios are already included.
+- `QTAS_RUN_SMOKE_SUITE_ON_QA_PUSH=true` runs the harness, probe, and smoke suite.
+- `QTAS_RUN_FULL_SUITE_ON_QA_PUSH=true` runs the harness, probe, and complete suite; it skips the separate smoke run because those scenarios are included.
+- Set both suite variables to `false` to deploy QA without tests.
+- `QTAS_RUN_TESTS_ON_QA_PUSH=true` is optional and runs only the harness and probe when both suite variables are `false`.
 
 Production also uses a reduced bundle:
 
