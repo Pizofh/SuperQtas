@@ -54,6 +54,7 @@ function testResetEntornoQTAS(payload) {
   }, payload || {});
 
   return withScriptLock_('test reset entorno', () => {
+    establecerSincronizacionInventarioQTAS_(true);
     const ss = settings.asegurarModelo === false
       ? SpreadsheetApp.getActive()
       : asegurarModeloOperativoQTAS_({

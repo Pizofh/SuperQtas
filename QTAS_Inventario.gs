@@ -40,6 +40,7 @@ function getDashboardInventarioQTAS() {
   return {
     ok: true,
     hoy: fechaInput_(new Date()),
+    sincronizacion: estadoSincronizacionInventarioQTAS_(),
     resumen: {
       itemsActivos: stock.length,
       alertas: alertas.length,
@@ -59,6 +60,44 @@ function getDashboardInventarioQTAS() {
     produccionesRecientes: produccionesRecientes,
     productosFabricados: fabricados
   };
+}
+
+function pausarInventarioParaCargaHistoricaQTAS() {
+  const estado = establecerSincronizacionInventarioQTAS_(false);
+  SpreadsheetApp.getActive().toast(
+    'Las compras, ventas y producciones se guardaran sin alterar inventario hasta reanudarlo.',
+    'Inventario en pausa',
+    8
+  );
+  return estado;
+}
+
+function reanudarInventarioOperativoQTAS() {
+  const estado = establecerSincronizacionInventarioQTAS_(true);
+  SpreadsheetApp.getActive().toast(
+    'Las nuevas compras, ventas y producciones volveran a actualizar inventario.',
+    'Inventario operativo',
+    8
+  );
+  return estado;
+}
+
+function estadoSincronizacionInventarioQTAS() {
+  const habilitada = sincronizacionInventarioHabilitadaQTAS_();
+  return {
+    ok: true,
+    habilitada: habilitada,
+    modo: habilitada ? 'Operativo' : 'Carga historica',
+    mensaje: habilitada
+      ? 'Las nuevas operaciones actualizan inventario.'
+      : 'Las operaciones se guardan sin crear movimientos de inventario.'
+  };
+}
+
+function mostrarEstadoSincronizacionInventarioQTAS() {
+  const estado = estadoSincronizacionInventarioQTAS();
+  SpreadsheetApp.getActive().toast(estado.mensaje, `Inventario: ${estado.modo}`, 6);
+  return estado;
 }
 
 function guardarControlInventarioQTAS(payload) {
@@ -213,11 +252,64 @@ function registrarProduccionQTAS(payload) {
   });
 }
 
+function eliminarMovimientosInventarioPorFuentesQTAS_(payload) {
+  const settings = Object.assign({
+    ss: SpreadsheetApp.getActive(),
+    compraId: 0,
+    ventaId: 0,
+    produccionId: '',
+    detalleIds: []
+  }, payload || {});
+  const ss = settings.ss || SpreadsheetApp.getActive();
+  const movimientosRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.inventarioMovimientos);
+  if (!movimientosRef.ok) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: movimientosRef.reason,
+      movimientos: 0
+    };
+  }
+
+  const compraId = numero_(settings.compraId);
+  const ventaId = numero_(settings.ventaId);
+  const produccionId = texto_(settings.produccionId);
+  const detalleIds = (settings.detalleIds || []).reduce((index, value) => {
+    const id = texto_(value);
+    if (id) index[id] = true;
+    return index;
+  }, {});
+  const antes = leerObjetos_(movimientosRef.sheet);
+  const despues = antes.filter(row => {
+    if (compraId > 0 && numero_(row.Compra_ID) === compraId) return false;
+    if (ventaId > 0 && numero_(row.Venta_ID) === ventaId) return false;
+    if (produccionId && texto_(row.Produccion_ID) === produccionId) return false;
+    return !detalleIds[texto_(row.Detalle_ID)];
+  });
+  const eliminados = antes.length - despues.length;
+
+  if (eliminados) {
+    sobrescribirObjetosHojaQTAS_(movimientosRef.sheet, movimientosRef.headers, despues);
+    reconstruirSnapshotInventarioQTAS_({ ss: ss, movimientos: despues });
+  }
+
+  return {
+    ok: true,
+    skipped: false,
+    movimientos: eliminados,
+    snapshot: eliminados ? listarSnapshotInventarioQTAS_().length : 0
+  };
+}
+
 function reconstruirInventarioInternoQTAS_(payload) {
   const settings = Object.assign({
     ss: SpreadsheetApp.getActive()
   }, payload || {});
   const ss = settings.ss || SpreadsheetApp.getActive();
+
+  if (!sincronizacionInventarioHabilitadaQTAS_()) {
+    return resultadoInventarioEnPausaQTAS_();
+  }
 
   asegurarControlesInventarioBaseQTAS_();
 
@@ -265,6 +357,10 @@ function sincronizarInventarioDesdeCompraQTAS_(context) {
   }, context || {});
   const ss = settings.ss || SpreadsheetApp.getActive();
 
+  if (!sincronizacionInventarioHabilitadaQTAS_()) {
+    return resultadoInventarioEnPausaQTAS_();
+  }
+
   asegurarControlesInventarioBaseQTAS_((settings.lineas || []).map(linea => ({
     tipoItem: linea.Tipo_Item,
     item: linea.Item,
@@ -309,6 +405,10 @@ function sincronizarInventarioDesdeVentaQTAS_(context) {
   }, context || {});
   const ss = settings.ss || SpreadsheetApp.getActive();
 
+  if (!sincronizacionInventarioHabilitadaQTAS_()) {
+    return resultadoInventarioEnPausaQTAS_();
+  }
+
   asegurarControlesInventarioBaseQTAS_();
 
   const movimientosRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.inventarioMovimientos);
@@ -342,6 +442,10 @@ function sincronizarInventarioDesdeProduccionDetalleQTAS_(context) {
     ss: SpreadsheetApp.getActive()
   }, context || {});
   const ss = settings.ss || SpreadsheetApp.getActive();
+
+  if (!sincronizacionInventarioHabilitadaQTAS_()) {
+    return resultadoInventarioEnPausaQTAS_();
+  }
   const movimientosRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.inventarioMovimientos);
   if (!movimientosRef.ok) {
     return {
@@ -1156,6 +1260,32 @@ function crearMovimientoInventarioQTAS_(context) {
     Produccion_ID: texto_(context.produccionId),
     Detalle_ID: texto_(context.detalleId),
     Nota: texto_(context.nota)
+  };
+}
+
+function sincronizacionInventarioHabilitadaQTAS_() {
+  return normalizarClaveTexto_(
+    PropertiesService.getScriptProperties().getProperty('QTAS_INVENTORY_SYNC_MODE')
+  ) !== 'cargahistorica';
+}
+
+function establecerSincronizacionInventarioQTAS_(habilitada) {
+  const properties = PropertiesService.getScriptProperties();
+  if (habilitada) {
+    properties.deleteProperty('QTAS_INVENTORY_SYNC_MODE');
+  } else {
+    properties.setProperty('QTAS_INVENTORY_SYNC_MODE', 'CargaHistorica');
+  }
+  return estadoSincronizacionInventarioQTAS();
+}
+
+function resultadoInventarioEnPausaQTAS_() {
+  return {
+    ok: true,
+    skipped: true,
+    paused: true,
+    reason: 'Inventario en pausa para carga historica.',
+    movimientos: 0
   };
 }
 

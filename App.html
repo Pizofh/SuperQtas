@@ -3457,9 +3457,12 @@
             document.getElementById('invComentarioProduccion').value = '';
           }
 
-          document.getElementById('estadoInventario').innerText = inventarioDashboard.stockInicialPendiente
-            ? 'Inventario actualizado. Puede haber negativos mientras cargas conteos iniciales o lotes ya fabricados.'
-            : 'Inventario actualizado.';
+          const sincronizacion = inventarioDashboard.sincronizacion || {};
+          document.getElementById('estadoInventario').innerText = !sincronizacion.habilitada
+            ? 'Inventario en pausa para carga historica. Las operaciones se guardan sin crear movimientos de stock.'
+            : (inventarioDashboard.stockInicialPendiente
+              ? 'Inventario actualizado. Puede haber negativos mientras cargas conteos iniciales o lotes ya fabricados.'
+              : 'Inventario actualizado.');
         })
         .withFailureHandler(err => {
           document.getElementById('estadoInventario').innerText = construirMensajeEstadoError_('No se pudo cargar inventario', err);
