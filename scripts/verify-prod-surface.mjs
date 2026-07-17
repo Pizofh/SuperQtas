@@ -27,6 +27,16 @@ const FORBIDDEN_FUNCTIONS = {
     'sincronizarPlantillaYAnaliticaCostosQTAS',
     'sincronizarPlantillaYAnaliticaCostosQTAS_Log'
   ],
+  'QTAS_Admin.gs': [
+    'auditarIntegridadFinancieraQTAS',
+    'corregirVenta2342TemporalQTAS',
+    'corregirVenta2342TemporalQTAS_Log',
+    'corregirVentasHistoricasConfirmadasQTAS',
+    'corregirVentasHistoricasConfirmadasQTAS_Log',
+    'repararIntegridadFinancieraQTAS',
+    'continuarReparacionIntegridadFinancieraQTAS',
+    'estadoReparacionIntegridadFinancieraQTAS'
+  ],
   'QTAS_Distribucion.gs': [
     'reconstruirDistribucionIngresosQTAS_'
   ],

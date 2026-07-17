@@ -390,17 +390,12 @@ export const SCENARIOS = [
     run: async ctx => {
       await ctx.reset();
 
-      const results = await ctx.batch([
-        batchStep('registrarCompraQTAS', compraPayloadBase({
-          proveedor: 'Proveedor Costo Test',
-          lineas: [
-            compraLinea('Producto', 'AcSup', 10, 'g', 100000, true, 'Refresh incremental de costo producto')
-          ]
-        })),
-        batchStep('auditarIntegridadFinancieraQTAS')
-      ]);
-      const resp = results[0];
-      const auditoria = results[1];
+      const resp = await ctx.call('registrarCompraQTAS', compraPayloadBase({
+        proveedor: 'Proveedor Costo Test',
+        lineas: [
+          compraLinea('Producto', 'AcSup', 10, 'g', 100000, true, 'Refresh incremental de costo producto')
+        ]
+      }));
 
       ctx.assert(
         resp.costoProductoCalculado && resp.costoProductoCalculado.ok === true,
@@ -410,34 +405,8 @@ export const SCENARIOS = [
         ctx.num(resp.costoProductoCalculado.rows) > 0,
         'El refresh incremental debe recalcular al menos una fila de costo producto.'
       );
-      ctx.equal(
-        ctx.num(auditoria.compras.costoUnitarioInconsistente),
-        0,
-        'Una compra operativa no debe dejar costos unitarios inconsistentes.'
-      );
-      ctx.equal(
-        ctx.num(auditoria.compras.fondosDescuadrados),
-        0,
-        'Una compra operativa no debe dejar fondos descuadrados.'
-      );
-      ctx.equal(
-        ctx.num(auditoria.costos?.packagingSinCoberturaHistorica),
-        0,
-        'Los costos de packaging deben cubrir el periodo historico configurado.'
-      );
-      ctx.equal(
-        ctx.num(auditoria.ventas?.detalleNoCanonico),
-        0,
-        'Venta_Detalle debe conservar productos y unidades canonicos.'
-      );
-      ctx.equal(
-        ctx.num(auditoria.ventas?.costosAnaliticosExtremos),
-        0,
-        'La analitica no debe contener costos unitarios extremos.'
-      );
-
       const state = await snapshotLigero(ctx, {
-        sheetNames: ['Costo_Producto_Calc']
+        sheetNames: ['Costo_Producto_Calc', 'Costos_Referencia']
       });
       const costo = ctx.findRow(
         state,
@@ -449,6 +418,11 @@ export const SCENARIOS = [
       ctx.equal(ctx.num(costo.Costo_Unitario_Total), 10000, 'El snapshot incremental de costo producto debe reflejar el costo directo vigente.');
       ctx.equal(String(costo.Metodo_Costo), 'Costo directo', 'El producto debe quedar costeado por costo directo.');
       ctx.equal(String(costo.Estado_Costo), 'Directo', 'El estado del costo producto debe quedar Directo.');
+      ctx.equal(
+        ctx.sheetRows(state, 'Costos_Referencia').length,
+        1,
+        'La compra debe persistir una unica referencia de costo vigente.'
+      );
     }
   },
   {

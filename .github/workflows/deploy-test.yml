@@ -40,6 +40,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Report QA test switches
+        if: ${{ github.event_name == 'push' }}
+        env:
+          RUN_TESTS: ${{ vars.QTAS_RUN_TESTS_ON_QA_PUSH }}
+          RUN_SMOKE: ${{ vars.QTAS_RUN_SMOKE_SUITE_ON_QA_PUSH }}
+          RUN_FULL: ${{ vars.QTAS_RUN_FULL_SUITE_ON_QA_PUSH }}
+        run: |
+          echo "QTAS_RUN_TESTS_ON_QA_PUSH=${RUN_TESTS:-false}"
+          echo "QTAS_RUN_SMOKE_SUITE_ON_QA_PUSH=${RUN_SMOKE:-false}"
+          echo "QTAS_RUN_FULL_SUITE_ON_QA_PUSH=${RUN_FULL:-false}"
+
       - name: Write clasp credentials
         env:
           CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
@@ -51,14 +62,14 @@ jobs:
           printf '%s' "$CLASP_JSON_TEST" > .clasp.test.json
 
       - name: Validate harness loads
-        if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.run_tests == 'true') || (github.event_name == 'push' && vars.QTAS_RUN_TESTS_ON_QA_PUSH == 'true') }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.run_tests == 'true') || (github.event_name == 'push' && (vars.QTAS_RUN_TESTS_ON_QA_PUSH == 'true' || vars.QTAS_RUN_SMOKE_SUITE_ON_QA_PUSH == 'true' || vars.QTAS_RUN_FULL_SUITE_ON_QA_PUSH == 'true')) }}
         run: npm run test:qtas:list
 
       - name: Push to Apps Script test
         run: npm run deploy:test:push
 
       - name: Write QA runtime config
-        if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.run_tests == 'true') || (github.event_name == 'push' && vars.QTAS_RUN_TESTS_ON_QA_PUSH == 'true') }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.run_tests == 'true') || (github.event_name == 'push' && (vars.QTAS_RUN_TESTS_ON_QA_PUSH == 'true' || vars.QTAS_RUN_SMOKE_SUITE_ON_QA_PUSH == 'true' || vars.QTAS_RUN_FULL_SUITE_ON_QA_PUSH == 'true')) }}
         env:
           QTAS_TEST_CONFIG_JSON: ${{ secrets.QTAS_TEST_CONFIG_JSON }}
           GOOGLE_AUTHORIZED_USER_JSON_TEST: ${{ secrets.GOOGLE_AUTHORIZED_USER_JSON_TEST }}
@@ -70,7 +81,7 @@ jobs:
           printf '%s' "$QTAS_TEST_CONFIG_JSON" > tests/qtas.test.config.json
 
       - name: Run headless Apps Script probe
-        if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.run_tests == 'true') || (github.event_name == 'push' && vars.QTAS_RUN_TESTS_ON_QA_PUSH == 'true') }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.run_tests == 'true') || (github.event_name == 'push' && (vars.QTAS_RUN_TESTS_ON_QA_PUSH == 'true' || vars.QTAS_RUN_SMOKE_SUITE_ON_QA_PUSH == 'true' || vars.QTAS_RUN_FULL_SUITE_ON_QA_PUSH == 'true')) }}
         env:
           QTAS_TEST_CONFIG_JSON: ${{ secrets.QTAS_TEST_CONFIG_JSON }}
           GOOGLE_AUTHORIZED_USER_JSON: ${{ secrets.GOOGLE_AUTHORIZED_USER_JSON_TEST }}
@@ -82,7 +93,7 @@ jobs:
           npm run test:qtas:probe:qa
 
       - name: Run headless Apps Script smoke suite
-        if: ${{ ((github.event_name == 'workflow_dispatch' && github.event.inputs.run_tests == 'true') || (github.event_name == 'push' && vars.QTAS_RUN_TESTS_ON_QA_PUSH == 'true')) && ((github.event_name == 'workflow_dispatch' && github.event.inputs.run_smoke_suite == 'true') || (github.event_name == 'push' && vars.QTAS_RUN_SMOKE_SUITE_ON_QA_PUSH == 'true')) && !((github.event_name == 'workflow_dispatch' && github.event.inputs.run_full_suite == 'true') || (github.event_name == 'push' && vars.QTAS_RUN_FULL_SUITE_ON_QA_PUSH == 'true')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.run_tests == 'true' && github.event.inputs.run_smoke_suite == 'true' && github.event.inputs.run_full_suite != 'true') || (github.event_name == 'push' && vars.QTAS_RUN_SMOKE_SUITE_ON_QA_PUSH == 'true' && vars.QTAS_RUN_FULL_SUITE_ON_QA_PUSH != 'true') }}
         env:
           QTAS_TEST_CONFIG_JSON: ${{ secrets.QTAS_TEST_CONFIG_JSON }}
           GOOGLE_AUTHORIZED_USER_JSON: ${{ secrets.GOOGLE_AUTHORIZED_USER_JSON_TEST }}
@@ -94,7 +105,7 @@ jobs:
           npm run test:qtas:smoke:qa
 
       - name: Run headless Apps Script full suite
-        if: ${{ ((github.event_name == 'workflow_dispatch' && github.event.inputs.run_tests == 'true') || (github.event_name == 'push' && vars.QTAS_RUN_TESTS_ON_QA_PUSH == 'true')) && ((github.event_name == 'workflow_dispatch' && github.event.inputs.run_full_suite == 'true') || (github.event_name == 'push' && vars.QTAS_RUN_FULL_SUITE_ON_QA_PUSH == 'true')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.run_tests == 'true' && github.event.inputs.run_full_suite == 'true') || (github.event_name == 'push' && vars.QTAS_RUN_FULL_SUITE_ON_QA_PUSH == 'true') }}
         env:
           GOOGLE_AUTHORIZED_USER_JSON: ${{ secrets.GOOGLE_AUTHORIZED_USER_JSON_TEST }}
         run: npm run test:qtas:full:qa
