@@ -40,7 +40,7 @@ function getDashboardInventarioQTAS() {
   return {
     ok: true,
     hoy: fechaInput_(new Date()),
-    sincronizacion: estadoSincronizacionInventarioQTAS_(),
+    sincronizacion: estadoSincronizacionInventarioQTAS(),
     resumen: {
       itemsActivos: stock.length,
       alertas: alertas.length,
