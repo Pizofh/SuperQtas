@@ -24,6 +24,57 @@ function testPingQTAS() {
   });
 }
 
+function testAgruparReglasOrigenesFondosLegacyQTAS() {
+  const reglas = agruparReglasOrigenesFondosQTAS_([
+    {
+      Regla_ID: 'CAJA-OLD-STEV',
+      Origen_Fondos: 'Caja',
+      Fecha_Desde: '2024-05-31',
+      Fecha_Hasta: '2025-07-31',
+      Aportante: 'Steve',
+      Porcentaje: 40,
+      Nota: 'Historico Caja'
+    },
+    {
+      Regla_ID: 'CAJA-OLD-MAJO',
+      Origen_Fondos: 'Caja',
+      Fecha_Desde: '2024-05-31',
+      Fecha_Hasta: '2025-07-31',
+      Aportante: 'Majo',
+      Porcentaje: 40,
+      Nota: 'Historico Caja'
+    },
+    {
+      Regla_ID: 'CAJA-OLD-MUSH',
+      Origen_Fondos: 'Caja',
+      Fecha_Desde: '2024-05-31',
+      Fecha_Hasta: '2025-07-31',
+      Aportante: 'Mush',
+      Porcentaje: 20,
+      Nota: 'Historico Caja'
+    }
+  ]);
+
+  validarReglasOrigenesFondosQTAS_(reglas);
+
+  const regla = reglas[0] || {};
+  if (
+    reglas.length !== 1 ||
+    regla.reglaId !== 'CAJA-OLD' ||
+    numero_(regla.steve) !== 40 ||
+    numero_(regla.majo) !== 40 ||
+    numero_(regla.mush) !== 20 ||
+    (regla.reglaIds || []).length !== 3
+  ) {
+    throw new Error('No se pudo agrupar la regla historica de Caja 40/40/20.');
+  }
+
+  return testSerializarValorQTAS_({
+    ok: true,
+    regla: regla
+  });
+}
+
 function habilitarOperacionesDestructivasQAQTAS() {
   PropertiesService.getScriptProperties().setProperty('QTAS_ALLOW_DESTRUCTIVE', 'true');
   return estadoOperacionesDestructivasQAQTAS();
@@ -76,6 +127,8 @@ function testResetEntornoQTAS(payload) {
     limpiarCachesEjecucionQTAS_();
     invalidarCacheDocumentoQTAS_('precios_referencia_memoria');
     invalidarCacheDocumentoQTAS_('distribucion_reglas_memoria');
+    invalidarCacheDocumentoQTAS_('origenes_fondos_reglas_memoria');
+    invalidarCacheDocumentoQTAS_('origenes_fondos_reglas_memoria_v2');
 
     sembrarProductosYPrecios_();
     sembrarConfig_();

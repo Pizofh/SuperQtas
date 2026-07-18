@@ -1473,6 +1473,9 @@
       hoy: ''
     };
 
+    const CACHE_CATALOGO_VENTAS_PREFIJO = 'psylo-scibio:superqtas:catalogo-ventas:v1';
+    const CACHE_CATALOGO_VENTAS_TTL_MS = 10 * 60 * 1000;
+
     const PERF_SOLICITAR_DASHBOARD_EN_GUARDADO = false;
     const PERF_SOLICITAR_DASHBOARD_EN_PAGO_PENDIENTE = false;
     const UI_MOSTRAR_RENDIMIENTO = false;
@@ -1489,46 +1492,92 @@
       cargarCatalogo(true);
     }
 
+    function claveCacheCatalogoVentas_(fechaVenta) {
+      return `${CACHE_CATALOGO_VENTAS_PREFIJO}:${fechaVenta || fechaHoyLocal_()}`;
+    }
+
+    function leerCacheCatalogoVentas_(fechaVenta) {
+      try {
+        const raw = sessionStorage.getItem(claveCacheCatalogoVentas_(fechaVenta));
+        const cached = raw ? JSON.parse(raw) : null;
+        if (!cached || !cached.guardadoEn || !cached.data) return null;
+        if (Date.now() - cached.guardadoEn > CACHE_CATALOGO_VENTAS_TTL_MS) return null;
+        return cached.data;
+      } catch (error) {
+        return null;
+      }
+    }
+
+    function guardarCacheCatalogoVentas_(fechaVenta, data) {
+      try {
+        sessionStorage.setItem(claveCacheCatalogoVentas_(fechaVenta), JSON.stringify({
+          guardadoEn: Date.now(),
+          data: data
+        }));
+      } catch (error) {
+        // El ERP sigue funcionando cuando el navegador bloquea el almacenamiento de sesion.
+      }
+    }
+
+    function aplicarCatalogoVentas_(data, context) {
+      const settings = context || {};
+      const fechaVenta = settings.fechaVenta || '';
+      const inicial = Boolean(settings.inicial);
+      const estado = document.getElementById('estado');
+      const botonAgregarProducto = document.getElementById('btnAgregarProducto');
+
+      catalogo = data || { productos: [], mediosPago: [], clientes: [], hoy: fechaVenta };
+      catalogo.productos = normalizarCatalogoProductosVentas_(catalogo.productos || []);
+      estado.innerText = 'Completa los datos para registrar una venta.';
+      if (botonAgregarProducto) botonAgregarProducto.disabled = false;
+
+      if (!document.getElementById('fechaVenta').value) {
+        document.getElementById('fechaVenta').value = catalogo.hoy || fechaVenta;
+      }
+
+      if (!document.getElementById('fechaPagoPendiente').value) {
+        document.getElementById('fechaPagoPendiente').value = catalogo.hoy || fechaHoyLocal_();
+      }
+
+      renderClientesList();
+      actualizarOpcionesProductosExistentes();
+      actualizarOpcionesPagosExistentes();
+      actualizarOpcionesPagoPendiente();
+
+      if (inicial) {
+        if (!document.querySelector('.producto-linea')) agregarProducto();
+        if (!document.querySelector('.pago-linea')) agregarPago();
+      }
+
+      sincronizarClienteExistente();
+      actualizarResumenEnvioVenta();
+      recalcular();
+
+      if (inicial) {
+        cargarPaneles();
+      }
+    }
+
     function cargarCatalogo(inicial) {
       const fechaVenta = document.getElementById('fechaVenta').value || '';
       const estado = document.getElementById('estado');
       const botonAgregarProducto = document.getElementById('btnAgregarProducto');
+
+      // Al reabrir la URL usamos el catalogo reciente del navegador. Los recargos y
+      // cambios de fecha siempre consultan el servidor para respetar precios historicos.
+      const catalogoCacheado = inicial ? leerCacheCatalogoVentas_(fechaVenta) : null;
+      if (catalogoCacheado) {
+        aplicarCatalogoVentas_(catalogoCacheado, { inicial: inicial, fechaVenta: fechaVenta });
+        return;
+      }
 
       estado.innerText = 'Cargando catalogo...';
       if (botonAgregarProducto) botonAgregarProducto.disabled = true;
 
       google.script.run
         .withSuccessHandler(data => {
-          catalogo = data || { productos: [], mediosPago: [], clientes: [], hoy: fechaVenta };
-          catalogo.productos = normalizarCatalogoProductosVentas_(catalogo.productos || []);
-          estado.innerText = 'Completa los datos para registrar una venta.';
-          if (botonAgregarProducto) botonAgregarProducto.disabled = false;
-
-          if (!document.getElementById('fechaVenta').value) {
-            document.getElementById('fechaVenta').value = catalogo.hoy || fechaVenta;
-          }
-
-          if (!document.getElementById('fechaPagoPendiente').value) {
-            document.getElementById('fechaPagoPendiente').value = catalogo.hoy || fechaHoyLocal_();
-          }
-
-          renderClientesList();
-          actualizarOpcionesProductosExistentes();
-          actualizarOpcionesPagosExistentes();
-          actualizarOpcionesPagoPendiente();
-
-          if (inicial) {
-            if (!document.querySelector('.producto-linea')) agregarProducto();
-            if (!document.querySelector('.pago-linea')) agregarPago();
-          }
-
-          sincronizarClienteExistente();
-          actualizarResumenEnvioVenta();
-          recalcular();
-
-          if (inicial) {
-            cargarPaneles();
-          }
+          guardarCacheCatalogoVentas_(fechaVenta, data);
+          aplicarCatalogoVentas_(data, { inicial: inicial, fechaVenta: fechaVenta });
         })
         .withFailureHandler(err => {
           if (botonAgregarProducto) botonAgregarProducto.disabled = false;
