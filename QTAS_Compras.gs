@@ -492,21 +492,37 @@ function leerReglasOrigenesFondosQTAS_() {
     return [];
   }
 
+  const salida = agruparReglasOrigenesFondosQTAS_(leerObjetos_(sheet));
+
+  validarReglasOrigenesFondosQTAS_(salida);
+  return salida;
+}
+
+function agruparReglasOrigenesFondosQTAS_(rows) {
   const agrupadas = {};
 
-  leerObjetos_(sheet).forEach(row => {
+  (rows || []).forEach(row => {
     const reglaId = texto_(row.Regla_ID);
     const origenFondos = texto_(row.Origen_Fondos);
     if (!reglaId || !origenFondos) return;
 
-    if (!agrupadas[reglaId]) {
-      agrupadas[reglaId] = {
-        reglaId: reglaId,
+    const desde = resolverFechaOperacion_(row.Fecha_Desde, new Date());
+    const hasta = row.Fecha_Hasta
+      ? resolverFechaOperacion_(row.Fecha_Hasta, row.Fecha_Desde || new Date())
+      : null;
+    const clave = [
+      normalizarClaveTexto_(origenFondos),
+      fechaInput_(desde),
+      hasta ? fechaInput_(hasta) : ''
+    ].join('|');
+
+    if (!agrupadas[clave]) {
+      agrupadas[clave] = {
+        reglaId: '',
+        reglaIds: [],
         origenFondos: origenFondos,
-        desde: resolverFechaOperacion_(row.Fecha_Desde, new Date()),
-        hasta: row.Fecha_Hasta
-          ? resolverFechaOperacion_(row.Fecha_Hasta, row.Fecha_Desde || new Date())
-          : null,
+        desde: desde,
+        hasta: hasta,
         steve: 0,
         majo: 0,
         mush: 0,
@@ -516,30 +532,41 @@ function leerReglasOrigenesFondosQTAS_() {
       };
     }
 
+    const grupo = agrupadas[clave];
+    if (grupo.reglaIds.indexOf(reglaId) < 0) grupo.reglaIds.push(reglaId);
+
     const aportante = normalizarAportanteOrigenFondosQTAS_(row.Aportante);
     const porcentaje = redondear_(numero_(row.Porcentaje));
     if (!aportante) return;
 
-    if (aportante === 'Steve') agrupadas[reglaId].steve = porcentaje;
-    if (aportante === 'Majo') agrupadas[reglaId].majo = porcentaje;
-    if (aportante === 'Mush') agrupadas[reglaId].mush = porcentaje;
-    agrupadas[reglaId].aportantes.push({
+    if (grupo.aportantes.some(item => item.aportante === aportante)) {
+      throw new Error(
+        `La regla ${reglaId} de ${origenFondos} repite al aportante ${aportante} en el mismo periodo.`
+      );
+    }
+
+    if (aportante === 'Steve') grupo.steve = porcentaje;
+    if (aportante === 'Majo') grupo.majo = porcentaje;
+    if (aportante === 'Mush') grupo.mush = porcentaje;
+    grupo.aportantes.push({
       aportante: aportante,
       porcentaje: porcentaje
     });
-    agrupadas[reglaId].nota = unirUnicos_([
-      agrupadas[reglaId].nota,
+    grupo.nota = unirUnicos_([
+      grupo.nota,
       texto_(row.Nota)
     ]);
   });
 
-  const salida = Object.keys(agrupadas)
+  return Object.keys(agrupadas)
     .map(key => {
-      const row = agrupadas[key];
-      row.aportantes = row.aportantes
+      const grupo = agrupadas[key];
+      grupo.reglaIds.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+      grupo.reglaId = resolverReglaIdLogicaOrigenFondosQTAS_(grupo.reglaIds);
+      grupo.aportantes = grupo.aportantes
         .filter(item => numero_(item.porcentaje) > 0)
         .sort((a, b) => ordenAportanteOrigenFondosQTAS_(a.aportante) - ordenAportanteOrigenFondosQTAS_(b.aportante));
-      return row;
+      return grupo;
     })
     .filter(row => row.origenFondos)
     .sort((a, b) => {
@@ -547,13 +574,26 @@ function leerReglasOrigenesFondosQTAS_() {
       if (origen !== 0) return origen;
       return a.desde - b.desde;
     });
+}
 
-  validarReglasOrigenesFondosQTAS_(salida);
-  return salida;
+function resolverReglaIdLogicaOrigenFondosQTAS_(reglaIds) {
+  const ids = (reglaIds || []).map(texto_).filter(Boolean);
+  if (ids.length <= 1) return ids[0] || '';
+
+  let prefijo = ids[0];
+  ids.slice(1).forEach(id => {
+    let index = 0;
+    while (index < prefijo.length && index < id.length && prefijo[index] === id[index]) {
+      index += 1;
+    }
+    prefijo = prefijo.slice(0, index);
+  });
+
+  return prefijo.replace(/[-_ ]+$/, '') || ids[0];
 }
 
 function cargarReglasOrigenesFondosEnMemoriaQTAS_() {
-  const namespace = 'origenes_fondos_reglas_memoria';
+  const namespace = 'origenes_fondos_reglas_memoria_v2';
 
   return obtenerMemoEjecucionQTAS_(`cache:${namespace}`, () => {
     const cached = leerCacheDocumentoQTAS_(namespace);
@@ -564,6 +604,7 @@ function cargarReglasOrigenesFondosEnMemoriaQTAS_() {
     const rows = leerReglasOrigenesFondosQTAS_()
       .map(row => ({
         reglaId: texto_(row.reglaId),
+        reglaIds: (row.reglaIds || []).map(texto_).filter(Boolean),
         origenFondos: texto_(row.origenFondos),
         desde: fechaInput_(row.desde),
         hasta: row.hasta ? fechaInput_(row.hasta) : '',

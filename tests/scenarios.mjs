@@ -511,6 +511,13 @@ export const SCENARIOS = [
     run: async ctx => {
       await ctx.reset();
 
+      const legadoCaja = await ctx.call('testAgruparReglasOrigenesFondosLegacyQTAS');
+      ctx.assert(legadoCaja.ok, 'La agrupacion de reglas historicas de Caja debe ser valida.');
+      ctx.equal(legadoCaja.regla.reglaId, 'CAJA-OLD', 'La regla historica debe conservar un ID logico.');
+      ctx.equal(ctx.num(legadoCaja.regla.steve), 40, 'Caja historica debe mantener 40% para Steve.');
+      ctx.equal(ctx.num(legadoCaja.regla.majo), 40, 'Caja historica debe mantener 40% para Majo.');
+      ctx.equal(ctx.num(legadoCaja.regla.mush), 20, 'Caja historica debe mantener 20% para Mush.');
+
       const results = await ctx.batch([
         batchStep('guardarReglaOrigenFondosFrontendQTAS', {
           origenFondos: 'MS',

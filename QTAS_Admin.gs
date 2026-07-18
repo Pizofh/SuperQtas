@@ -300,8 +300,11 @@ function guardarReglaOrigenFondosFrontendQTAS(payload) {
     }
 
     if (ultima) {
+      const reglaIdsAnteriores = (ultima.reglaIds || [ultima.reglaId])
+        .map(texto_)
+        .filter(Boolean);
       leerObjetosConMeta_(sheet)
-        .filter(row => texto_(row.Regla_ID) === texto_(ultima.reglaId))
+        .filter(row => reglaIdsAnteriores.indexOf(texto_(row.Regla_ID)) >= 0)
         .forEach(row => {
           actualizarFilaObjeto_(sheet, row.__rowNumber, headers, Object.assign({}, row, {
             Fecha_Hasta: diaAnterior_(fechaDesde)
@@ -326,7 +329,9 @@ function guardarReglaOrigenFondosFrontendQTAS(payload) {
       Nota: nota
     })));
 
+    // Invalida ambas versiones para que cambios nuevos no convivan con el cache legado.
     invalidarCacheDocumentoQTAS_('origenes_fondos_reglas_memoria');
+    invalidarCacheDocumentoQTAS_('origenes_fondos_reglas_memoria_v2');
     return getConfiguracionAvanzadaQTAS();
   });
 }
