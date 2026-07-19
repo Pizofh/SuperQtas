@@ -1,8 +1,7 @@
 function getDashboardInventarioQTAS() {
   asegurarModeloOperativoQTAS_();
-  asegurarControlesInventarioBaseQTAS_();
-
   const ss = SpreadsheetApp.getActive();
+  asegurarControlesInventarioBaseQTAS_(null, ss);
   const movimientosRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.inventarioMovimientos);
   const snapshotRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.inventarioSnapshot);
 
@@ -311,7 +310,7 @@ function reconstruirInventarioInternoQTAS_(payload) {
     return resultadoInventarioEnPausaQTAS_();
   }
 
-  asegurarControlesInventarioBaseQTAS_();
+  asegurarControlesInventarioBaseQTAS_(null, ss);
 
   const movimientosRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.inventarioMovimientos);
   const snapshotRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.inventarioSnapshot);
@@ -365,7 +364,7 @@ function sincronizarInventarioDesdeCompraQTAS_(context) {
     tipoItem: linea.Tipo_Item,
     item: linea.Item,
     unidad: linea.Unidad
-  })));
+  })), ss);
 
   const movimientosRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.inventarioMovimientos);
   if (!movimientosRef.ok) {
@@ -377,7 +376,7 @@ function sincronizarInventarioDesdeCompraQTAS_(context) {
     };
   }
 
-  const controlsIndex = construirIndiceControlesInventarioQTAS_(listarControlesInventarioQTAS_());
+  const controlsIndex = construirIndiceControlesInventarioQTAS_(listarControlesInventarioQTAS_(ss));
   const movimientos = construirMovimientosInventarioCompraDetalleQTAS_(
     settings.lineas || [],
     {
@@ -409,7 +408,7 @@ function sincronizarInventarioDesdeVentaQTAS_(context) {
     return resultadoInventarioEnPausaQTAS_();
   }
 
-  asegurarControlesInventarioBaseQTAS_();
+  asegurarControlesInventarioBaseQTAS_(null, ss);
 
   const movimientosRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.inventarioMovimientos);
   if (!movimientosRef.ok) {
@@ -421,7 +420,17 @@ function sincronizarInventarioDesdeVentaQTAS_(context) {
     };
   }
 
-  const movimientos = construirMovimientosInventarioVentaLoteQTAS_(settings.detalleRows || [], {
+  const detalleIdsConMovimiento = leerObjetos_(movimientosRef.sheet)
+    .filter(row => normalizarClaveTexto_(row.Fuente_Tipo) === normalizarClaveTexto_('Venta'))
+    .reduce((index, row) => {
+      const detalleId = texto_(row.Detalle_ID) || texto_(row.Fuente_ID);
+      if (detalleId) index[detalleId] = true;
+      return index;
+    }, {});
+  const detallePendiente = (settings.detalleRows || []).filter(row =>
+    texto_(row.Detalle_ID) && !detalleIdsConMovimiento[texto_(row.Detalle_ID)]
+  );
+  const movimientos = construirMovimientosInventarioVentaLoteQTAS_(detallePendiente, {
     ss: ss
   });
 
@@ -433,7 +442,8 @@ function sincronizarInventarioDesdeVentaQTAS_(context) {
   return {
     ok: true,
     skipped: false,
-    movimientos: movimientos.length
+    movimientos: movimientos.length,
+    detallesOmitidos: (settings.detalleRows || []).length - detallePendiente.length
   };
 }
 
@@ -473,8 +483,8 @@ function sincronizarInventarioDesdeProduccionDetalleQTAS_(context) {
   };
 }
 
-function asegurarControlesInventarioBaseQTAS_(candidatosAdicionales) {
-  const ss = SpreadsheetApp.getActive();
+function asegurarControlesInventarioBaseQTAS_(candidatosAdicionales, spreadsheet) {
+  const ss = spreadsheet || SpreadsheetApp.getActive();
   const sheet = ss.getSheetByName(QTAS.sheets.inventarioControl);
   if (!sheet) return [];
 
@@ -515,11 +525,11 @@ function asegurarControlesInventarioBaseQTAS_(candidatosAdicionales) {
     escribirFilas_(sheet, nuevos);
   }
 
-  return listarControlesInventarioQTAS_();
+  return listarControlesInventarioQTAS_(ss);
 }
 
-function listarControlesInventarioQTAS_() {
-  const ss = SpreadsheetApp.getActive();
+function listarControlesInventarioQTAS_(spreadsheet) {
+  const ss = spreadsheet || SpreadsheetApp.getActive();
   const ref = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.inventarioControl);
   if (!ref.ok) return [];
 
@@ -629,7 +639,7 @@ function reconstruirSnapshotInventarioQTAS_(payload) {
   const snapshotRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.inventarioSnapshot);
   if (!snapshotRef.ok) return [];
 
-  const controles = listarControlesInventarioQTAS_();
+  const controles = listarControlesInventarioQTAS_(ss);
   const controlsIndex = construirIndiceControlesInventarioQTAS_(controles);
   const movimientos = settings.movimientos || leerObjetos_(ss.getSheetByName(QTAS.sheets.inventarioMovimientos));
   const rows = construirSnapshotInventarioQTAS_(movimientos, controlsIndex);
@@ -649,6 +659,13 @@ function construirSnapshotInventarioQTAS_(movimientosRaw, controlsIndex) {
     }))
     .filter(row => row.item && row.unidad && row.tipoItem);
   const keys = {};
+  const movimientosPorClave = {};
+
+  movimientos.forEach(row => {
+    const key = claveControlInventarioQTAS_(row.tipoItem, row.item, row.unidad);
+    if (!movimientosPorClave[key]) movimientosPorClave[key] = [];
+    movimientosPorClave[key].push(row);
+  });
 
   Object.keys(controlsIndex || {}).forEach(key => {
     const control = controlsIndex[key];
@@ -658,7 +675,7 @@ function construirSnapshotInventarioQTAS_(movimientosRaw, controlsIndex) {
   });
 
   return Object.keys(keys)
-    .map(key => construirFilaSnapshotInventarioQTAS_(key, movimientos, controlsIndex))
+    .map(key => construirFilaSnapshotInventarioQTAS_(key, movimientosPorClave[key] || [], controlsIndex))
     .filter(Boolean)
     .sort((a, b) => {
       if (texto_(a.Estado_Stock) !== texto_(b.Estado_Stock)) {
@@ -681,9 +698,7 @@ function construirFilaSnapshotInventarioQTAS_(key, movimientos, controlsIndex) {
   const control = obtenerControlInventarioEfectivoQTAS_(tipoItem, item, unidad, controlsIndex);
   if (control.modoStock === 'NoControlado') return null;
 
-  const rows = (movimientos || []).filter(row =>
-    claveControlInventarioQTAS_(row.tipoItem, row.item, row.unidad) === key
-  );
+  const rows = movimientos || [];
   const entradas = redondear_(sumar_(rows.filter(row => numero_(row.cantidadSignada) > 0).map(row => row.cantidadSignada)));
   const salidas = redondear_(Math.abs(sumar_(rows.filter(row => numero_(row.cantidadSignada) < 0).map(row => row.cantidadSignada))));
   const stockActual = redondear_(entradas - salidas);
@@ -717,7 +732,7 @@ function construirMovimientosInventarioDesdeComprasQTAS_(payload) {
   }, payload || {});
   const ss = settings.ss || SpreadsheetApp.getActive();
   const sheet = ss.getSheetByName(QTAS.sheets.compraDetalle);
-  const controlsIndex = construirIndiceControlesInventarioQTAS_(listarControlesInventarioQTAS_());
+  const controlsIndex = construirIndiceControlesInventarioQTAS_(listarControlesInventarioQTAS_(ss));
 
   return leerObjetos_(sheet)
     .filter(row => texto_(row.Compra_Detalle_ID) && !esRegistroAnulado_(row.Estado_Registro))
@@ -815,9 +830,10 @@ function construirMovimientosInventarioVentaLoteQTAS_(detalleRows, payload) {
   const settings = Object.assign({
     ss: SpreadsheetApp.getActive()
   }, payload || {});
-  const componentes = settings.componentes || leerComponentesProductoActivosQTAS_();
-  const reglas = settings.reglas || leerReglasCostoProductoActivasQTAS_();
-  const controlsIndex = construirIndiceControlesInventarioQTAS_(listarControlesInventarioQTAS_());
+  const ss = settings.ss || SpreadsheetApp.getActive();
+  const componentes = settings.componentes || leerComponentesProductoActivosQTAS_(ss);
+  const reglas = settings.reglas || leerReglasCostoProductoActivasQTAS_(ss);
+  const controlsIndex = settings.controlsIndex || construirIndiceControlesInventarioQTAS_(listarControlesInventarioQTAS_(ss));
 
   return (detalleRows || []).reduce((acc, row) => acc.concat(
     construirMovimientosInventarioVentaDesdeDetalleQTAS_(row, {
@@ -1139,11 +1155,11 @@ function construirCandidatosControlInventarioQTAS_(ss) {
     .filter(row => estaActivo_(row.Activo))
     .forEach(row => add('Producto', row.Producto_Estandar, row.Unidad_Default));
 
-  leerComponentesProductoActivosQTAS_().forEach(row => {
+  leerComponentesProductoActivosQTAS_(spreadsheet).forEach(row => {
     add(row.tipoComponente, row.itemComponente, row.unidadComponente);
   });
 
-  leerReglasCostoProductoActivasQTAS_().forEach(row => {
+  leerReglasCostoProductoActivasQTAS_(spreadsheet).forEach(row => {
     add(row.tipoComponente, row.itemComponente, row.unidadComponente);
   });
 

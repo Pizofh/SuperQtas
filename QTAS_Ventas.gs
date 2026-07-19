@@ -3,6 +3,7 @@ function registrarVentaQTAS(payload) {
   const debeValidarModelo = !payload || payload.validarModelo !== false;
   const usarHeadersEstaticos = !debeValidarModelo;
   const tienePagosIniciales = Boolean((payload && payload.pagos || []).some(pago => numero_(pago && pago.monto) > 0));
+  const procesarPostVentaSincrono = Boolean(payload && payload.procesarPostVentaSincrono === true);
 
   try {
     return withScriptLock_('registrar venta', () => {
@@ -201,47 +202,40 @@ function registrarVentaQTAS(payload) {
         });
       });
 
+      const detalleVenta = lineasPreparadas.map(item => item.row);
       let analiticaCostos = null;
-      analiticaCostos = medirBloqueRendimientoQTAS_(performance, 'analiticaCostos', () => {
-        try {
-          return sincronizarVentaDetalleCostosLoteQTAS_(
-            lineasPreparadas.map(item => item.row),
-            {
-              ss: ss,
-              ahora: ahora
-            }
-          );
-        } catch (error) {
-          Logger.log(`No se pudo sincronizar Venta_Detalle_Costos_Calc para Venta ${ventaId}: ${error.message}`);
-          return {
-            ok: false,
-            skipped: true,
-            reason: error.message,
-            rows: 0,
-            inserted: 0,
-            updated: 0,
-            stale: 0
-          };
-        }
-      });
-
       let inventario = null;
-      inventario = medirBloqueRendimientoQTAS_(performance, 'inventario', () => {
-        try {
-          return sincronizarInventarioDesdeVentaQTAS_({
-            ss: ss,
-            detalleRows: lineasPreparadas.map(item => item.row)
-          });
-        } catch (error) {
-          Logger.log(`No se pudo sincronizar inventario para Venta ${ventaId}: ${error.message}`);
-          return {
-            ok: false,
-            skipped: true,
-            reason: error.message,
-            movimientos: 0
-          };
-        }
-      });
+      let postProceso = null;
+
+      if (procesarPostVentaSincrono) {
+        const resultado = medirBloqueRendimientoQTAS_(performance, 'postVentaSincrono', () =>
+          procesarPostVentaDetalleQTAS_(ss, detalleVenta, ahora)
+        );
+        analiticaCostos = resultado.analiticaCostos;
+        inventario = resultado.inventario;
+        postProceso = {
+          queued: false,
+          processed: true
+        };
+      } else {
+        postProceso = medirBloqueRendimientoQTAS_(performance, 'encolarPostVenta', () =>
+          encolarPostProcesoVentaQTAS_({
+            spreadsheetId: ss.getId(),
+            ventaId: ventaId,
+            programar: !payload || payload.programarPostVenta !== false
+          })
+        );
+        analiticaCostos = {
+          ok: true,
+          queued: true,
+          rows: detalleVenta.length
+        };
+        inventario = {
+          ok: true,
+          queued: true,
+          movimientos: 0
+        };
+      }
 
       let estadoEnvio = '';
       if (payload && payload.pendienteEnvio === true) {
@@ -278,6 +272,7 @@ function registrarVentaQTAS(payload) {
         productosResumen,
         analiticaCostos,
         inventario,
+        postProceso,
         dashboard,
         performance: finalizarPerfilRendimientoQTAS_(performance, { ventaId: ventaId })
       };
@@ -509,6 +504,225 @@ function actualizarEstadoEnvioVentaQTAS(payload) {
   } catch (error) {
     finalizarPerfilRendimientoQTAS_(performance, { error: error.message });
     throw error;
+  }
+}
+
+const QTAS_POST_VENTA_QUEUE_KEY = 'QTAS_POST_VENTA_QUEUE_V1';
+const QTAS_POST_VENTA_TRIGGER = 'procesarColaPostVentaQTAS';
+const QTAS_POST_VENTA_MAX_VENTAS_POR_EJECUCION = 12;
+
+function encolarPostProcesoVentaQTAS_(payload) {
+  const settings = Object.assign({
+    spreadsheetId: '',
+    ventaId: 0,
+    programar: true
+  }, payload || {});
+  const spreadsheetId = texto_(settings.spreadsheetId);
+  const ventaId = numero_(settings.ventaId);
+  if (!spreadsheetId || ventaId <= 0) {
+    throw new Error('Falta la venta o el libro para encolar el postproceso.');
+  }
+
+  const properties = PropertiesService.getScriptProperties();
+  const pendientes = leerColaPostVentaQTAS_();
+  const existe = pendientes.some(item =>
+    texto_(item.spreadsheetId) === spreadsheetId && numero_(item.ventaId) === ventaId
+  );
+  if (!existe) {
+    pendientes.push({
+      spreadsheetId: spreadsheetId,
+      ventaId: ventaId,
+      queuedAt: new Date().toISOString()
+    });
+    guardarColaPostVentaQTAS_(pendientes);
+  }
+
+  const programacion = settings.programar ? programarColaPostVentaQTAS_() : {
+    scheduled: false,
+    reason: 'Programacion diferida desactivada.'
+  };
+
+  return {
+    ok: true,
+    queued: true,
+    ventaId: ventaId,
+    position: pendientes.findIndex(item =>
+      texto_(item.spreadsheetId) === spreadsheetId && numero_(item.ventaId) === ventaId
+    ) + 1,
+    pending: pendientes.length,
+    scheduled: programacion.scheduled,
+    scheduleReason: programacion.reason || ''
+  };
+}
+
+function procesarColaPostVentaQTAS() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(250)) {
+    return {
+      ok: true,
+      deferred: true,
+      reason: 'Hay otra operacion registrando datos.'
+    };
+  }
+
+  try {
+    const pendientes = leerColaPostVentaQTAS_();
+    if (!pendientes.length) {
+      return {
+        ok: true,
+        processed: 0,
+        pending: 0
+      };
+    }
+
+    const lote = pendientes.slice(0, QTAS_POST_VENTA_MAX_VENTAS_POR_EJECUCION);
+    const restantes = pendientes.slice(QTAS_POST_VENTA_MAX_VENTAS_POR_EJECUCION);
+    const porLibro = lote.reduce((index, item) => {
+      const spreadsheetId = texto_(item.spreadsheetId);
+      if (!spreadsheetId) return index;
+      if (!index[spreadsheetId]) index[spreadsheetId] = [];
+      index[spreadsheetId].push(item);
+      return index;
+    }, {});
+    const resultados = [];
+    const reintentos = [];
+
+    Object.keys(porLibro).forEach(spreadsheetId => {
+      const ventas = porLibro[spreadsheetId];
+      const ss = SpreadsheetApp.openById(spreadsheetId);
+      const detalleSheet = ss.getSheetByName(QTAS.sheets.detalle);
+      const ventaIds = ventas.reduce((index, item) => {
+        index[numero_(item.ventaId)] = true;
+        return index;
+      }, {});
+      const detalleRows = leerObjetos_(detalleSheet).filter(row => ventaIds[numero_(row.Venta_ID)]);
+      const resultado = procesarPostVentaDetalleQTAS_(ss, detalleRows, new Date());
+      const completado = resultado.analiticaCostos.ok && resultado.inventario.ok;
+      if (!completado) {
+        ventas.forEach(item => reintentos.push(item));
+      }
+      resultados.push({
+        spreadsheetId: spreadsheetId,
+        ventas: ventas.map(item => numero_(item.ventaId)),
+        detalleRows: detalleRows.length,
+        completed: completado,
+        analiticaCostos: resultado.analiticaCostos,
+        inventario: resultado.inventario
+      });
+    });
+
+    const pendientesSiguientes = reintentos.concat(restantes);
+    guardarColaPostVentaQTAS_(pendientesSiguientes);
+    if (pendientesSiguientes.length) programarColaPostVentaQTAS_();
+
+    return {
+      ok: true,
+      processed: lote.length,
+      pending: pendientesSiguientes.length,
+      results: resultados
+    };
+  } catch (error) {
+    Logger.log(`No se pudo procesar la cola postventa: ${error.message}`);
+    programarColaPostVentaQTAS_();
+    return {
+      ok: false,
+      retryScheduled: true,
+      reason: error.message
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function procesarPostVentaDetalleQTAS_(ss, detalleRows, ahora) {
+  let analiticaCostos;
+  let inventario;
+
+  try {
+    analiticaCostos = sincronizarVentaDetalleCostosLoteQTAS_(detalleRows, {
+      ss: ss,
+      ahora: ahora
+    });
+  } catch (error) {
+    Logger.log(`No se pudo sincronizar Venta_Detalle_Costos_Calc: ${error.message}`);
+    analiticaCostos = {
+      ok: false,
+      skipped: true,
+      reason: error.message,
+      rows: 0
+    };
+  }
+
+  try {
+    inventario = sincronizarInventarioDesdeVentaQTAS_({
+      ss: ss,
+      detalleRows: detalleRows
+    });
+  } catch (error) {
+    Logger.log(`No se pudo sincronizar inventario desde venta: ${error.message}`);
+    inventario = {
+      ok: false,
+      skipped: true,
+      reason: error.message,
+      movimientos: 0
+    };
+  }
+
+  return {
+    analiticaCostos: analiticaCostos,
+    inventario: inventario
+  };
+}
+
+function leerColaPostVentaQTAS_() {
+  const raw = texto_(PropertiesService.getScriptProperties().getProperty(QTAS_POST_VENTA_QUEUE_KEY));
+  if (!raw) return [];
+
+  try {
+    const value = JSON.parse(raw);
+    return Array.isArray(value) ? value.filter(item =>
+      texto_(item && item.spreadsheetId) && numero_(item && item.ventaId) > 0
+    ) : [];
+  } catch (error) {
+    Logger.log(`La cola postventa tenia un formato invalido: ${error.message}`);
+    return [];
+  }
+}
+
+function guardarColaPostVentaQTAS_(items) {
+  const properties = PropertiesService.getScriptProperties();
+  if (!items || !items.length) {
+    properties.deleteProperty(QTAS_POST_VENTA_QUEUE_KEY);
+    return;
+  }
+  properties.setProperty(QTAS_POST_VENTA_QUEUE_KEY, JSON.stringify(items));
+}
+
+function programarColaPostVentaQTAS_() {
+  try {
+    const existing = ScriptApp.getProjectTriggers()
+      .some(trigger => trigger.getHandlerFunction() === QTAS_POST_VENTA_TRIGGER);
+    if (existing) {
+      return {
+        scheduled: true,
+        reason: 'Ya existe una ejecucion programada.'
+      };
+    }
+
+    ScriptApp.newTrigger(QTAS_POST_VENTA_TRIGGER)
+      .timeBased()
+      .after(15 * 1000)
+      .create();
+    return {
+      scheduled: true,
+      reason: ''
+    };
+  } catch (error) {
+    Logger.log(`No se pudo programar la cola postventa: ${error.message}`);
+    return {
+      scheduled: false,
+      reason: error.message
+    };
   }
 }
 

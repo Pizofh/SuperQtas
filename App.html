@@ -534,6 +534,84 @@
       color: var(--muted);
     }
 
+    .mobile-select-picker {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: grid;
+      align-items: end;
+      background: rgba(35, 31, 32, 0.38);
+    }
+
+    .mobile-select-picker.hidden {
+      display: none;
+    }
+
+    .mobile-select-sheet {
+      max-height: min(76vh, 680px);
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      gap: 10px;
+      padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+      border-radius: 26px 26px 0 0;
+      background: var(--card-strong);
+      box-shadow: 0 -18px 42px rgba(35, 31, 32, 0.2);
+    }
+
+    .mobile-select-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .mobile-select-title {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 22px;
+      font-weight: bold;
+    }
+
+    .mobile-select-options {
+      display: grid;
+      gap: 6px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+
+    .mobile-select-group {
+      margin: 10px 4px 2px;
+      color: var(--leaf-deep);
+      font-size: 12px;
+      font-weight: bold;
+      letter-spacing: 0.7px;
+      text-transform: uppercase;
+    }
+
+    .mobile-select-option {
+      width: 100%;
+      min-height: 48px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      color: var(--ink);
+      font: inherit;
+      font-weight: bold;
+      text-align: left;
+      background: rgba(246, 232, 215, 0.45);
+    }
+
+    .mobile-select-option.active {
+      color: #153a22;
+      border-color: rgba(69, 105, 75, 0.42);
+      background: rgba(142, 179, 137, 0.38);
+    }
+
+    .mobile-select-empty {
+      padding: 16px 8px;
+      color: var(--muted);
+      text-align: center;
+    }
+
     @keyframes fadeIn {
       from {
         opacity: 0;
@@ -1366,6 +1444,17 @@
     </section>
   </div>
 
+  <div id="mobileSelectPicker" class="mobile-select-picker hidden" aria-hidden="true">
+    <div class="mobile-select-sheet" role="dialog" aria-modal="true" aria-labelledby="mobileSelectTitle">
+      <div class="mobile-select-head">
+        <div id="mobileSelectTitle" class="mobile-select-title">Seleccionar</div>
+        <button class="btn ghost" type="button" onclick="cerrarSelectorMovil_()">Cerrar</button>
+      </div>
+      <input id="mobileSelectSearch" type="search" placeholder="Buscar..." autocomplete="off">
+      <div id="mobileSelectOptions" class="mobile-select-options"></div>
+    </div>
+  </div>
+
   <script>
     const APP_VIEWS = {
       ventas: {
@@ -1397,8 +1486,118 @@
     };
 
     function initApp() {
+      inicializarSelectorMovil_();
       const initial = normalizarVistaApp_(document.body.dataset.initialView || 'ventas');
       mostrarVistaApp(initial, { inicial: true });
+    }
+
+    let selectMovilActivo_ = null;
+    let selectorMovilInicializado_ = false;
+
+    function selectorMovilHabilitado_() {
+      return window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    }
+
+    function inicializarSelectorMovil_() {
+      if (selectorMovilInicializado_) return;
+      selectorMovilInicializado_ = true;
+
+      const picker = document.getElementById('mobileSelectPicker');
+      const search = document.getElementById('mobileSelectSearch');
+      const options = document.getElementById('mobileSelectOptions');
+      if (!picker || !search || !options) return;
+
+      document.addEventListener('pointerdown', event => {
+        if (!selectorMovilHabilitado_()) return;
+        const select = event.target && event.target.closest ? event.target.closest('select') : null;
+        if (!select || select.disabled || picker.contains(select)) return;
+        event.preventDefault();
+        abrirSelectorMovil_(select);
+      }, true);
+
+      document.addEventListener('click', event => {
+        if (!selectorMovilHabilitado_()) return;
+        const select = event.target && event.target.closest ? event.target.closest('select') : null;
+        if (!select || picker.contains(select)) return;
+        event.preventDefault();
+        event.stopPropagation();
+      }, true);
+
+      picker.addEventListener('pointerdown', event => {
+        if (event.target === picker) cerrarSelectorMovil_();
+      });
+      search.addEventListener('input', renderizarOpcionesSelectorMovil_);
+      options.addEventListener('click', event => {
+        const button = event.target.closest('.mobile-select-option');
+        if (!button || !selectMovilActivo_) return;
+        const index = Number(button.dataset.optionIndex);
+        if (!Number.isInteger(index)) return;
+        selectMovilActivo_.selectedIndex = index;
+        selectMovilActivo_.dispatchEvent(new Event('change', { bubbles: true }));
+        cerrarSelectorMovil_();
+      });
+      document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') cerrarSelectorMovil_();
+      });
+    }
+
+    function abrirSelectorMovil_(select) {
+      if (!select) return;
+      selectMovilActivo_ = select;
+      const picker = document.getElementById('mobileSelectPicker');
+      const title = document.getElementById('mobileSelectTitle');
+      const search = document.getElementById('mobileSelectSearch');
+      const label = select.closest('div') && select.closest('div').querySelector('label');
+      if (title) title.innerText = label ? label.innerText : 'Seleccionar';
+      if (search) search.value = '';
+      if (picker) {
+        picker.classList.remove('hidden');
+        picker.setAttribute('aria-hidden', 'false');
+      }
+      renderizarOpcionesSelectorMovil_();
+      window.setTimeout(() => search && search.focus(), 40);
+    }
+
+    function cerrarSelectorMovil_() {
+      const picker = document.getElementById('mobileSelectPicker');
+      if (picker) {
+        picker.classList.add('hidden');
+        picker.setAttribute('aria-hidden', 'true');
+      }
+      selectMovilActivo_ = null;
+    }
+
+    function renderizarOpcionesSelectorMovil_() {
+      const container = document.getElementById('mobileSelectOptions');
+      const search = document.getElementById('mobileSelectSearch');
+      const select = selectMovilActivo_;
+      if (!container || !select) return;
+
+      const query = String(search && search.value || '').trim().toLocaleLowerCase();
+      let currentGroup = '';
+      let visible = 0;
+      const html = [];
+
+      Array.from(select.options).forEach((option, index) => {
+        if (option.disabled) return;
+        const text = String(option.text || '').trim();
+        if (query && !text.toLocaleLowerCase().includes(query)) return;
+        const parent = option.parentElement;
+        const group = parent && parent.tagName === 'OPTGROUP' ? String(parent.label || '').trim() : '';
+        if (group && group !== currentGroup) {
+          html.push(`<div class="mobile-select-group">${escapeHtml(group)}</div>`);
+          currentGroup = group;
+        }
+        html.push(
+          `<button class="mobile-select-option${option.selected ? ' active' : ''}" ` +
+          `type="button" data-option-index="${index}">${escapeHtml(text || 'Sin seleccionar')}</button>`
+        );
+        visible += 1;
+      });
+
+      container.innerHTML = visible
+        ? html.join('')
+        : '<div class="mobile-select-empty">No hay opciones que coincidan.</div>';
     }
 
     function normalizarVistaApp_(value) {
@@ -2524,6 +2723,9 @@
         validarModelo: false
       };
 
+      const guardarButton = document.getElementById('guardarVentaBtn');
+      if (guardarButton && guardarButton.disabled) return;
+      if (guardarButton) guardarButton.disabled = true;
       document.getElementById('estado').innerText = 'Registrando venta...';
 
       google.script.run
@@ -2533,16 +2735,32 @@
           document.getElementById('estado').innerText = [
             `Venta ${resp.ventaId} guardada. Total ${moneda_(resp.totalVenta)}. Saldo ${moneda_(resp.saldo)}.` +
               (resp.estadoEnvio === 'Pendiente' ? ' Seguimiento de envio activo.' : ''),
+            resp.postProceso && resp.postProceso.queued
+              ? 'Costos e inventario se actualizan en segundo plano.'
+              : '',
             formatearRendimientoOperacion_(resp.performance)
           ].filter(Boolean).join('\n');
           registrarRendimientoOperacion_('registrarVentaQTAS', resp.performance);
           limpiarFormulario();
           aplicarDashboardVentas_(dashboard);
+          if (guardarButton) guardarButton.disabled = false;
+          if (resp.postProceso && resp.postProceso.queued) {
+            solicitarProcesamientoPostVenta_();
+          }
         })
         .withFailureHandler(err => {
           document.getElementById('estado').innerText = construirMensajeEstadoError_('No se pudo guardar la venta', err);
+          if (guardarButton) guardarButton.disabled = false;
         })
         .registrarVentaQTAS(payload);
+    }
+
+    function solicitarProcesamientoPostVenta_() {
+      google.script.run
+        .withFailureHandler(error => {
+          console.warn('El postproceso de venta quedo programado para reintento.', error);
+        })
+        .procesarColaPostVentaQTAS();
     }
 
     function limpiarFormulario() {
