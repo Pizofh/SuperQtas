@@ -1683,6 +1683,7 @@
     let ventasPendientes = [];
     let enviosPendientes = [];
     let ventasRecientes = [];
+    let cargaVentasRecientesId = 0;
 
     function initVentas() {
       document.getElementById('fechaVenta').value = '';
@@ -1786,32 +1787,51 @@
     }
 
     function cargarPaneles() {
+      const requestId = ++cargaVentasRecientesId;
+      cargarPanelesOperativos_(requestId);
+      cargarVentasRecientes_(requestId);
+    }
+
+    function cargarPanelesOperativos_(requestId) {
       google.script.run
         .withSuccessHandler(data => {
-          aplicarDashboardVentas_(data || {});
+          if (requestId !== cargaVentasRecientesId) return;
+          ventasPendientes = normalizarVentasPendientesLocales_(data && data.ventasPendientes || []);
+          renderVentasPendientes();
+          renderDeudores(normalizarDeudoresLocales_(data && data.deudores || []));
+        })
+        .withFailureHandler(() => {
+          // Conservamos el ultimo estado visible si este bloque puntual no responde.
+        })
+        .getResumenFinancieroVentasQTAS();
+
+      google.script.run
+        .withSuccessHandler(rows => {
+          if (requestId !== cargaVentasRecientesId) return;
+          enviosPendientes = normalizarEnviosPendientesLocales_(rows || []);
+          renderEnviosPendientes();
+        })
+        .withFailureHandler(() => {
+          // Conservamos el ultimo estado visible si este bloque puntual no responde.
+        })
+        .getEnviosPendientesQTAS();
+    }
+
+    function cargarVentasRecientes_(requestId) {
+      google.script.run
+        .withSuccessHandler(rows => {
+          if (requestId !== cargaVentasRecientesId) return;
+          ventasRecientes = normalizarVentasRecientesLocales_(rows || []);
+          renderVentasRecientes();
         })
         .withFailureHandler(err => {
-          const mensaje = construirMensajeEstadoError_('No se pudo recargar el panel', err);
-          document.getElementById('estadoPagoPendiente').innerText = mensaje;
-
-          const deudores = document.getElementById('deudores');
-          if (!deudores.textContent.trim() || /cargando/i.test(deudores.textContent)) {
-            deudores.innerHTML = '<div class="muted">No se pudieron cargar deudores.</div>';
+          if (requestId !== cargaVentasRecientesId) return;
+          const cont = document.getElementById('ventasRecientes');
+          if (!ventasRecientes.length) {
+            cont.innerHTML = `<div class="muted">${escapeHtml(construirMensajeEstadoError_('No se pudieron cargar ventas recientes', err))}</div>`;
           }
-
-          const envios = document.getElementById('enviosPendientes');
-          if (!envios.textContent.trim() || /cargando/i.test(envios.textContent)) {
-            envios.innerHTML = '<div class="muted">No se pudieron cargar envios pendientes.</div>';
-          }
-
-          const recientes = document.getElementById('ventasRecientes');
-          if (!recientes.textContent.trim() || /cargando/i.test(recientes.textContent)) {
-            recientes.innerHTML = '<div class="muted">No se pudieron cargar ventas recientes.</div>';
-          }
-
-          document.getElementById('estadoEnviosPendientes').innerText = `${mensaje} Se conserva lo ultimo visible.`;
         })
-        .getDashboardQTAS();
+        .getVentasRecientesQTAS();
     }
 
     function aplicarDashboardVentas_(info) {

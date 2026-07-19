@@ -145,6 +145,28 @@ export const SCENARIOS = [
       ctx.equal(ctx.sheetRows(state, 'Distribucion_Ingresos').length, 1, 'Solo debe existir la distribucion de la venta.');
       ctx.equal((state.dashboard.ventasPendientes || []).length, 1, 'La venta debe aparecer como pendiente en dashboard.');
       ctx.equal((state.dashboard.deudores || []).length, 1, 'Debe existir un deudor.');
+
+      const recientes = await ctx.call('getVentasRecientesQTAS');
+      ctx.assert(
+        recientes.some(row => ctx.num(row.ventaId) === ctx.num(resp.ventaId)),
+        'Las ventas recientes deben poder cargarse sin depender del dashboard completo.'
+      );
+      const pendientes = await ctx.call('getVentasPendientesQTAS');
+      const deudores = await ctx.call('getDeudoresQTAS');
+      const resumenFinanciero = await ctx.call('getResumenFinancieroVentasQTAS');
+      ctx.assert(
+        pendientes.some(row => ctx.num(row.ventaId) === ctx.num(resp.ventaId)),
+        'Las ventas pendientes deben cargarse de forma independiente.'
+      );
+      ctx.assert(
+        deudores.some(row => row.Nombre === 'Cliente Deuda Test'),
+        'Los deudores deben cargarse de forma independiente.'
+      );
+      ctx.assert(
+        (resumenFinanciero.ventasPendientes || []).some(row => ctx.num(row.ventaId) === ctx.num(resp.ventaId)) &&
+          (resumenFinanciero.deudores || []).some(row => row.Nombre === 'Cliente Deuda Test'),
+        'El resumen financiero debe incluir pendientes y deudores en una sola lectura.'
+      );
     }
   },
   {
@@ -203,6 +225,11 @@ export const SCENARIOS = [
       });
       ctx.equal((state.dashboard.ventasPendientes || []).length, 0, 'La venta pagada no debe quedar como deuda.');
       ctx.equal((state.dashboard.enviosPendientes || []).length, 1, 'La venta debe aparecer en el panel de envios pendientes.');
+      const enviosPendientes = await ctx.call('getEnviosPendientesQTAS');
+      ctx.assert(
+        enviosPendientes.some(row => ctx.num(row.ventaId) === ctx.num(venta.ventaId)),
+        'Los envios pendientes deben cargarse de forma independiente.'
+      );
       ctx.equal(
         String(ctx.sheetRows(state, 'Pagos')[0].Medio_Pago),
         'Efectivo',

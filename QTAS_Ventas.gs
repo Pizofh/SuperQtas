@@ -1031,6 +1031,33 @@ function ventasRecientesDesdeEstadoQTAS_(estado) {
     }));
 }
 
+function listarVentasRecientesDirectasQTAS_(spreadsheet) {
+  const ss = spreadsheet || SpreadsheetApp.getActive();
+  const sheet = ss.getSheetByName(QTAS.sheets.ventas);
+  if (!sheet) return [];
+
+  return leerObjetos_(sheet)
+    .filter(row => texto_(row.Venta_ID) && !esRegistroAnulado_(row.Estado_Registro))
+    .sort((a, b) => {
+      const fechaA = valorFechaVentaCanonicaQTAS_(a, new Date());
+      const fechaB = valorFechaVentaCanonicaQTAS_(b, new Date());
+      if (fechaA.getTime() !== fechaB.getTime()) return fechaB - fechaA;
+      return numero_(b.Venta_ID) - numero_(a.Venta_ID);
+    })
+    .slice(0, 12)
+    .map(venta => ({
+      ventaId: numero_(venta.Venta_ID),
+      clienteId: texto_(venta.Cliente_ID),
+      nombre: texto_(venta.Nombre),
+      fechaVenta: fechaInput_(valorFechaVentaCanonicaQTAS_(venta, new Date())),
+      totalVenta: redondear_(numero_(venta.Total_Venta)),
+      totalPagado: redondear_(numero_(venta.Total_Pagado)),
+      saldo: redondear_(numero_(venta.Saldo)),
+      estadoPago: texto_(venta.Estado_Pago),
+      productos: texto_(venta.Productos_Resumen)
+    }));
+}
+
 function construirEstadoVentasQTAS_() {
   const ss = SpreadsheetApp.getActive();
   const ventasSheet = ss.getSheetByName(QTAS.sheets.ventas);

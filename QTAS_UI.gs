@@ -223,3 +223,53 @@ function getDashboardQTAS() {
   });
   return dashboardVentasConsistenteQTAS_();
 }
+
+function getVentasRecientesQTAS() {
+  validarModeloSoloLecturaQTAS_({
+    sheetNames: [QTAS.sheets.ventas],
+    validarConfig: false
+  });
+  return listarVentasRecientesDirectasQTAS_(SpreadsheetApp.getActive());
+}
+
+function getVentasPendientesQTAS() {
+  validarModeloSoloLecturaQTAS_({
+    sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos],
+    validarConfig: false
+  });
+  return ventasPendientesDesdeEstadoQTAS_(construirEstadoVentasQTAS_());
+}
+
+function getDeudoresQTAS() {
+  validarModeloSoloLecturaQTAS_({
+    sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos],
+    validarConfig: false
+  });
+  return serializarDeudoresDashboardQTAS_(construirDeudoresQTAS_(construirEstadoVentasQTAS_()));
+}
+
+function getResumenFinancieroVentasQTAS() {
+  validarModeloSoloLecturaQTAS_({
+    sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos],
+    validarConfig: false
+  });
+  const estado = construirEstadoVentasQTAS_();
+  return {
+    ventasPendientes: ventasPendientesDesdeEstadoQTAS_(estado),
+    deudores: serializarDeudoresDashboardQTAS_(construirDeudoresQTAS_(estado))
+  };
+}
+
+function getEnviosPendientesQTAS() {
+  validarModeloSoloLecturaQTAS_({
+    sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos, QTAS.sheets.ventasEnvio],
+    validarConfig: false
+  });
+  return construirEnviosPendientesQTAS_(construirEstadoVentasQTAS_());
+}
+
+function serializarDeudoresDashboardQTAS_(rows) {
+  return (rows || []).map(row => Object.assign({}, row, {
+    Ultima_Fecha: row.Ultima_Fecha ? fechaInput_(row.Ultima_Fecha) : ''
+  }));
+}
