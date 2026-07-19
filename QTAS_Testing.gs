@@ -124,6 +124,7 @@ function testResetEntornoQTAS(payload) {
     });
 
     testResetearPropiedadesQTAS_('QTAS_SEQ_');
+    PropertiesService.getScriptProperties().deleteProperty('QTAS_POST_VENTA_QUEUE_V1');
     limpiarCachesEjecucionQTAS_();
     invalidarCacheDocumentoQTAS_('precios_referencia_memoria');
     invalidarCacheDocumentoQTAS_('distribucion_reglas_memoria');

@@ -9,6 +9,7 @@ function ventaPayloadBase(overrides = {}) {
     pagos: [],
     devolverDashboard: false,
     validarModelo: false,
+    procesarPostVentaSincrono: true,
     ...overrides
   };
 }
@@ -309,6 +310,65 @@ export const SCENARIOS = [
       ctx.equal(ctx.num(costo.Costo_Total_Estimado), 10000, 'El costo total estimado debe quedar sincronizado.');
       ctx.equal(String(costo.Metodo_Costo), 'Costo directo', 'La fila incremental debe marcar costo directo.');
       ctx.equal(String(costo.Estado_Costo), 'Directo', 'La fila incremental debe quedar en estado Directo.');
+    }
+  },
+  {
+    id: 'venta_postproceso_en_cola',
+    title: 'Venta confirma primero y procesa costos e inventario en segundo plano',
+    tags: ['ventas', 'costos', 'inventario', 'postventa', 'queue'],
+    run: async ctx => {
+      await ctx.reset();
+
+      const producto = 'ProdTestAuto';
+      await ctx.batch([
+        batchStep('guardarProductoConfiguracionQTAS', {
+          producto,
+          unidad: 'und',
+          nota: 'Creado por test',
+          activo: true
+        }),
+        batchStep('registrarCompraQTAS', compraPayloadBase({
+          proveedor: 'Proveedor Costo Test',
+          lineas: [
+            compraLinea('Producto', producto, 10, 'und', 100000, true, 'Base para cola postventa')
+          ]
+        }))
+      ]);
+
+      const venta = await ctx.call('registrarVentaQTAS', ventaPayloadBase({
+        cliente: { nombre: 'Cliente Cola Postventa' },
+        procesarPostVentaSincrono: false,
+        programarPostVenta: false,
+        lineas: [
+          ventaLinea(producto, 1, 'und', 15000)
+        ]
+      }));
+
+      ctx.assert(venta.postProceso && venta.postProceso.queued, 'La venta debe dejar el postproceso en cola.');
+      ctx.assert(venta.analiticaCostos && venta.analiticaCostos.queued, 'La respuesta debe indicar analitica en cola.');
+
+      const worker = await ctx.call('procesarColaPostVentaQTAS');
+      ctx.assert(worker.ok, 'El worker postventa debe completar sin errores.');
+      ctx.equal(ctx.num(worker.processed), 1, 'El worker debe procesar una venta pendiente.');
+
+      const state = await snapshotLigero(ctx, {
+        sheetNames: ['Venta_Detalle_Costos_Calc', 'Inventario_Snapshot']
+      });
+      const costo = ctx.findRow(
+        state,
+        'Venta_Detalle_Costos_Calc',
+        row => ctx.num(row.Venta_ID) === ctx.num(venta.ventaId) && row.Producto_Estandar === producto,
+        'La cola debe crear el costo analitico de la venta.'
+      );
+      const stock = ctx.findRow(
+        state,
+        'Inventario_Snapshot',
+        row => row.Tipo_Item === 'Producto' && row.Item === producto && row.Unidad === 'und',
+        'La cola debe actualizar el snapshot de inventario.'
+      );
+
+      ctx.equal(ctx.num(costo.Costo_Unitario_Usado), 10000, 'La cola debe usar el costo directo vigente.');
+      ctx.equal(ctx.num(stock.Stock_Actual), 9, 'La venta en cola debe descontar una unidad del stock.');
     }
   },
   {
