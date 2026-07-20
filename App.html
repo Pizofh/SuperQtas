@@ -547,6 +547,10 @@
       display: none;
     }
 
+    body.mobile-select-open {
+      overflow: hidden;
+    }
+
     .mobile-select-sheet {
       max-height: min(76vh, 680px);
       display: grid;
@@ -674,6 +678,15 @@
 
       .metric-value {
         font-size: 23px;
+      }
+
+      /* Evita el parpadeo perceptible al alternar vistas en navegadores moviles. */
+      .app-view {
+        animation: none;
+      }
+
+      .list-item {
+        overflow-wrap: anywhere;
       }
     }
   </style>
@@ -1507,23 +1520,16 @@
       const options = document.getElementById('mobileSelectOptions');
       if (!picker || !search || !options) return;
 
-      document.addEventListener('pointerdown', event => {
+      document.addEventListener('click', event => {
         if (!selectorMovilHabilitado_()) return;
         const select = event.target && event.target.closest ? event.target.closest('select') : null;
         if (!select || select.disabled || picker.contains(select)) return;
         event.preventDefault();
+        event.stopPropagation();
         abrirSelectorMovil_(select);
       }, true);
 
-      document.addEventListener('click', event => {
-        if (!selectorMovilHabilitado_()) return;
-        const select = event.target && event.target.closest ? event.target.closest('select') : null;
-        if (!select || picker.contains(select)) return;
-        event.preventDefault();
-        event.stopPropagation();
-      }, true);
-
-      picker.addEventListener('pointerdown', event => {
+      picker.addEventListener('click', event => {
         if (event.target === picker) cerrarSelectorMovil_();
       });
       search.addEventListener('input', renderizarOpcionesSelectorMovil_);
@@ -1543,6 +1549,7 @@
 
     function abrirSelectorMovil_(select) {
       if (!select) return;
+      if (selectMovilActivo_ === select) return;
       selectMovilActivo_ = select;
       const picker = document.getElementById('mobileSelectPicker');
       const title = document.getElementById('mobileSelectTitle');
@@ -1554,8 +1561,8 @@
         picker.classList.remove('hidden');
         picker.setAttribute('aria-hidden', 'false');
       }
+      document.body.classList.add('mobile-select-open');
       renderizarOpcionesSelectorMovil_();
-      window.setTimeout(() => search && search.focus(), 40);
     }
 
     function cerrarSelectorMovil_() {
@@ -1564,6 +1571,7 @@
         picker.classList.add('hidden');
         picker.setAttribute('aria-hidden', 'true');
       }
+      document.body.classList.remove('mobile-select-open');
       selectMovilActivo_ = null;
     }
 
@@ -1613,6 +1621,7 @@
 
     function mostrarVistaApp(view, options) {
       const nextView = normalizarVistaApp_(view);
+      cerrarSelectorMovil_();
       appState.currentView = nextView;
 
       document.querySelectorAll('.app-view').forEach(section => {
@@ -1672,7 +1681,7 @@
       hoy: ''
     };
 
-    const CACHE_CATALOGO_VENTAS_PREFIJO = 'psylo-scibio:superqtas:catalogo-ventas:v1';
+    const CACHE_CATALOGO_VENTAS_PREFIJO = 'psylo-scibio:superqtas:catalogo-ventas:v2';
     const CACHE_CATALOGO_VENTAS_TTL_MS = 10 * 60 * 1000;
 
     const PERF_SOLICITAR_DASHBOARD_EN_GUARDADO = false;
