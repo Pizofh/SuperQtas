@@ -776,8 +776,12 @@
               <label>Logistica</label>
               <div class="status-box">
                 <label class="inline-toggle">
-                  <input id="pendienteEnvioVenta" type="checkbox" onchange="actualizarResumenEnvioVenta()">
-                  Dejar venta en seguimiento de envio
+                  <input id="pendienteEnvioVenta" type="checkbox" onchange="seleccionarTipoEntregaVenta_('Envio')">
+                  Pendiente de envio
+                </label>
+                <label class="inline-toggle">
+                  <input id="pendienteRecogeVenta" type="checkbox" onchange="seleccionarTipoEntregaVenta_('Recoge')">
+                  Pendiente de recogida
                 </label>
                 <div id="pendienteEnvioVentaTexto" class="helper">Activalo si esta venta requiere seguimiento logistico.</div>
               </div>
@@ -921,7 +925,7 @@
           <section class="card">
             <div class="section-head">
               <div>
-                <h2>Pendientes de envio</h2>
+                <h2>Entregas pendientes</h2>
               </div>
               <button class="btn ghost" type="button" onclick="cargarPaneles()">Recargar</button>
             </div>
@@ -943,6 +947,37 @@
             <div id="ventasRecientes" class="list">
               <div class="muted">Cargando...</div>
             </div>
+          </section>
+
+          <section class="card" id="cuadreVentaPanel">
+            <div class="section-head">
+              <div>
+                <h2>Cuadrar venta</h2>
+              </div>
+              <button class="btn ghost" type="button" onclick="cancelarCuadreVenta()">Cancelar</button>
+            </div>
+            <div id="ventaCuadreInfo" class="status-box">Selecciona <b>Cuadrar</b> en una venta reciente para revisar sus datos.</div>
+            <div>
+              <label>Motivo del cuadre</label>
+              <textarea id="motivoCuadreVenta" rows="3" placeholder="Ej.: confirmar efectivo entregado, corregir valor o pago."></textarea>
+            </div>
+            <button id="guardarCuadreVentaBtn" class="btn full" type="button" disabled onclick="guardarCuadreVenta()">
+              Dejar pendiente de cuadrar
+            </button>
+            <div id="estadoCuadreVenta" class="status-box">El cuadre no modifica dinero, pagos ni distribucion automaticamente.</div>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <h2>Cuadres pendientes</h2>
+              </div>
+              <button class="btn ghost" type="button" onclick="cargarPaneles()">Recargar</button>
+            </div>
+            <div id="cuadresPendientes" class="list">
+              <div class="muted">Cargando...</div>
+            </div>
+            <div id="estadoCuadresPendientes" class="status-box">Las ventas resueltas dejan de aparecer aqui.</div>
           </section>
         </aside>
       </div>
@@ -1692,6 +1727,8 @@
     let ventasPendientes = [];
     let enviosPendientes = [];
     let ventasRecientes = [];
+    let cuadresPendientes = [];
+    let ventaCuadreSeleccionada = null;
     let cargaVentasRecientesId = 0;
 
     function initVentas() {
@@ -1799,6 +1836,7 @@
       const requestId = ++cargaVentasRecientesId;
       cargarPanelesOperativos_(requestId);
       cargarVentasRecientes_(requestId);
+      cargarCuadresPendientes_(requestId);
     }
 
     function cargarPanelesOperativos_(requestId) {
@@ -1824,6 +1862,21 @@
           // Conservamos el ultimo estado visible si este bloque puntual no responde.
         })
         .getEnviosPendientesQTAS();
+    }
+
+    function cargarCuadresPendientes_(requestId) {
+      google.script.run
+        .withSuccessHandler(rows => {
+          if (requestId !== cargaVentasRecientesId) return;
+          cuadresPendientes = normalizarCuadresPendientesLocales_(rows || []);
+          renderCuadresPendientes();
+        })
+        .withFailureHandler(err => {
+          if (requestId !== cargaVentasRecientesId || cuadresPendientes.length) return;
+          const cont = document.getElementById('cuadresPendientes');
+          cont.innerHTML = `<div class="muted">${escapeHtml(construirMensajeEstadoError_('No se pudieron cargar cuadres', err))}</div>`;
+        })
+        .getCuadresPendientesQTAS();
     }
 
     function cargarVentasRecientes_(requestId) {
@@ -1907,6 +1960,7 @@
           estadoPago: resp.estadoPago || '',
           saldo: redondearNumero_(resp.saldo),
           productos: resp.productosResumen || '',
+          tipoEntrega: resp.tipoEntrega || 'Envio',
           comentarioEnvio: ''
         });
       }
@@ -2046,6 +2100,7 @@
           estadoPago: String(row.estadoPago || '').trim(),
           saldo: redondearNumero_(row.saldo),
           productos: String(row.productos || '').trim(),
+          tipoEntrega: String(row.tipoEntrega || 'Envio').trim() === 'Recoge' ? 'Recoge' : 'Envio',
           comentarioEnvio: String(row.comentarioEnvio || '').trim()
         }))
         .filter(item => item.ventaId > 0)
@@ -2055,6 +2110,25 @@
           if (fechaA !== fechaB) return fechaA.localeCompare(fechaB);
           return numero_(a.ventaId) - numero_(b.ventaId);
         });
+    }
+
+    function normalizarCuadresPendientesLocales_(rows) {
+      return (rows || [])
+        .map(row => ({
+          ventaId: numero_(row.ventaId),
+          nombre: String(row.nombre || '').trim(),
+          fechaVenta: normalizarFechaPendienteLocal_(row.fechaVenta),
+          fechaPendienteCuadre: normalizarFechaPendienteLocal_(row.fechaPendienteCuadre || row.fechaVenta),
+          productos: String(row.productos || '').trim(),
+          totalVenta: redondearNumero_(row.totalVenta),
+          totalPagado: redondearNumero_(row.totalPagado),
+          saldo: redondearNumero_(row.saldo),
+          estadoPago: String(row.estadoPago || '').trim(),
+          mediosPagoTexto: String(row.mediosPagoTexto || 'Sin pago registrado').trim(),
+          motivoCuadre: String(row.motivoCuadre || '').trim()
+        }))
+        .filter(item => item.ventaId > 0)
+        .sort((a, b) => a.fechaPendienteCuadre.localeCompare(b.fechaPendienteCuadre));
     }
 
     function normalizarVentasRecientesLocales_(rows) {
@@ -2323,13 +2397,31 @@
       estado.innerText = 'Cliente nuevo. Se registrara al guardar la venta.';
     }
 
+    function seleccionarTipoEntregaVenta_(tipo) {
+      const envio = document.getElementById('pendienteEnvioVenta');
+      const recoge = document.getElementById('pendienteRecogeVenta');
+      if (!envio || !recoge) return;
+
+      if (tipo === 'Envio' && envio.checked) recoge.checked = false;
+      if (tipo === 'Recoge' && recoge.checked) envio.checked = false;
+      actualizarResumenEnvioVenta();
+    }
+
+    function tipoEntregaVentaSeleccionado_() {
+      return document.getElementById('pendienteRecogeVenta').checked
+        ? 'Recoge'
+        : (document.getElementById('pendienteEnvioVenta').checked ? 'Envio' : '');
+    }
+
     function actualizarResumenEnvioVenta() {
-      const checkbox = document.getElementById('pendienteEnvioVenta');
       const helper = document.getElementById('pendienteEnvioVentaTexto');
-      if (!checkbox || !helper) return;
-      helper.innerText = checkbox.checked
-        ? 'La venta quedara visible en el panel de envios pendientes.'
-        : 'La venta no quedara en seguimiento de envio.';
+      const tipoEntrega = tipoEntregaVentaSeleccionado_();
+      if (!helper) return;
+      helper.innerText = tipoEntrega === 'Recoge'
+        ? 'La venta quedara visible como pendiente de recogida.'
+        : (tipoEntrega === 'Envio'
+          ? 'La venta quedara visible como pendiente de envio.'
+          : 'La venta no quedara en seguimiento logistico.');
     }
 
     function actualizarOpcionesProductosExistentes() {
@@ -2745,7 +2837,8 @@
         fechaVenta: document.getElementById('fechaVenta').value,
         cliente: cliente,
         comentarioVenta: document.getElementById('comentarioVenta').value,
-        pendienteEnvio: document.getElementById('pendienteEnvioVenta').checked,
+        pendienteEnvio: Boolean(tipoEntregaVentaSeleccionado_()),
+        tipoEntrega: tipoEntregaVentaSeleccionado_(),
         lineas: lineas,
         pagos: pagos,
         devolverDashboard: PERF_SOLICITAR_DASHBOARD_EN_GUARDADO,
@@ -2763,7 +2856,9 @@
           const dashboard = resp.dashboard || construirDashboardLocalTrasVenta_(resp);
           document.getElementById('estado').innerText = [
             `Venta ${resp.ventaId} guardada. Total ${moneda_(resp.totalVenta)}. Saldo ${moneda_(resp.saldo)}.` +
-              (resp.estadoEnvio === 'Pendiente' ? ' Seguimiento de envio activo.' : ''),
+              (resp.estadoEnvio === 'Pendiente'
+                ? ` Seguimiento de ${resp.tipoEntrega === 'Recoge' ? 'recogida' : 'envio'} activo.`
+                : ''),
             resp.postProceso && resp.postProceso.queued
               ? 'Costos e inventario se actualizan en segundo plano.'
               : '',
@@ -2797,6 +2892,7 @@
       document.getElementById('nombre').value = '';
       document.getElementById('comentarioVenta').value = '';
       document.getElementById('pendienteEnvioVenta').checked = false;
+      document.getElementById('pendienteRecogeVenta').checked = false;
       document.getElementById('fechaVenta').value = catalogo.hoy || fechaHoyLocal_();
       document.getElementById('productos').innerHTML = '';
       document.getElementById('pagos').innerHTML = '';
@@ -2943,14 +3039,14 @@
       const rows = enviosPendientes || [];
 
       if (!rows.length) {
-        cont.innerHTML = '<div class="muted">No hay envios pendientes.</div>';
+        cont.innerHTML = '<div class="muted">No hay entregas pendientes.</div>';
         estado.innerText = 'Sin registros pendientes.';
         return;
       }
 
       cont.innerHTML = rows.slice(0, 12).map(row => `
         <div class="list-item">
-          <strong>V${escapeHtml(String(row.ventaId))} | ${escapeHtml(row.nombre || '')}</strong>
+          <strong>${escapeHtml(row.nombre || '')} | ${escapeHtml(row.tipoEntrega === 'Recoge' ? 'Recoge' : 'Envio')}</strong>
           <div>${escapeHtml(row.fechaVenta || '')} | Pago: <b>${escapeHtml(row.estadoPago || 'Pendiente')}</b></div>
           <div>${escapeHtml(row.productos || '')}</div>
           <div class="helper">
@@ -2958,11 +3054,13 @@
             ${row.saldo > 0.009 ? ` | Saldo: ${escapeHtml(moneda_(row.saldo || 0))}` : ''}
           </div>
           <div class="list-item-actions">
-            <button class="btn secondary" type="button" onclick="marcarVentaEnviada(${row.ventaId})">Marcar enviada</button>
+            <button class="btn secondary" type="button" onclick="completarEntregaVenta(${row.ventaId})">${row.tipoEntrega === 'Recoge' ? 'Marcar recogida' : 'Marcar enviada'}</button>
           </div>
         </div>
       `).join('');
-      estado.innerText = `${rows.length} envio(s) pendiente(s).`;
+      const recogidas = rows.filter(row => row.tipoEntrega === 'Recoge').length;
+      const envios = rows.length - recogidas;
+      estado.innerText = `${envios} envio(s) y ${recogidas} recogida(s) pendiente(s).`;
     }
 
     function renderVentasRecientes() {
@@ -2981,6 +3079,7 @@
           <div><b>${escapeHtml(moneda_(row.totalVenta || 0))}</b>${row.saldo > 0.009 ? ` | Saldo ${escapeHtml(moneda_(row.saldo || 0))}` : ''}</div>
           <div class="helper">${escapeHtml(row.productos || '')}</div>
           <div class="list-item-actions">
+            <button class="btn secondary" type="button" onclick="seleccionarVentaParaCuadre(${row.ventaId})">Cuadrar</button>
             <button class="btn danger" type="button" onclick="eliminarVentaReciente(${row.ventaId})">Eliminar</button>
           </div>
         </div>
@@ -3002,6 +3101,7 @@
         .withSuccessHandler(resp => {
           document.getElementById('estado').innerText = `Venta V${ventaId} eliminada.`;
           aplicarDashboardVentas_(resp.dashboard || {});
+          cargarCuadresPendientes_(++cargaVentasRecientesId);
         })
         .withFailureHandler(err => {
           document.getElementById('estado').innerText = construirMensajeEstadoError_('No se pudo eliminar la venta', err);
@@ -3011,27 +3111,28 @@
         });
     }
 
-    function marcarVentaEnviada(ventaId) {
+    function completarEntregaVenta(ventaId) {
       const venta = (enviosPendientes || []).find(item => String(item.ventaId) === String(ventaId));
       if (!venta) {
-        document.getElementById('estadoEnviosPendientes').innerText = 'La venta ya no aparece como pendiente de envio.';
+        document.getElementById('estadoEnviosPendientes').innerText = 'La venta ya no aparece como entrega pendiente.';
         return;
       }
 
-      document.getElementById('estadoEnviosPendientes').innerText = `Actualizando V${ventaId}...`;
+      const accion = venta.tipoEntrega === 'Recoge' ? 'recogida' : 'envio';
+      document.getElementById('estadoEnviosPendientes').innerText = `Actualizando ${accion}...`;
 
       google.script.run
         .withSuccessHandler(resp => {
           const dashboard = resp.dashboard || construirDashboardLocalTrasCambioEnvio_(resp);
           document.getElementById('estadoEnviosPendientes').innerText = [
-            `V${ventaId} actualizada como enviada.`,
+            venta.tipoEntrega === 'Recoge' ? 'Recogida confirmada.' : 'Envio marcado como enviado.',
             formatearRendimientoOperacion_(resp.performance)
           ].filter(Boolean).join('\n');
           registrarRendimientoOperacion_('actualizarEstadoEnvioVentaQTAS', resp.performance);
           aplicarDashboardVentas_(dashboard);
         })
         .withFailureHandler(err => {
-          document.getElementById('estadoEnviosPendientes').innerText = construirMensajeEstadoError_('No se pudo actualizar el envio', err);
+          document.getElementById('estadoEnviosPendientes').innerText = construirMensajeEstadoError_('No se pudo actualizar la entrega', err);
         })
         .actualizarEstadoEnvioVentaQTAS({
           ventaId: ventaId,
@@ -3039,6 +3140,131 @@
           devolverDashboard: false,
           validarModelo: false
         });
+    }
+
+    function seleccionarVentaParaCuadre(ventaId) {
+      const estado = document.getElementById('estadoCuadreVenta');
+      estado.innerText = 'Cargando resumen de la venta...';
+
+      google.script.run
+        .withSuccessHandler(resumen => {
+          ventaCuadreSeleccionada = resumen || null;
+          const boton = document.getElementById('guardarCuadreVentaBtn');
+          if (!ventaCuadreSeleccionada) {
+            boton.disabled = true;
+            return;
+          }
+
+          document.getElementById('ventaCuadreInfo').innerHTML = [
+            `<strong>${escapeHtml(ventaCuadreSeleccionada.nombre || '')}</strong>`,
+            escapeHtml(ventaCuadreSeleccionada.fechaVenta || ''),
+            escapeHtml(ventaCuadreSeleccionada.productos || ''),
+            `Total: <strong>${escapeHtml(moneda_(ventaCuadreSeleccionada.totalVenta || 0))}</strong>`,
+            `Pagado: ${escapeHtml(moneda_(ventaCuadreSeleccionada.totalPagado || 0))}`,
+            `Medio(s): ${escapeHtml(ventaCuadreSeleccionada.mediosPagoTexto || 'Sin pago registrado')}`
+          ].join('<br>');
+          document.getElementById('motivoCuadreVenta').value = ventaCuadreSeleccionada.motivoCuadre || '';
+          boton.disabled = false;
+          estado.innerText = ventaCuadreSeleccionada.motivoCuadre
+            ? 'Esta venta ya tiene un cuadre pendiente. Puedes actualizar su motivo.'
+            : 'Describe el ajuste pendiente y guardalo para seguimiento.';
+          document.getElementById('cuadreVentaPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        })
+        .withFailureHandler(err => {
+          document.getElementById('estadoCuadreVenta').innerText = construirMensajeEstadoError_('No se pudo cargar la venta', err);
+        })
+        .getResumenVentaParaCuadreQTAS({ ventaId: ventaId });
+    }
+
+    function cancelarCuadreVenta() {
+      ventaCuadreSeleccionada = null;
+      document.getElementById('ventaCuadreInfo').innerHTML = 'Selecciona <b>Cuadrar</b> en una venta reciente para revisar sus datos.';
+      document.getElementById('motivoCuadreVenta').value = '';
+      document.getElementById('guardarCuadreVentaBtn').disabled = true;
+      document.getElementById('estadoCuadreVenta').innerText = 'El cuadre no modifica dinero, pagos ni distribucion automaticamente.';
+    }
+
+    function guardarCuadreVenta() {
+      if (!ventaCuadreSeleccionada || numero_(ventaCuadreSeleccionada.ventaId) <= 0) {
+        document.getElementById('estadoCuadreVenta').innerText = 'Selecciona una venta reciente primero.';
+        return;
+      }
+
+      const comentarioCuadre = document.getElementById('motivoCuadreVenta').value.trim();
+      if (!comentarioCuadre) {
+        document.getElementById('estadoCuadreVenta').innerText = 'Escribe el motivo del cuadre.';
+        return;
+      }
+
+      const boton = document.getElementById('guardarCuadreVentaBtn');
+      boton.disabled = true;
+      document.getElementById('estadoCuadreVenta').innerText = 'Guardando cuadre pendiente...';
+
+      google.script.run
+        .withSuccessHandler(resp => {
+          cuadresPendientes = normalizarCuadresPendientesLocales_(resp.cuadres || []);
+          renderCuadresPendientes();
+          cancelarCuadreVenta();
+          document.getElementById('estadoCuadreVenta').innerText = 'Cuadre pendiente registrado.';
+        })
+        .withFailureHandler(err => {
+          boton.disabled = false;
+          document.getElementById('estadoCuadreVenta').innerText = construirMensajeEstadoError_('No se pudo guardar el cuadre', err);
+        })
+        .marcarVentaParaCuadreQTAS({
+          ventaId: ventaCuadreSeleccionada.ventaId,
+          comentarioCuadre: comentarioCuadre
+        });
+    }
+
+    function renderCuadresPendientes() {
+      const cont = document.getElementById('cuadresPendientes');
+      const estado = document.getElementById('estadoCuadresPendientes');
+      const rows = cuadresPendientes || [];
+
+      if (!rows.length) {
+        cont.innerHTML = '<div class="muted">No hay ventas pendientes de cuadrar.</div>';
+        estado.innerText = 'Sin pendientes operativos.';
+        return;
+      }
+
+      cont.innerHTML = rows.map(row => `
+        <div class="list-item">
+          <strong>${escapeHtml(row.nombre || '')}</strong>
+          <div>${escapeHtml(row.fechaVenta || '')} | Pago: <b>${escapeHtml(row.estadoPago || 'Pendiente')}</b></div>
+          <div>${escapeHtml(row.productos || '')}</div>
+          <div><b>${escapeHtml(moneda_(row.totalVenta || 0))}</b>${row.saldo > 0.009 ? ` | Saldo ${escapeHtml(moneda_(row.saldo || 0))}` : ''}</div>
+          <div class="helper">Medio(s): ${escapeHtml(row.mediosPagoTexto || 'Sin pago registrado')}</div>
+          <div class="helper">Motivo: ${escapeHtml(row.motivoCuadre || 'Sin detalle')}</div>
+          <div class="list-item-actions">
+            <button class="btn secondary" type="button" onclick="resolverCuadreVenta(${row.ventaId})">Resolver</button>
+          </div>
+        </div>
+      `).join('');
+      estado.innerText = `${rows.length} venta(s) pendiente(s) de cuadrar.`;
+    }
+
+    function resolverCuadreVenta(ventaId) {
+      const venta = (cuadresPendientes || []).find(item => String(item.ventaId) === String(ventaId));
+      if (!venta) {
+        document.getElementById('estadoCuadresPendientes').innerText = 'La venta ya no tiene un cuadre pendiente.';
+        return;
+      }
+      if (!confirm(`Marcar como resuelto el cuadre de ${venta.nombre || 'esta venta'}?`)) return;
+
+      document.getElementById('estadoCuadresPendientes').innerText = 'Resolviendo cuadre...';
+      google.script.run
+        .withSuccessHandler(resp => {
+          cuadresPendientes = normalizarCuadresPendientesLocales_(resp.cuadres || []);
+          renderCuadresPendientes();
+          if (ventaCuadreSeleccionada && String(ventaCuadreSeleccionada.ventaId) === String(ventaId)) {
+            cancelarCuadreVenta();
+          }
+        })
+        .withFailureHandler(err => {
+          document.getElementById('estadoCuadresPendientes').innerText = construirMensajeEstadoError_('No se pudo resolver el cuadre', err);
+        })
+        .resolverVentaCuadreQTAS({ ventaId: ventaId });
     }
 
     let catalogoCompras = {

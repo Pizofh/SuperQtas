@@ -244,6 +244,7 @@ function registrarVentaQTAS(payload) {
             ss: ss,
             ventaId: ventaId,
             estadoEnvio: QTAS.status.envio.pendiente,
+            tipoEntrega: normalizarTipoEntregaVentaQTAS_(payload && payload.tipoEntrega),
             comentarioEnvio: texto_(payload.comentarioEnvio),
             ahora: ahora
           });
@@ -269,6 +270,9 @@ function registrarVentaQTAS(payload) {
         saldo,
         estadoPago,
         estadoEnvio,
+        tipoEntrega: payload && payload.pendienteEnvio === true
+          ? normalizarTipoEntregaVentaQTAS_(payload && payload.tipoEntrega)
+          : '',
         productosResumen,
         analiticaCostos,
         inventario,
@@ -440,7 +444,7 @@ function actualizarEstadoEnvioVentaQTAS(payload) {
       if (debeValidarModelo) {
         medirBloqueRendimientoQTAS_(performance, 'validarModelo', () => {
           validarModeloSoloLecturaQTAS_({
-            sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos, QTAS.sheets.ventasEnvio],
+            sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos],
             validarConfig: false
           });
         });
@@ -481,6 +485,7 @@ function actualizarEstadoEnvioVentaQTAS(payload) {
           ss: ss,
           ventaId: ventaId,
           estadoEnvio: estadoEnvio,
+          tipoEntrega: texto_(payload && payload.tipoEntrega),
           comentarioEnvio: texto_(payload && payload.comentarioEnvio),
           ahora: new Date()
         });
@@ -757,9 +762,8 @@ function eliminarVentaRecienteQTAS(payload) {
     const detalleHeaders = getHeaders_(detalleSheet);
     const pagosHeaders = getHeaders_(pagosSheet);
     const distribucionHeaders = getHeaders_(distribucionSheet);
-    const ventasEnvioSheet = obtenerHojaVentasEnvioQTAS_(ss, { create: false, validate: false });
-    const ventasEnvioCanonica = ventasEnvioSheet &&
-      headersIguales_(getHeaders_(ventasEnvioSheet), QTAS.schemas[QTAS.sheets.ventasEnvio]);
+    const ventasEnvioSheet = obtenerHojaVentasEnvioQTAS_(ss, { create: false, validate: true });
+    const ventasEnvioCanonica = Boolean(ventasEnvioSheet);
     const costoDetalleRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.ventaDetalleCostosCalculado);
 
     const ventasAntes = leerObjetos_(ventasSheet);
@@ -839,7 +843,7 @@ function dashboardVentasConsistenteQTAS_() {
   return dashboardVentasDesdeEstadoQTAS_(construirEstadoVentasQTAS_());
 }
 
-function obtenerHojaVentasEnvioQTAS_(ss, options) {
+function asegurarHojaVentasEnvioSeguimientoQTAS_(ss, options) {
   const spreadsheet = ss || SpreadsheetApp.getActive();
   const settings = Object.assign({
     create: false,
@@ -849,28 +853,45 @@ function obtenerHojaVentasEnvioQTAS_(ss, options) {
 
   if (!sheet) {
     if (!settings.create) return null;
-    sheet = asegurarHojaModelo_(spreadsheet, QTAS.sheets.ventasEnvio, QTAS.schemas[QTAS.sheets.ventasEnvio]);
+    return asegurarHojaModelo_(spreadsheet, QTAS.sheets.ventasEnvio, QTAS.schemas[QTAS.sheets.ventasEnvio]);
   }
 
-  if (settings.validate !== false && !headersIguales_(getHeaders_(sheet), QTAS.schemas[QTAS.sheets.ventasEnvio])) {
-    throw new Error(
-      `La hoja ${QTAS.sheets.ventasEnvio} no coincide con la estructura esperada. ` +
-      'Ejecuta "Crear / reparar modelo" manualmente.'
-    );
+  if (settings.validate !== false) {
+    asegurarColumnasSeguimientoVentasQTAS_(sheet);
   }
 
   return sheet;
 }
 
-function leerEstadosEnvioVentasQTAS_(ss) {
-  const sheet = obtenerHojaVentasEnvioQTAS_(ss, { create: false, validate: false });
-  if (!sheet) return [];
-  if (!headersIguales_(getHeaders_(sheet), QTAS.schemas[QTAS.sheets.ventasEnvio])) {
-    Logger.log(
-      `Ignorando ${QTAS.sheets.ventasEnvio} porque no coincide con la estructura esperada.`
+function obtenerHojaVentasEnvioQTAS_(ss, options) {
+  return asegurarHojaVentasEnvioSeguimientoQTAS_(ss, options);
+}
+
+function asegurarColumnasSeguimientoVentasQTAS_(sheet) {
+  const expected = QTAS.schemas[QTAS.sheets.ventasEnvio];
+  const headers = getHeaders_(sheet);
+
+  if (headersIguales_(headers, expected)) return;
+
+  const esPrefijoCompatible = headers.length < expected.length &&
+    headers.every((header, index) => header === expected[index]);
+  if (!esPrefijoCompatible) {
+    throw new Error(
+      `La hoja ${QTAS.sheets.ventasEnvio} no coincide con la estructura esperada. ` +
+      'No se modifico ninguna fila; revisa los encabezados antes de continuar.'
     );
-    return [];
   }
+
+  const columnasNuevas = expected.slice(headers.length);
+  sheet.getRange(1, headers.length + 1, 1, columnasNuevas.length).setValues([columnasNuevas]);
+  sheet.getRange(1, 1, 1, expected.length).setFontWeight('bold');
+  sheet.setFrozenRows(1);
+  limpiarCacheHeadersHojaQTAS_(sheet);
+}
+
+function leerEstadosEnvioVentasQTAS_(ss) {
+  const sheet = obtenerHojaVentasEnvioQTAS_(ss, { create: false, validate: true });
+  if (!sheet) return [];
   return leerObjetosConMeta_(sheet);
 }
 
@@ -881,6 +902,23 @@ function normalizarEstadoEnvioVentaQTAS_(value) {
   }
   if (normalizado === normalizarClaveTexto_(QTAS.status.envio.enviado)) {
     return QTAS.status.envio.enviado;
+  }
+  return '';
+}
+
+function normalizarTipoEntregaVentaQTAS_(value) {
+  const normalizado = normalizarClaveTexto_(value);
+  if (normalizado === 'recoge' || normalizado === 'recogida') return 'Recoge';
+  return 'Envio';
+}
+
+function normalizarEstadoCuadreVentaQTAS_(value) {
+  const normalizado = normalizarClaveTexto_(value);
+  if (normalizado === normalizarClaveTexto_(QTAS.status.cuadre.pendiente)) {
+    return QTAS.status.cuadre.pendiente;
+  }
+  if (normalizado === normalizarClaveTexto_(QTAS.status.cuadre.resuelto)) {
+    return QTAS.status.cuadre.resuelto;
   }
   return '';
 }
@@ -906,15 +944,22 @@ function upsertEstadoEnvioVentaQTAS_(context) {
   }
 
   const existente = rows.find(row => numero_(row.Venta_ID) === ventaId) || null;
-  const actualizado = {
+  const actualizado = Object.assign({}, existente || {}, {
     Venta_ID: ventaId,
     Estado_Envio: estadoEnvio,
     Fecha_Pendiente_Envio: existente ? existente.Fecha_Pendiente_Envio : '',
     Fecha_Envio: existente ? existente.Fecha_Envio : '',
     Comentario_Envio: texto_(context && context.comentarioEnvio) || texto_(existente && existente.Comentario_Envio),
+    Tipo_Entrega: texto_(context && context.tipoEntrega)
+      ? normalizarTipoEntregaVentaQTAS_(context.tipoEntrega)
+      : normalizarTipoEntregaVentaQTAS_(existente && existente.Tipo_Entrega),
+    Estado_Cuadre: normalizarEstadoCuadreVentaQTAS_(existente && existente.Estado_Cuadre),
+    Fecha_Pendiente_Cuadre: existente ? existente.Fecha_Pendiente_Cuadre : '',
+    Fecha_Resuelto_Cuadre: existente ? existente.Fecha_Resuelto_Cuadre : '',
+    Comentario_Cuadre: texto_(existente && existente.Comentario_Cuadre),
     Creado_En: existente && existente.Creado_En ? existente.Creado_En : ahora,
     Actualizado_En: ahora
-  };
+  });
 
   if (estadoEnvio === QTAS.status.envio.pendiente) {
     actualizado.Fecha_Pendiente_Envio = existente && existente.Fecha_Pendiente_Envio
@@ -968,6 +1013,7 @@ function construirEnviosPendientesQTAS_(estado) {
         productos: texto_(venta.Productos_Resumen),
         estadoPago: texto_(venta.Estado_Pago),
         saldo: saldo,
+        tipoEntrega: normalizarTipoEntregaVentaQTAS_(envio && envio.Tipo_Entrega),
         comentarioEnvio: texto_(envio && envio.Comentario_Envio),
         label: [
           `V${ventaId}`,
@@ -980,6 +1026,225 @@ function construirEnviosPendientesQTAS_(estado) {
       const delta = fecha_(a.fechaPendienteEnvio) - fecha_(b.fechaPendienteEnvio);
       return delta !== 0 ? delta : numero_(a.ventaId) - numero_(b.ventaId);
     });
+}
+
+function marcarVentaParaCuadreQTAS(payload) {
+  return withScriptLock_('marcar venta para cuadrar', () => {
+    validarModeloSoloLecturaQTAS_({
+      sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos],
+      validarConfig: false
+    });
+
+    const ventaId = numero_(payload && payload.ventaId);
+    const comentario = texto_(payload && payload.comentarioCuadre);
+    if (ventaId <= 0) throw new Error('Falta la venta para cuadrar.');
+    if (!comentario) throw new Error('Describe brevemente que se debe cuadrar.');
+
+    const ss = SpreadsheetApp.getActive();
+    const ventas = leerObjetosConMeta_(ss.getSheetByName(QTAS.sheets.ventas));
+    const venta = ventas.find(row => numero_(row.Venta_ID) === ventaId);
+    if (!venta || esRegistroAnulado_(venta.Estado_Registro)) {
+      throw new Error('La venta no esta disponible para cuadrar.');
+    }
+
+    upsertEstadoCuadreVentaQTAS_({
+      ss: ss,
+      ventaId: ventaId,
+      estadoCuadre: QTAS.status.cuadre.pendiente,
+      comentarioCuadre: comentario,
+      ahora: new Date()
+    });
+
+    return {
+      ok: true,
+      cuadres: construirCuadresPendientesQTAS_(construirEstadoVentasQTAS_(), ss)
+    };
+  });
+}
+
+function resolverVentaCuadreQTAS(payload) {
+  return withScriptLock_('resolver venta cuadrada', () => {
+    validarModeloSoloLecturaQTAS_({
+      sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos],
+      validarConfig: false
+    });
+
+    const ventaId = numero_(payload && payload.ventaId);
+    if (ventaId <= 0) throw new Error('Falta la venta a resolver.');
+
+    const ss = SpreadsheetApp.getActive();
+    const seguimiento = leerEstadosEnvioVentasQTAS_(ss)
+      .find(row => numero_(row.Venta_ID) === ventaId);
+    if (!seguimiento || normalizarEstadoCuadreVentaQTAS_(seguimiento.Estado_Cuadre) !== QTAS.status.cuadre.pendiente) {
+      throw new Error('La venta no tiene un cuadre pendiente.');
+    }
+
+    upsertEstadoCuadreVentaQTAS_({
+      ss: ss,
+      ventaId: ventaId,
+      estadoCuadre: QTAS.status.cuadre.resuelto,
+      comentarioCuadre: texto_(payload && payload.comentarioCuadre),
+      ahora: new Date()
+    });
+
+    return {
+      ok: true,
+      cuadres: construirCuadresPendientesQTAS_(construirEstadoVentasQTAS_(), ss)
+    };
+  });
+}
+
+function getResumenVentaParaCuadreQTAS(payload) {
+  validarModeloSoloLecturaQTAS_({
+    sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos],
+    validarConfig: false
+  });
+
+  const ventaId = numero_(payload && payload.ventaId);
+  if (ventaId <= 0) throw new Error('Falta la venta para consultar.');
+
+  const ss = SpreadsheetApp.getActive();
+  const venta = leerObjetos_(ss.getSheetByName(QTAS.sheets.ventas))
+    .find(row => numero_(row.Venta_ID) === ventaId && !esRegistroAnulado_(row.Estado_Registro));
+  if (!venta) throw new Error('La venta no esta disponible.');
+
+  const pagos = leerObjetos_(ss.getSheetByName(QTAS.sheets.pagos))
+    .filter(row => numero_(row.Venta_ID) === ventaId && !esRegistroAnulado_(row.Estado_Registro));
+  const seguimiento = leerEstadosEnvioVentasQTAS_(ss)
+    .find(row => numero_(row.Venta_ID) === ventaId) || null;
+  return resumenVentaParaCuadreQTAS_(venta, pagos, seguimiento);
+}
+
+function upsertEstadoCuadreVentaQTAS_(context) {
+  const ss = context && context.ss ? context.ss : SpreadsheetApp.getActive();
+  const sheet = context && context.sheet
+    ? context.sheet
+    : obtenerHojaVentasEnvioQTAS_(ss, { create: true, validate: true });
+  const headers = context && context.headers ? context.headers : getHeaders_(sheet);
+  const rows = context && context.rows ? context.rows : leerObjetosConMeta_(sheet);
+  const ventaId = numero_(context && context.ventaId);
+  const ahora = context && context.ahora ? context.ahora : new Date();
+  const estadoCuadre = normalizarEstadoCuadreVentaQTAS_(context && context.estadoCuadre);
+
+  if (ventaId <= 0) throw new Error('Falta la venta para cuadrar.');
+  if (!estadoCuadre) throw new Error('Estado de cuadre invalido.');
+
+  const existente = rows.find(row => numero_(row.Venta_ID) === ventaId) || null;
+  const actualizado = Object.assign({}, existente || {}, {
+    Venta_ID: ventaId,
+    Estado_Envio: normalizarEstadoEnvioVentaQTAS_(existente && existente.Estado_Envio),
+    Fecha_Pendiente_Envio: existente ? existente.Fecha_Pendiente_Envio : '',
+    Fecha_Envio: existente ? existente.Fecha_Envio : '',
+    Comentario_Envio: texto_(existente && existente.Comentario_Envio),
+    Tipo_Entrega: normalizarTipoEntregaVentaQTAS_(existente && existente.Tipo_Entrega),
+    Estado_Cuadre: estadoCuadre,
+    Fecha_Pendiente_Cuadre: existente ? existente.Fecha_Pendiente_Cuadre : '',
+    Fecha_Resuelto_Cuadre: existente ? existente.Fecha_Resuelto_Cuadre : '',
+    Comentario_Cuadre: texto_(context && context.comentarioCuadre) || texto_(existente && existente.Comentario_Cuadre),
+    Creado_En: existente && existente.Creado_En ? existente.Creado_En : ahora,
+    Actualizado_En: ahora
+  });
+
+  if (estadoCuadre === QTAS.status.cuadre.pendiente) {
+    actualizado.Fecha_Pendiente_Cuadre = existente && existente.Fecha_Pendiente_Cuadre
+      ? existente.Fecha_Pendiente_Cuadre
+      : ahora;
+    actualizado.Fecha_Resuelto_Cuadre = '';
+  } else {
+    actualizado.Fecha_Resuelto_Cuadre = ahora;
+  }
+
+  if (existente) {
+    actualizarFilaObjeto_(sheet, existente.__rowNumber, headers, actualizado);
+  } else {
+    escribirFilas_(sheet, [filaDesdeHeaders_(headers, actualizado)]);
+  }
+
+  return actualizado;
+}
+
+function construirCuadresPendientesQTAS_(estado, ss) {
+  const source = estado || construirEstadoVentasQTAS_();
+  const pagos = leerObjetos_((ss || SpreadsheetApp.getActive()).getSheetByName(QTAS.sheets.pagos))
+    .filter(row => !esRegistroAnulado_(row.Estado_Registro));
+  const pagosPorVenta = pagos.reduce((acc, pago) => {
+    const ventaId = numero_(pago.Venta_ID);
+    if (ventaId <= 0) return acc;
+    if (!acc[ventaId]) acc[ventaId] = [];
+    acc[ventaId].push(pago);
+    return acc;
+  }, {});
+  const seguimientos = leerEstadosEnvioVentasQTAS_(ss);
+  const cuadrePorVenta = seguimientos.reduce((acc, row) => {
+    const ventaId = numero_(row.Venta_ID);
+    if (ventaId > 0 && normalizarEstadoCuadreVentaQTAS_(row.Estado_Cuadre) === QTAS.status.cuadre.pendiente) {
+      acc[ventaId] = row;
+    }
+    return acc;
+  }, {});
+
+  return (source.ventasActualizadas || [])
+    .filter(venta =>
+      texto_(venta.Estado_Registro) !== QTAS.status.registro.anulado &&
+      cuadrePorVenta[numero_(venta.Venta_ID)]
+    )
+    .map(venta => resumenVentaParaCuadreQTAS_(
+      venta,
+      pagosPorVenta[numero_(venta.Venta_ID)] || [],
+      cuadrePorVenta[numero_(venta.Venta_ID)]
+    ))
+    .sort((a, b) => {
+      const fechaA = fecha_(a.fechaPendienteCuadre || a.fechaVenta);
+      const fechaB = fecha_(b.fechaPendienteCuadre || b.fechaVenta);
+      return fechaA.getTime() - fechaB.getTime();
+    });
+}
+
+function resumenVentaParaCuadreQTAS_(venta, pagos, seguimiento) {
+  const fechaVenta = valorFechaVentaCanonicaQTAS_(venta, new Date());
+  const fechaPendiente = seguimiento && seguimiento.Fecha_Pendiente_Cuadre
+    ? seguimiento.Fecha_Pendiente_Cuadre
+    : fechaVenta;
+  const pagosResumen = resumenMediosPagoVentaQTAS_(pagos);
+
+  return {
+    ventaId: numero_(venta.Venta_ID),
+    nombre: texto_(venta.Nombre),
+    fechaVenta: fechaInput_(fechaVenta),
+    fechaPendienteCuadre: fechaInput_(fechaPendiente),
+    productos: texto_(venta.Productos_Resumen),
+    totalVenta: redondear_(numero_(venta.Total_Venta)),
+    totalPagado: redondear_(numero_(venta.Total_Pagado)),
+    saldo: redondear_(numero_(venta.Saldo)),
+    estadoPago: texto_(venta.Estado_Pago),
+    mediosPagoTexto: pagosResumen.texto,
+    mediosPago: pagosResumen.items,
+    motivoCuadre: texto_(seguimiento && seguimiento.Comentario_Cuadre),
+    estadoCuadre: normalizarEstadoCuadreVentaQTAS_(seguimiento && seguimiento.Estado_Cuadre)
+  };
+}
+
+function resumenMediosPagoVentaQTAS_(pagos) {
+  const agrupados = {};
+
+  (pagos || []).forEach(pago => {
+    const medio = texto_(pago.Medio_Pago) || 'Sin medio';
+    const key = normalizarClaveTexto_(medio) || medio;
+    if (!agrupados[key]) {
+      agrupados[key] = { medio: medio, monto: 0 };
+    }
+    agrupados[key].monto = redondear_(agrupados[key].monto + numero_(pago.Monto_Pago));
+  });
+
+  const items = Object.keys(agrupados)
+    .map(key => agrupados[key])
+    .sort((a, b) => a.medio.localeCompare(b.medio));
+  return {
+    items: items,
+    texto: items.length
+      ? items.map(item => `${item.medio}: ${moneda_(item.monto)}`).join(' | ')
+      : 'Sin pago registrado'
+  };
 }
 
 function ventasPendientesDesdeEstadoQTAS_(estado) {

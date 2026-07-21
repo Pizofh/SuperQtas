@@ -201,14 +201,15 @@ export const SCENARIOS = [
   },
   {
     id: 'venta_pagada_con_envio_pendiente',
-    title: 'Venta pagada que sigue pendiente de envio',
-    tags: ['ventas', 'envios', 'sin-deuda', 'smoke'],
+    title: 'Venta pagada con recogida y seguimiento de cuadre',
+    tags: ['ventas', 'envios', 'cuadres', 'sin-deuda', 'smoke'],
     run: async ctx => {
       await ctx.reset();
 
       const venta = await ctx.call('registrarVentaQTAS', ventaPayloadBase({
         cliente: { nombre: 'Cliente Envio Test' },
         pendienteEnvio: true,
+        tipoEntrega: 'Recoge',
         lineas: [
           ventaLinea('AcSup', 1, 'g', 20000)
         ],
@@ -218,6 +219,7 @@ export const SCENARIOS = [
       }));
 
       ctx.equal(String(venta.estadoEnvio), 'Pendiente', 'La venta debe quedar marcada como pendiente de envio.');
+      ctx.equal(String(venta.tipoEntrega), 'Recoge', 'La venta debe conservar el tipo de entrega Recoge.');
 
       let state = await snapshotLigero(ctx, {
         sheetNames: ['Pagos'],
@@ -231,10 +233,36 @@ export const SCENARIOS = [
         'Los envios pendientes deben cargarse de forma independiente.'
       );
       ctx.equal(
+        String(enviosPendientes.find(row => ctx.num(row.ventaId) === ctx.num(venta.ventaId)).tipoEntrega),
+        'Recoge',
+        'El panel debe diferenciar una recogida de un envio.'
+      );
+      ctx.equal(
         String(ctx.sheetRows(state, 'Pagos')[0].Medio_Pago),
         'Efectivo',
         'El pago nuevo debe guardar Efectivo de forma canonica.'
       );
+
+      const resumenCuadre = await ctx.call('getResumenVentaParaCuadreQTAS', {
+        ventaId: venta.ventaId
+      });
+      ctx.equal(String(resumenCuadre.nombre), 'Cliente Envio Test', 'El resumen de cuadre debe identificar al cliente.');
+      ctx.assert(
+        String(resumenCuadre.mediosPagoTexto).includes('Efectivo'),
+        'El resumen de cuadre debe mostrar el medio de pago.'
+      );
+
+      let cuadre = await ctx.call('marcarVentaParaCuadreQTAS', {
+        ventaId: venta.ventaId,
+        comentarioCuadre: 'Confirmar valor recibido'
+      });
+      ctx.equal(ctx.num(cuadre.cuadres.length), 1, 'La venta debe aparecer como cuadre pendiente.');
+      ctx.equal(String(cuadre.cuadres[0].motivoCuadre), 'Confirmar valor recibido', 'Debe conservarse el motivo del cuadre.');
+
+      cuadre = await ctx.call('resolverVentaCuadreQTAS', {
+        ventaId: venta.ventaId
+      });
+      ctx.equal(ctx.num(cuadre.cuadres.length), 0, 'Un cuadre resuelto no debe seguir visible.');
 
       await ctx.call('actualizarEstadoEnvioVentaQTAS', {
         ventaId: venta.ventaId,
@@ -249,6 +277,8 @@ export const SCENARIOS = [
       });
       const envio = ctx.findRow(state, 'Ventas_Envio', row => ctx.num(row.Venta_ID) === ctx.num(venta.ventaId), 'No se encontro el registro de envio.');
       ctx.equal(String(envio.Estado_Envio), 'Enviado', 'El envio debe quedar marcado como enviado.');
+      ctx.equal(String(envio.Tipo_Entrega), 'Recoge', 'Debe conservarse Recoge despues de completar la entrega.');
+      ctx.equal(String(envio.Estado_Cuadre), 'Resuelto', 'El cuadre debe conservar su estado resuelto.');
       ctx.equal((state.dashboard.enviosPendientes || []).length, 0, 'La venta ya no debe quedar pendiente de envio.');
     }
   },
