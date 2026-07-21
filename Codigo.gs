@@ -42,6 +42,10 @@ var QTAS = {
       pendiente: 'Pendiente',
       enviado: 'Enviado'
     },
+    cuadre: {
+      pendiente: 'Pendiente',
+      resuelto: 'Resuelto'
+    },
     registro: {
       activo: 'Activo',
       anulado: 'Anulado'
@@ -319,7 +323,12 @@ var QTAS = {
       'Fecha_Envio',
       'Comentario_Envio',
       'Creado_En',
-      'Actualizado_En'
+      'Actualizado_En',
+      'Tipo_Entrega',
+      'Estado_Cuadre',
+      'Fecha_Pendiente_Cuadre',
+      'Fecha_Resuelto_Cuadre',
+      'Comentario_Cuadre'
     ],
     Distribucion_Reglas: [
       'Regla_ID',

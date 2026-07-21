@@ -15,6 +15,10 @@ function asegurarModeloOperativoQTAS_(options) {
 
   Object.keys(QTAS.schemas).forEach(sheetName => {
     if (sheetName === QTAS.sheets.config) return;
+    if (sheetName === QTAS.sheets.ventasEnvio) {
+      asegurarHojaVentasEnvioSeguimientoQTAS_(ss, { create: true, validate: true });
+      return;
+    }
     asegurarHojaModelo_(ss, sheetName, QTAS.schemas[sheetName]);
   });
 

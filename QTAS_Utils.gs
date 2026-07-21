@@ -417,6 +417,16 @@ function normalizarFilaModeloQTAS_(sheetName, row) {
       row.Fecha_Envio,
       fallback
     );
+    normalized.Fecha_Pendiente_Cuadre = resolverFechaMomentoOpcionalQTAS_(
+      row.Fecha_Pendiente_Cuadre,
+      row.Fecha_Pendiente_Cuadre,
+      fallback
+    );
+    normalized.Fecha_Resuelto_Cuadre = resolverFechaMomentoOpcionalQTAS_(
+      row.Fecha_Resuelto_Cuadre,
+      row.Fecha_Resuelto_Cuadre,
+      fallback
+    );
   }
 
   if (sheetName === QTAS.sheets.distribucionIngresos) {

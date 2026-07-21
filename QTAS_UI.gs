@@ -262,10 +262,18 @@ function getResumenFinancieroVentasQTAS() {
 
 function getEnviosPendientesQTAS() {
   validarModeloSoloLecturaQTAS_({
-    sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos, QTAS.sheets.ventasEnvio],
+    sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos],
     validarConfig: false
   });
   return construirEnviosPendientesQTAS_(construirEstadoVentasQTAS_());
+}
+
+function getCuadresPendientesQTAS() {
+  validarModeloSoloLecturaQTAS_({
+    sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos],
+    validarConfig: false
+  });
+  return construirCuadresPendientesQTAS_(construirEstadoVentasQTAS_());
 }
 
 function serializarDeudoresDashboardQTAS_(rows) {
