@@ -2161,6 +2161,7 @@
           totalPagado: redondearNumero_(row.totalPagado),
           saldo: redondearNumero_(row.saldo),
           estadoPago: String(row.estadoPago || '').trim(),
+          tipoEntrega: String(row.tipoEntrega || '').trim() === 'Recoge' ? 'Recoge' : 'Envio',
           mediosPagoTexto: String(row.mediosPagoTexto || 'Sin pago registrado').trim(),
           motivoCuadre: String(row.motivoCuadre || '').trim()
         }))
@@ -3234,6 +3235,8 @@
       }
 
       const boton = document.getElementById('guardarCuadreVentaBtn');
+      // Invalida cargas previas: una respuesta vieja no puede ocultar el cuadre que se acaba de guardar.
+      const requestId = ++cargaVentasRecientesId;
       boton.disabled = true;
       document.getElementById('estadoCuadreVenta').innerText = 'Guardando cuadre pendiente...';
 
@@ -3252,6 +3255,7 @@
           renderCuadresPendientes();
           cancelarCuadreVenta();
           document.getElementById('estadoCuadreVenta').innerText = 'Cuadre pendiente registrado.';
+          cargarCuadresPendientes_(requestId);
         })
         .withFailureHandler(err => {
           boton.disabled = false;
@@ -3280,6 +3284,7 @@
           <div>${escapeHtml(row.fechaVenta || '')} | Pago: <b>${escapeHtml(row.estadoPago || 'Pendiente')}</b></div>
           <div>${escapeHtml(row.productos || '')}</div>
           <div><b>${escapeHtml(moneda_(row.totalVenta || 0))}</b>${row.saldo > 0.009 ? ` | Saldo ${escapeHtml(moneda_(row.saldo || 0))}` : ''}</div>
+          <div class="helper">Entrega: ${escapeHtml(row.tipoEntrega || 'Envio')}</div>
           <div class="helper">Medio(s): ${escapeHtml(row.mediosPagoTexto || 'Sin pago registrado')}</div>
           <div class="helper">Motivo: ${escapeHtml(row.motivoCuadre || 'Sin detalle')}</div>
           <div class="list-item-actions">
@@ -3298,6 +3303,8 @@
       }
       if (!confirm(`Marcar como resuelto el cuadre de ${venta.nombre || 'esta venta'}?`)) return;
 
+      // Descarta cargas previas para conservar el estado resuelto en la lista actual.
+      const requestId = ++cargaVentasRecientesId;
       document.getElementById('estadoCuadresPendientes').innerText = 'Resolviendo cuadre...';
       google.script.run
         .withSuccessHandler(resp => {
@@ -3308,6 +3315,7 @@
           if (ventaCuadreSeleccionada && String(ventaCuadreSeleccionada.ventaId) === String(ventaId)) {
             cancelarCuadreVenta();
           }
+          cargarCuadresPendientes_(requestId);
         })
         .withFailureHandler(err => {
           document.getElementById('estadoCuadresPendientes').innerText = construirMensajeEstadoError_('No se pudo resolver el cuadre', err);
@@ -4376,12 +4384,17 @@
 
       google.script.run
         .withSuccessHandler(resp => {
-          guardarCacheInventarioDashboard_(resp.dashboard || inventarioDashboard);
-          aplicarDashboardInventario_(resp.dashboard || inventarioDashboard, {});
+          if (resp.dashboard) {
+            guardarCacheInventarioDashboard_(resp.dashboard);
+            aplicarDashboardInventario_(resp.dashboard, {});
+          }
           document.getElementById('invCantidadProduccion').value = '';
           document.getElementById('invComentarioProduccion').value = '';
           document.getElementById('estadoInventario').innerText =
-            `Produccion ${resp.produccionId} registrada: ${resp.producto} ${cantidadTextoInventario_(resp.cantidad)} ${resp.unidad}.`;
+            `Produccion ${resp.produccionId} registrada: ${resp.producto} ${cantidadTextoInventario_(resp.cantidad)} ${resp.unidad}. Actualizando stock...`;
+          if (resp.dashboardPendiente) {
+            cargarInventario(false, { silencioso: true, forceRefresh: true });
+          }
         })
         .withFailureHandler(err => {
           document.getElementById('estadoInventario').innerText = construirMensajeEstadoError_('No se pudo registrar la produccion', err);

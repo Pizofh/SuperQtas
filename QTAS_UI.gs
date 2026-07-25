@@ -270,7 +270,7 @@ function getEnviosPendientesQTAS() {
 
 function getCuadresPendientesQTAS() {
   validarModeloSoloLecturaQTAS_({
-    sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos],
+    sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos, QTAS.sheets.ventasEnvio],
     validarConfig: false
   });
   return construirCuadresPendientesQTAS_(construirEstadoVentasQTAS_());

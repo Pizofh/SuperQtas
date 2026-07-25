@@ -447,6 +447,27 @@ var PRODUCTOS_RECETA_VENTA_INVENTARIO_QTAS = [
   'Tin'
 ];
 
+var PRODUCTOS_AUTOPRODUCCION_VENTA_QTAS = [
+  '100mg',
+  '200mg',
+  '300mg',
+  'ColaDPExt',
+  'CordyExt',
+  'GanoExt',
+  'LmExt',
+  'ShiiExt'
+];
+
+var EXTRACTOS_MASTER_INVENTARIO_QTAS = {
+  ColaDPExt: 'ColaDPExt_Master',
+  CordyExt: 'CordyExt_Master',
+  GanoExt: 'GanoExt_Master',
+  LmExt: 'LmExt_Master',
+  ShiiExt: 'ShiiExt_Master'
+};
+
+var CONTENIDO_UNIDAD_EXTRACTO_MASTER_QTAS = 50;
+
 var DISTRIBUCION_REGLAS_INICIALES = [
   {
     desde: '2000-01-01',

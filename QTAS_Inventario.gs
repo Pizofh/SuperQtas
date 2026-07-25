@@ -186,93 +186,142 @@ function guardarControlInventarioQTAS(payload) {
 
 function registrarProduccionQTAS(payload) {
   return withScriptLock_('registrar produccion', () => {
-    asegurarModeloOperativoQTAS_();
-    asegurarControlesInventarioBaseQTAS_();
-
+    validarModeloSoloLecturaQTAS_({
+      sheetNames: [
+        QTAS.sheets.productoComponentes,
+        QTAS.sheets.inventarioControl,
+        QTAS.sheets.producciones,
+        QTAS.sheets.produccionDetalle,
+        QTAS.sheets.inventarioMovimientos,
+        QTAS.sheets.inventarioSnapshot
+      ],
+      validarConfig: false
+    });
+    const ss = SpreadsheetApp.getActive();
     const producto = texto_(payload && payload.producto);
     const unidad = normalizarUnidadCanonicaQTAS_(payload && payload.unidad);
-    const cantidad = redondear_(Math.max(0, numero_(payload && payload.cantidad)));
-    const comentario = texto_(payload && payload.comentarioProduccion);
-    const ahora = new Date();
-    const fechaProduccionBase = resolverFechaOperacion_(payload && payload.fechaProduccion, ahora);
-    const fechaProduccion = combinarFechaYHora_(fechaProduccionBase, ahora);
-
-    if (!producto) throw new Error('Falta el producto fabricado.');
-    if (!unidad) throw new Error('Falta la unidad del producto.');
-    if (cantidad <= 0) throw new Error('La cantidad fabricada debe ser mayor a cero.');
-
-    const control = obtenerControlInventarioEfectivoQTAS_('Producto', producto, unidad, construirIndiceControlesInventarioQTAS_(listarControlesInventarioQTAS_()));
-    if (control.modoStock !== 'Fabricado') {
-      throw new Error(`El producto ${producto} no esta marcado como Fabricado en Inventario_Control.`);
-    }
-
-    const componentes = leerComponentesProductoActivosQTAS_();
-    const reglas = leerReglasCostoProductoActivasQTAS_();
+    const componentes = leerComponentesProductoActivosQTAS_(ss);
     const receta = componentes.filter(row =>
       esMismaClaveProductoQTAS_(row.producto, row.unidadVenta, producto, unidad)
     );
-
-    if (!receta.length) {
-      throw new Error(`No existe receta activa para ${producto} (${unidad}).`);
-    }
-
-    const ss = SpreadsheetApp.getActive();
-    const produccionesSheet = ss.getSheetByName(QTAS.sheets.producciones);
-    const produccionDetalleSheet = ss.getSheetByName(QTAS.sheets.produccionDetalle);
-    const produccionesHeaders = getHeaders_(produccionesSheet);
-    const detalleHeaders = getHeaders_(produccionDetalleSheet);
-    const produccionId = siguienteIdConPrefijoPersistenteQTAS_(
-      'produccion_id',
-      produccionesSheet,
-      'Produccion_ID',
-      'PRD-',
-      6
+    asegurarControlesInventarioBaseQTAS_(
+      [{ tipoItem: 'Producto', item: producto, unidad: unidad }].concat(receta.map(row => ({
+        tipoItem: row.tipoComponente,
+        item: row.itemComponente,
+        unidad: row.unidadComponente
+      }))),
+      ss,
+      { incluirModeloCompleto: false }
     );
 
-    const detallesMaterializados = construirDetalleProduccionMaterializadoQTAS_({
-      produccionId: produccionId,
-      producto: producto,
-      unidad: unidad,
-      cantidad: cantidad,
-      fechaProduccion: fechaProduccionBase,
-      comentario: comentario,
-      componentes: componentes,
-      reglas: reglas
-    });
-
-    escribirFilas_(produccionesSheet, [filaDesdeHeaders_(produccionesHeaders, {
-      Produccion_ID: produccionId,
-      Fecha_Produccion: fechaProduccion,
-      Producto_Estandar: producto,
-      Cantidad_Producida: cantidad,
-      Unidad: unidad,
-      Comentario_Produccion: comentario,
-      Estado_Registro: QTAS.status.registro.activo
-    })]);
-
-    escribirFilas_(
-      produccionDetalleSheet,
-      detallesMaterializados.map(row => filaDesdeHeaders_(detalleHeaders, row))
-    );
-
-    const inventario = sincronizarInventarioDesdeProduccionDetalleQTAS_({
+    const resultado = registrarProduccionInternaQTAS_(Object.assign({}, payload || {}, {
       ss: ss,
-      produccionId: produccionId,
-      fechaProduccion: fechaProduccionBase,
-      detalleRows: detallesMaterializados
-    });
+      componentes: componentes,
+      ahora: new Date()
+    }));
 
-    return {
-      ok: true,
-      produccionId: produccionId,
-      producto: producto,
-      cantidad: cantidad,
-      unidad: unidad,
-      detalleLineas: detallesMaterializados.length,
-      inventario: inventario,
-      dashboard: getDashboardInventarioQTAS()
-    };
+    return Object.assign(resultado, {
+      dashboardPendiente: true
+    });
   });
+}
+
+function registrarProduccionInternaQTAS_(payload) {
+  const settings = Object.assign({
+    ss: SpreadsheetApp.getActive(),
+    producto: '',
+    unidad: '',
+    cantidad: 0,
+    fechaProduccion: '',
+    comentarioProduccion: '',
+    componentes: null,
+    componentesProduccion: null,
+    ahora: new Date(),
+    reconstruirSnapshot: true
+  }, payload || {});
+  const ss = settings.ss || SpreadsheetApp.getActive();
+  const producto = texto_(settings.producto);
+  const unidad = normalizarUnidadCanonicaQTAS_(settings.unidad);
+  const cantidad = redondear_(Math.max(0, numero_(settings.cantidad)));
+  const comentario = texto_(settings.comentarioProduccion);
+  const ahora = settings.ahora || new Date();
+  const fechaProduccionBase = resolverFechaOperacion_(settings.fechaProduccion, ahora);
+  const fechaProduccion = combinarFechaYHora_(fechaProduccionBase, ahora);
+
+  if (!producto) throw new Error('Falta el producto fabricado.');
+  if (!unidad) throw new Error('Falta la unidad del producto.');
+  if (cantidad <= 0) throw new Error('La cantidad fabricada debe ser mayor a cero.');
+
+  const controlesIndex = construirIndiceControlesInventarioQTAS_(listarControlesInventarioQTAS_(ss));
+  const control = obtenerControlInventarioEfectivoQTAS_('Producto', producto, unidad, controlesIndex);
+  if (control.modoStock !== 'Fabricado') {
+    throw new Error(`El producto ${producto} no esta marcado como Fabricado en Inventario_Control.`);
+  }
+
+  const componentes = settings.componentes || leerComponentesProductoActivosQTAS_(ss);
+  const receta = settings.componentesProduccion || componentes.filter(row =>
+    esMismaClaveProductoQTAS_(row.producto, row.unidadVenta, producto, unidad)
+  );
+  if (!receta.length) {
+    throw new Error(`No existe receta activa para ${producto} (${unidad}).`);
+  }
+
+  const produccionesSheet = ss.getSheetByName(QTAS.sheets.producciones);
+  const produccionDetalleSheet = ss.getSheetByName(QTAS.sheets.produccionDetalle);
+  const produccionesHeaders = getHeaders_(produccionesSheet);
+  const detalleHeaders = getHeaders_(produccionDetalleSheet);
+  const produccionId = siguienteIdConPrefijoPersistenteQTAS_(
+    'produccion_id',
+    produccionesSheet,
+    'Produccion_ID',
+    'PRD-',
+    6
+  );
+  const detallesMaterializados = construirDetalleProduccionMaterializadoQTAS_({
+    ss: ss,
+    produccionId: produccionId,
+    producto: producto,
+    unidad: unidad,
+    cantidad: cantidad,
+    fechaProduccion: fechaProduccionBase,
+    comentario: comentario,
+    componentes: componentes,
+    componentesProduccion: receta,
+    controlsIndex: controlesIndex,
+    disponibilidadCalcas: construirDisponibilidadCalcasInventarioQTAS_(ss)
+  });
+
+  escribirFilas_(produccionesSheet, [filaDesdeHeaders_(produccionesHeaders, {
+    Produccion_ID: produccionId,
+    Fecha_Produccion: fechaProduccion,
+    Producto_Estandar: producto,
+    Cantidad_Producida: cantidad,
+    Unidad: unidad,
+    Comentario_Produccion: comentario,
+    Estado_Registro: QTAS.status.registro.activo
+  })]);
+  escribirFilas_(
+    produccionDetalleSheet,
+    detallesMaterializados.map(row => filaDesdeHeaders_(detalleHeaders, row))
+  );
+
+  const inventario = sincronizarInventarioDesdeProduccionDetalleQTAS_({
+    ss: ss,
+    produccionId: produccionId,
+    fechaProduccion: fechaProduccionBase,
+    detalleRows: detallesMaterializados,
+    reconstruirSnapshot: settings.reconstruirSnapshot !== false
+  });
+
+  return {
+    ok: true,
+    produccionId: produccionId,
+    producto: producto,
+    cantidad: cantidad,
+    unidad: unidad,
+    detalleLineas: detallesMaterializados.length,
+    inventario: inventario
+  };
 }
 
 function eliminarMovimientosInventarioPorFuentesQTAS_(payload) {
@@ -464,8 +513,23 @@ function sincronizarInventarioDesdeVentaQTAS_(context) {
   const detallePendiente = (settings.detalleRows || []).filter(row =>
     texto_(row.Detalle_ID) && !detalleIdsConMovimiento[texto_(row.Detalle_ID)]
   );
+  const autoproduccion = registrarProduccionesAutomaticasDesdeVentaQTAS_({
+    ss: ss,
+    detalleRows: detallePendiente
+  });
+  if (!autoproduccion.ok) {
+    return {
+      ok: false,
+      skipped: false,
+      reason: autoproduccion.reason,
+      movimientos: 0,
+      detallesOmitidos: (settings.detalleRows || []).length - detallePendiente.length,
+      autoproduccion: autoproduccion
+    };
+  }
   const movimientos = construirMovimientosInventarioVentaLoteQTAS_(detallePendiente, {
-    ss: ss
+    ss: ss,
+    limitarCalcas: true
   });
 
   if (movimientos.length) {
@@ -477,13 +541,177 @@ function sincronizarInventarioDesdeVentaQTAS_(context) {
     ok: true,
     skipped: false,
     movimientos: movimientos.length,
-    detallesOmitidos: (settings.detalleRows || []).length - detallePendiente.length
+    detallesOmitidos: (settings.detalleRows || []).length - detallePendiente.length,
+    autoproduccion: autoproduccion
+  };
+}
+
+function registrarProduccionesAutomaticasDesdeVentaQTAS_(context) {
+  const settings = Object.assign({
+    ss: SpreadsheetApp.getActive(),
+    detalleRows: []
+  }, context || {});
+  const ss = settings.ss || SpreadsheetApp.getActive();
+  const resumen = {
+    ok: true,
+    producciones: [],
+    faltantesFabricados: 0,
+    desdeMaster: 0,
+    desdeReceta: 0
+  };
+  const componentes = leerComponentesProductoActivosQTAS_(ss);
+  const controlesIndex = construirIndiceControlesInventarioQTAS_(listarControlesInventarioQTAS_(ss));
+  const stockIndex = construirIndiceStockInventarioQTAS_(listarSnapshotInventarioQTAS_(ss));
+  const requeridos = {};
+
+  (settings.detalleRows || []).forEach(row => {
+    const producto = texto_(row.Producto_Estandar);
+    const unidad = normalizarUnidadCanonicaQTAS_(row.Unidad);
+    const cantidad = redondear_(Math.max(0, numero_(row.Cantidad)));
+    const control = obtenerControlInventarioEfectivoQTAS_('Producto', producto, unidad, controlesIndex);
+    if (
+      !producto ||
+      !unidad ||
+      cantidad <= 0 ||
+      control.modoStock !== 'Fabricado' ||
+      !esProductoAutoproduciblePorVentaQTAS_(producto)
+    ) return;
+
+    const key = claveControlInventarioQTAS_('Producto', producto, unidad);
+    if (!requeridos[key]) {
+      requeridos[key] = {
+        producto: producto,
+        unidad: unidad,
+        cantidad: 0,
+        fechaProduccion: valorFechaVentaCanonicaQTAS_(row, new Date()),
+        ventaIds: {},
+        detalleIds: []
+      };
+    }
+    requeridos[key].cantidad = redondear_(requeridos[key].cantidad + cantidad);
+    requeridos[key].ventaIds[numero_(row.Venta_ID)] = true;
+    requeridos[key].detalleIds.push(texto_(row.Detalle_ID));
+  });
+
+  Object.keys(requeridos).sort().forEach(key => {
+    const requerido = requeridos[key];
+    const stockActual = numero_(stockIndex[key] && stockIndex[key].stockActual);
+    const faltante = redondear_(Math.max(0, requerido.cantidad - stockActual));
+    if (faltante <= 0.009) return;
+
+    const recetaBase = componentes.filter(row =>
+      esMismaClaveProductoQTAS_(row.producto, row.unidadVenta, requerido.producto, requerido.unidad)
+    );
+    if (!recetaBase.length) {
+      throw new Error(`No existe receta activa para producir ${requerido.producto} bajo pedido.`);
+    }
+
+    const receta = construirRecetaAutoproduccionVentaQTAS_(
+      requerido.producto,
+      requerido.unidad,
+      faltante,
+      recetaBase,
+      stockIndex
+    );
+    const ventaIds = Object.keys(requerido.ventaIds).filter(Boolean).join(', ');
+    const detalleIds = requerido.detalleIds.filter(Boolean).sort().join(', ');
+    const produccion = registrarProduccionInternaQTAS_({
+      ss: ss,
+      producto: requerido.producto,
+      unidad: requerido.unidad,
+      cantidad: faltante,
+      fechaProduccion: requerido.fechaProduccion,
+      comentarioProduccion: unirUnicos_([
+        `Produccion automatica por venta V${ventaIds}`,
+        detalleIds,
+        receta.origen === 'Master' ? `Desde ${receta.masterItem}` : 'Desde receta base'
+      ]),
+      componentes: componentes,
+      componentesProduccion: receta.componentes,
+      ahora: new Date()
+    });
+
+    resumen.producciones.push({
+      produccionId: produccion.produccionId,
+      producto: requerido.producto,
+      cantidad: faltante,
+      unidad: requerido.unidad,
+      origen: receta.origen,
+      masterItem: receta.masterItem || ''
+    });
+    resumen.faltantesFabricados = redondear_(resumen.faltantesFabricados + faltante);
+    if (receta.origen === 'Master') {
+      resumen.desdeMaster += 1;
+    } else {
+      resumen.desdeReceta += 1;
+    }
+  });
+
+  return resumen;
+}
+
+function esProductoAutoproduciblePorVentaQTAS_(producto) {
+  return (PRODUCTOS_AUTOPRODUCCION_VENTA_QTAS || []).some(item =>
+    normalizarClaveTexto_(item) === normalizarClaveTexto_(producto)
+  );
+}
+
+function construirIndiceStockInventarioQTAS_(rows) {
+  return (rows || []).reduce((index, row) => {
+    const key = claveControlInventarioQTAS_(row.tipoItem, row.item, row.unidad);
+    if (key) index[key] = row;
+    return index;
+  }, {});
+}
+
+function construirRecetaAutoproduccionVentaQTAS_(producto, unidad, cantidad, recetaBase, stockIndex) {
+  const masterItem = texto_((EXTRACTOS_MASTER_INVENTARIO_QTAS || {})[producto]);
+  if (!masterItem) {
+    return {
+      origen: 'Receta',
+      masterItem: '',
+      componentes: recetaBase
+    };
+  }
+
+  const keyMaster = claveControlInventarioQTAS_('Insumo', masterItem, 'g');
+  const stockMaster = numero_(stockIndex[keyMaster] && stockIndex[keyMaster].stockActual);
+  const cantidadMaster = redondear_(cantidad * numero_(CONTENIDO_UNIDAD_EXTRACTO_MASTER_QTAS));
+  if (stockMaster + 0.009 < cantidadMaster) {
+    return {
+      origen: 'Receta',
+      masterItem: masterItem,
+      componentes: recetaBase
+    };
+  }
+
+  const empaques = (recetaBase || []).filter(row => {
+    if (normalizarTipoCompraItemQTAS_(row.tipoComponente) !== 'Insumo') return false;
+    const item = normalizarClaveTexto_(row.itemComponente);
+    return item !== normalizarClaveTexto_('Alcohol') && item !== normalizarClaveTexto_('Agua');
+  });
+  const componenteMaster = {
+    producto: producto,
+    unidadVenta: unidad,
+    orden: 1,
+    tipoComponente: 'Insumo',
+    itemComponente: masterItem,
+    cantidadComponente: numero_(CONTENIDO_UNIDAD_EXTRACTO_MASTER_QTAS),
+    unidadComponente: 'g',
+    mermaPct: 0
+  };
+
+  return {
+    origen: 'Master',
+    masterItem: masterItem,
+    componentes: [componenteMaster].concat(empaques)
   };
 }
 
 function sincronizarInventarioDesdeProduccionDetalleQTAS_(context) {
   const settings = Object.assign({
-    ss: SpreadsheetApp.getActive()
+    ss: SpreadsheetApp.getActive(),
+    reconstruirSnapshot: true
   }, context || {});
   const ss = settings.ss || SpreadsheetApp.getActive();
 
@@ -507,7 +735,12 @@ function sincronizarInventarioDesdeProduccionDetalleQTAS_(context) {
 
   if (movimientos.length) {
     appendMovimientosInventarioQTAS_(movimientosRef.sheet, movimientosRef.headers, movimientos);
-    reconstruirSnapshotInventarioQTAS_({ ss: ss });
+    if (settings.reconstruirSnapshot !== false) {
+      actualizarSnapshotInventarioIncrementalQTAS_({
+        ss: ss,
+        movimientos: movimientos
+      });
+    }
   }
 
   return {
@@ -517,7 +750,10 @@ function sincronizarInventarioDesdeProduccionDetalleQTAS_(context) {
   };
 }
 
-function asegurarControlesInventarioBaseQTAS_(candidatosAdicionales, spreadsheet) {
+function asegurarControlesInventarioBaseQTAS_(candidatosAdicionales, spreadsheet, options) {
+  const settings = Object.assign({
+    incluirModeloCompleto: true
+  }, options || {});
   const ss = spreadsheet || SpreadsheetApp.getActive();
   const sheet = ss.getSheetByName(QTAS.sheets.inventarioControl);
   if (!sheet) return [];
@@ -527,7 +763,10 @@ function asegurarControlesInventarioBaseQTAS_(candidatosAdicionales, spreadsheet
   const index = construirIndiceControlesInventarioQTAS_(
     existentes.map(row => normalizarControlInventarioQTAS_(row))
   );
-  const candidatos = construirCandidatosControlInventarioQTAS_(ss)
+  const candidatosBase = settings.incluirModeloCompleto === false
+    ? []
+    : construirCandidatosControlInventarioQTAS_(ss);
+  const candidatos = candidatosBase
     .concat((candidatosAdicionales || []).map(row => ({
       tipoItem: normalizarTipoCompraItemQTAS_(row.tipoItem || row.Tipo_Item),
       item: texto_(row.item || row.Item),
@@ -677,6 +916,91 @@ function reconstruirSnapshotInventarioQTAS_(payload) {
   const controlsIndex = construirIndiceControlesInventarioQTAS_(controles);
   const movimientos = settings.movimientos || leerObjetos_(ss.getSheetByName(QTAS.sheets.inventarioMovimientos));
   const rows = construirSnapshotInventarioQTAS_(movimientos, controlsIndex);
+
+  sobrescribirObjetosHojaQTAS_(snapshotRef.sheet, snapshotRef.headers, rows);
+  invalidarCacheDocumentoQTAS_(QTAS_INVENTARIO_DASHBOARD_CACHE_NAMESPACE);
+  return rows;
+}
+
+function actualizarSnapshotInventarioIncrementalQTAS_(payload) {
+  const settings = Object.assign({
+    ss: SpreadsheetApp.getActive(),
+    movimientos: []
+  }, payload || {});
+  const ss = settings.ss || SpreadsheetApp.getActive();
+  const movimientos = settings.movimientos || [];
+  const snapshotRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.inventarioSnapshot);
+  if (!snapshotRef.ok || !movimientos.length) return [];
+
+  const controles = listarControlesInventarioQTAS_(ss);
+  const controlesIndex = construirIndiceControlesInventarioQTAS_(controles);
+  const rows = leerObjetos_(snapshotRef.sheet).map(row => Object.assign({}, row));
+  const rowsPorClave = rows.reduce((index, row) => {
+    const key = claveControlInventarioQTAS_(row.Tipo_Item, row.Item, row.Unidad);
+    if (key) index[key] = row;
+    return index;
+  }, {});
+
+  // A snapshot incompleto se recompone desde movimientos para no acumular un saldo incorrecto.
+  const requiereReconstruccion = movimientos.some(movimiento => {
+    const key = claveControlInventarioQTAS_(
+      movimiento.Tipo_Item,
+      movimiento.Item,
+      movimiento.Unidad
+    );
+    const control = controlesIndex[key];
+    return control && control.activo && control.modoStock !== 'NoControlado' && !rowsPorClave[key];
+  });
+  if (requiereReconstruccion) {
+    return reconstruirSnapshotInventarioQTAS_({ ss: ss });
+  }
+
+  movimientos.forEach(movimiento => {
+    const key = claveControlInventarioQTAS_(
+      movimiento.Tipo_Item,
+      movimiento.Item,
+      movimiento.Unidad
+    );
+    const control = controlesIndex[key];
+    const row = rowsPorClave[key];
+    if (!control || !row || !control.activo || control.modoStock === 'NoControlado') return;
+
+    const signada = redondear_(numero_(movimiento.Cantidad_Signada));
+    const entradas = redondear_(numero_(row.Entradas) + Math.max(0, signada));
+    const salidas = redondear_(numero_(row.Salidas) + Math.abs(Math.min(0, signada)));
+    const fechaMovimiento = resolverFechaOperacion_(movimiento.Fecha_Movimiento, new Date());
+    const fechaAnterior = row.Ultimo_Movimiento
+      ? resolverFechaOperacion_(row.Ultimo_Movimiento, new Date(0))
+      : null;
+
+    Object.assign(row, {
+      Inventario_ID: texto_(row.Inventario_ID) || `STK-${normalizarClaveProductoQTAS_(control.item, control.unidad)}`.slice(0, 99),
+      Tipo_Item: control.tipoItem,
+      Item: control.item,
+      Unidad: control.unidad,
+      Modo_Stock: control.modoStock,
+      Entradas: entradas,
+      Salidas: salidas,
+      Stock_Actual: redondear_(entradas - salidas),
+      Stock_Minimo: control.stockMinimo,
+      Stock_Objetivo: control.stockObjetivo,
+      Estado_Stock: clasificarEstadoStockInventarioQTAS_(entradas - salidas, control.stockMinimo, control.stockObjetivo),
+      Ultimo_Movimiento: !fechaAnterior || fechaMovimiento > fechaAnterior
+        ? fechaMovimiento
+        : fechaAnterior,
+      Activo: control.activo,
+      Nota: control.nota
+    });
+  });
+
+  rows.sort((a, b) => {
+    const prioridad = prioridadEstadoStockInventarioQTAS_(a.Estado_Stock) - prioridadEstadoStockInventarioQTAS_(b.Estado_Stock);
+    if (prioridad !== 0) return prioridad;
+    if (texto_(a.Tipo_Item) !== texto_(b.Tipo_Item)) {
+      return texto_(a.Tipo_Item).localeCompare(texto_(b.Tipo_Item));
+    }
+    return texto_(a.Item).localeCompare(texto_(b.Item));
+  });
 
   sobrescribirObjetosHojaQTAS_(snapshotRef.sheet, snapshotRef.headers, rows);
   invalidarCacheDocumentoQTAS_(QTAS_INVENTARIO_DASHBOARD_CACHE_NAMESPACE);
@@ -869,14 +1193,21 @@ function construirMovimientosInventarioVentaLoteQTAS_(detalleRows, payload) {
   const componentes = settings.componentes || leerComponentesProductoActivosQTAS_(ss);
   const reglas = settings.reglas || leerReglasCostoProductoActivasQTAS_(ss);
   const controlsIndex = settings.controlsIndex || construirIndiceControlesInventarioQTAS_(listarControlesInventarioQTAS_(ss));
+  const disponibilidadCalcas = settings.limitarCalcas === true
+    ? (settings.disponibilidadCalcas || construirDisponibilidadCalcasInventarioQTAS_(ss))
+    : null;
 
-  return (detalleRows || []).reduce((acc, row) => acc.concat(
-    construirMovimientosInventarioVentaDesdeDetalleQTAS_(row, {
+  return (detalleRows || []).reduce((acc, row) => {
+    const movimientos = construirMovimientosInventarioVentaDesdeDetalleQTAS_(row, {
       componentes: componentes,
       reglas: reglas,
       controlsIndex: controlsIndex
-    })
-  ), []);
+    });
+    const ajustados = disponibilidadCalcas
+      ? limitarMovimientosCalcasPorDisponibilidadQTAS_(movimientos, disponibilidadCalcas)
+      : movimientos;
+    return acc.concat(ajustados);
+  }, []);
 }
 
 function construirMovimientosInventarioVentaDesdeDetalleQTAS_(row, context) {
@@ -1092,11 +1423,14 @@ function expandirSalidaInventarioStockeableQTAS_(context) {
 }
 
 function construirDetalleProduccionMaterializadoQTAS_(context) {
-  const componentes = (context.componentes || [])
+  const componentes = (context.componentesProduccion || context.componentes || [])
     .filter(row =>
       esMismaClaveProductoQTAS_(row.producto, row.unidadVenta, context.producto, context.unidad)
     );
-  const controlsIndex = construirIndiceControlesInventarioQTAS_(listarControlesInventarioQTAS_());
+  const controlsIndex = context.controlsIndex || construirIndiceControlesInventarioQTAS_(
+    listarControlesInventarioQTAS_(context.ss)
+  );
+  const disponibilidadCalcas = context.disponibilidadCalcas || construirDisponibilidadCalcasInventarioQTAS_(context.ss);
   const rows = [{
     Produccion_Detalle_ID: produccionDetalleIdQTAS_(context.produccionId, 1),
     Produccion_ID: context.produccionId,
@@ -1123,7 +1457,7 @@ function construirDetalleProduccionMaterializadoQTAS_(context) {
       nota: 'Consumo por produccion'
     });
 
-    movimientos.forEach(mov => {
+    limitarMovimientosCalcasPorDisponibilidadQTAS_(movimientos, disponibilidadCalcas).forEach(mov => {
       rows.push({
         Produccion_Detalle_ID: produccionDetalleIdQTAS_(context.produccionId, correlativo++),
         Produccion_ID: context.produccionId,
@@ -1139,6 +1473,48 @@ function construirDetalleProduccionMaterializadoQTAS_(context) {
   });
 
   return rows;
+}
+
+function construirDisponibilidadCalcasInventarioQTAS_(spreadsheet) {
+  return (listarSnapshotInventarioQTAS_(spreadsheet) || []).reduce((index, row) => {
+    if (!esCalcaInventarioQTAS_(row.item)) return index;
+    const key = claveControlInventarioQTAS_(row.tipoItem, row.item, row.unidad);
+    index[key] = Math.max(0, numero_(row.stockActual));
+    return index;
+  }, {});
+}
+
+function limitarMovimientosCalcasPorDisponibilidadQTAS_(movimientos, disponibilidad) {
+  return (movimientos || []).reduce((rows, movimiento) => {
+    const limitado = limitarMovimientoCalcaPorDisponibilidadQTAS_(movimiento, disponibilidad);
+    if (limitado) rows.push(limitado);
+    return rows;
+  }, []);
+}
+
+function limitarMovimientoCalcaPorDisponibilidadQTAS_(movimiento, disponibilidad) {
+  if (!movimiento || texto_(movimiento.Operacion) !== 'Salida' || !esCalcaInventarioQTAS_(movimiento.Item)) {
+    return movimiento;
+  }
+
+  const key = claveControlInventarioQTAS_(movimiento.Tipo_Item, movimiento.Item, movimiento.Unidad);
+  const disponible = Math.max(0, numero_(disponibilidad && disponibilidad[key]));
+  const solicitado = Math.abs(numero_(movimiento.Cantidad));
+  const aplicado = redondear_(Math.min(disponible, solicitado));
+  if (aplicado <= 0.009) return null;
+
+  disponibilidad[key] = redondear_(disponible - aplicado);
+  return Object.assign({}, movimiento, {
+    Cantidad: aplicado,
+    Cantidad_Signada: redondear_(-aplicado),
+    Nota: aplicado + 0.009 < solicitado
+      ? unirUnicos_([movimiento.Nota, 'Calca parcial por stock disponible'])
+      : movimiento.Nota
+  });
+}
+
+function esCalcaInventarioQTAS_(item) {
+  return normalizarClaveTexto_(item).indexOf('calca') === 0;
 }
 
 function appendMovimientosInventarioQTAS_(sheet, headers, rows) {

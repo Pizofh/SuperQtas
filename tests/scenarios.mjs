@@ -261,6 +261,7 @@ export const SCENARIOS = [
       let cuadresPendientes = await ctx.call('getCuadresPendientesQTAS');
       ctx.equal(ctx.num(cuadresPendientes.length), 1, 'La venta debe aparecer como cuadre pendiente.');
       ctx.equal(String(cuadresPendientes[0].motivoCuadre), 'Confirmar valor recibido', 'Debe conservarse el motivo del cuadre.');
+      ctx.equal(String(cuadresPendientes[0].tipoEntrega || ''), 'Recoge', 'Recoge y cuadre pendiente deben coexistir en la misma venta.');
 
       cuadre = await ctx.call('resolverVentaCuadreQTAS', {
         ventaId: venta.ventaId
@@ -1340,7 +1341,7 @@ export const SCENARIOS = [
           compraLinea('Insumo', 'Capsulas', 100, 'und', 1500, true, 'Capsulas vacias'),
           compraLinea('Insumo', 'Bolsa_Zip_Negra', 10, 'und', 3000, true, 'Zip negra micros'),
           compraLinea('Insumo', 'Bolsa_Papel_0_5lb', 10, 'und', 3000, true, 'Bolsa papel micros'),
-          compraLinea('Insumo', 'Calca_Micros_Logo', 10, 'und', 5000, true, 'Calca logo micros')
+          compraLinea('Insumo', 'Calca_Micros_Logo', 1, 'und', 5000, true, 'Calca logo micros')
         ]
       }));
       const produccion = await ctx.call('registrarProduccionQTAS', {
@@ -1380,7 +1381,7 @@ export const SCENARIOS = [
       ctx.equal(ctx.num(stockCapsulas.Stock_Actual), 90, 'Capsulas debe bajar por la produccion.');
       ctx.equal(ctx.num(stockZipNegra.Stock_Actual), 9, 'La venta debe consumir una zip negra por el pedido.');
       ctx.equal(ctx.num(stockBolsaPapel.Stock_Actual), 9, 'La venta debe consumir una bolsa papel 0.5 lb por el pedido.');
-      ctx.equal(ctx.num(stockCalcaMicros.Stock_Actual), 9, 'La venta debe consumir una calca logo por el pedido.');
+      ctx.equal(ctx.num(stockCalcaMicros.Stock_Actual), 0, 'La unica calca disponible debe consumirse por el pedido.');
       ctx.assert(
         movimientosVenta.some(row => row.Item === 'Bolsa_Zip_Negra' && row.Operacion === 'Salida'),
         'La venta debe consumir Bolsa_Zip_Negra.'
@@ -1401,6 +1402,32 @@ export const SCENARIOS = [
         !movimientosVenta.some(row => row.Item === 'Frasco_Capsulas' || row.Item === 'Calca_Micros_Instrucciones'),
         'Las ventas menores a 25 unidades no deben consumir frasco ni calca de instrucciones.'
       );
+
+      await ctx.call('registrarVentaQTAS', ventaPayloadBase({
+        cliente: { nombre: 'Cliente Micro Bajo Pedido Test' },
+        lineas: [
+          ventaLinea('100mg', 9, 'und', 2000)
+        ]
+      }));
+      const estadoBajoPedido = await snapshotLigero(ctx, {
+        sheetNames: ['Inventario_Snapshot', 'Producciones', 'Produccion_Detalle']
+      });
+      const snapshotBajoPedido = ctx.sheetRows(estadoBajoPedido, 'Inventario_Snapshot');
+      const produccionesBajoPedido = ctx.sheetRows(estadoBajoPedido, 'Producciones');
+      const stock100BajoPedido = snapshotBajoPedido.find(row => row.Item === '100mg' && row.Unidad === 'und');
+      const stockAcMedBajoPedido = snapshotBajoPedido.find(row => row.Item === 'AcMed' && row.Unidad === 'g');
+      const stockCapsulasBajoPedido = snapshotBajoPedido.find(row => row.Item === 'Capsulas' && row.Unidad === 'und');
+      const stockCalcaBajoPedido = snapshotBajoPedido.find(row => row.Item === 'Calca_Micros_Logo' && row.Unidad === 'und');
+
+      ctx.equal(produccionesBajoPedido.length, 2, 'La venta bajo pedido debe crear una produccion adicional.');
+      ctx.assert(
+        produccionesBajoPedido.some(row => String(row.Comentario_Produccion || '').includes('Produccion automatica por venta')),
+        'La produccion bajo pedido debe quedar trazable en Producciones.'
+      );
+      ctx.equal(ctx.num(stock100BajoPedido.Stock_Actual), 0, 'La micro bajo pedido no debe dejar terminado negativo.');
+      ctx.equal(ctx.num(stockAcMedBajoPedido.Stock_Actual), 8.9, 'La produccion bajo pedido debe descontar AcMed.');
+      ctx.equal(ctx.num(stockCapsulasBajoPedido.Stock_Actual), 89, 'La produccion bajo pedido debe descontar capsulas.');
+      ctx.equal(ctx.num(stockCalcaBajoPedido.Stock_Actual), 0, 'Sin calcas disponibles, el pedido debe continuar sin dejar stock negativo.');
     }
   },
   {
@@ -1478,7 +1505,7 @@ export const SCENARIOS = [
           compraLinea('Insumo', 'Alcohol', 200, 'g', 2526, true, 'Alcohol extracto'),
           compraLinea('Insumo', 'Goteros', 10, 'und', 10000, true, 'Goteros extracto'),
           compraLinea('Insumo', 'Bolsa_Papel_1lb', 10, 'und', 5000, true, 'Bolsa papel extracto'),
-          compraLinea('Insumo', 'Calca_Cordy_Ext', 10, 'und', 5000, true, 'Calca extracto')
+          compraLinea('Insumo', 'Calca_Cordy_Ext', 2, 'und', 5000, true, 'Calca extracto')
         ]
       }));
       const produccion = await ctx.call('registrarProduccionQTAS', {
@@ -1520,7 +1547,7 @@ export const SCENARIOS = [
       ctx.equal(ctx.num(stockAlcohol.Stock_Actual), 160, 'Alcohol debe bajar 40 g por 2 extractos.');
       ctx.equal(ctx.num(stockGoteros.Stock_Actual), 8, 'Goteros debe bajar 2 unidades.');
       ctx.equal(ctx.num(stockBolsaPapel.Stock_Actual), 8, 'Bolsa_Papel_1lb debe bajar 2 unidades.');
-      ctx.equal(ctx.num(stockCalcaCordyExt.Stock_Actual), 8, 'Calca_Cordy_Ext debe bajar 2 unidades.');
+      ctx.equal(ctx.num(stockCalcaCordyExt.Stock_Actual), 0, 'Calca_Cordy_Ext debe agotarse con el primer lote.');
 
       ctx.assert(
         movimientos.some(row => row.Item === 'Cordy' && row.Operacion === 'Salida'),
@@ -1550,6 +1577,40 @@ export const SCENARIOS = [
         !movimientos.some(row => row.Item === 'Agua'),
         'Agua no debe generar movimiento porque quedo NoControlado.'
       );
+
+      await ctx.call('registrarCompraQTAS', compraPayloadBase({
+        proveedor: 'Proveedor Master Extracto Test',
+        lineas: [
+          compraLinea('Insumo', 'CordyExt_Master', 100, 'g', 50000, true, 'Extracto en frasco master')
+        ]
+      }));
+      await ctx.call('registrarVentaQTAS', ventaPayloadBase({
+        cliente: { nombre: 'Cliente Extracto Bajo Pedido Test' },
+        lineas: [
+          ventaLinea('CordyExt', 3, 'und', 50000)
+        ]
+      }));
+      const estadoMaster = await snapshotLigero(ctx, {
+        sheetNames: ['Inventario_Movimientos', 'Inventario_Snapshot', 'Producciones', 'Produccion_Detalle']
+      });
+      const snapshotMaster = ctx.sheetRows(estadoMaster, 'Inventario_Snapshot');
+      const produccionesMaster = ctx.sheetRows(estadoMaster, 'Producciones');
+      const movimientoMaster = ctx.sheetRows(estadoMaster, 'Inventario_Movimientos')
+        .find(row => row.Item === 'CordyExt_Master' && row.Operacion === 'Salida');
+      const stockCordyExtMaster = snapshotMaster.find(row => row.Item === 'CordyExt' && row.Unidad === 'und');
+      const stockMaster = snapshotMaster.find(row => row.Item === 'CordyExt_Master' && row.Unidad === 'g');
+      const stockGoterosMaster = snapshotMaster.find(row => row.Item === 'Goteros' && row.Unidad === 'und');
+      const stockBolsaMaster = snapshotMaster.find(row => row.Item === 'Bolsa_Papel_1lb' && row.Unidad === 'und');
+      const stockCalcaMaster = snapshotMaster.find(row => row.Item === 'Calca_Cordy_Ext' && row.Unidad === 'und');
+
+      ctx.equal(produccionesMaster.length, 2, 'El faltante de extracto debe crear una produccion adicional.');
+      ctx.assert(movimientoMaster, 'La produccion automatica debe consumir extracto master.');
+      ctx.equal(ctx.num(movimientoMaster.Cantidad), 50, 'Cada extracto terminado debe consumir 50 g del master.');
+      ctx.equal(ctx.num(stockCordyExtMaster.Stock_Actual), 0, 'La venta no debe dejar extracto terminado negativo.');
+      ctx.equal(ctx.num(stockMaster.Stock_Actual), 50, 'El master debe bajar 50 g por el extracto servido.');
+      ctx.equal(ctx.num(stockGoterosMaster.Stock_Actual), 7, 'El extracto servido debe consumir un gotero adicional.');
+      ctx.equal(ctx.num(stockBolsaMaster.Stock_Actual), 7, 'El extracto servido debe consumir una bolsa adicional.');
+      ctx.equal(ctx.num(stockCalcaMaster.Stock_Actual), 0, 'Sin calcas disponibles, el extracto servido debe continuar sin dejar stock negativo.');
     }
   }
 ];
