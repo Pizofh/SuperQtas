@@ -377,8 +377,18 @@ function sincronizarInventarioDesdeCompraQTAS_(context) {
   }
 
   const controlsIndex = construirIndiceControlesInventarioQTAS_(listarControlesInventarioQTAS_(ss));
+  const detallesConMovimiento = leerObjetos_(movimientosRef.sheet)
+    .filter(row => normalizarClaveTexto_(row.Fuente_Tipo) === normalizarClaveTexto_('Compra'))
+    .reduce((index, row) => {
+      const detalleId = texto_(row.Detalle_ID) || texto_(row.Fuente_ID);
+      if (detalleId) index[detalleId] = true;
+      return index;
+    }, {});
+  const lineasPendientes = (settings.lineas || []).filter(linea =>
+    texto_(linea.Compra_Detalle_ID) && !detallesConMovimiento[texto_(linea.Compra_Detalle_ID)]
+  );
   const movimientos = construirMovimientosInventarioCompraDetalleQTAS_(
-    settings.lineas || [],
+    lineasPendientes,
     {
       compraId: settings.compraId,
       fechaCompra: settings.fechaCompra,

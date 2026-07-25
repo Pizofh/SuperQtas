@@ -1057,7 +1057,9 @@ function marcarVentaParaCuadreQTAS(payload) {
 
     return {
       ok: true,
-      cuadres: construirCuadresPendientesQTAS_(construirEstadoVentasQTAS_(), ss)
+      ventaId: ventaId,
+      estadoCuadre: QTAS.status.cuadre.pendiente,
+      comentarioCuadre: comentario
     };
   });
 }
@@ -1089,7 +1091,8 @@ function resolverVentaCuadreQTAS(payload) {
 
     return {
       ok: true,
-      cuadres: construirCuadresPendientesQTAS_(construirEstadoVentasQTAS_(), ss)
+      ventaId: ventaId,
+      estadoCuadre: QTAS.status.cuadre.resuelto
     };
   });
 }
