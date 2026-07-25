@@ -1180,7 +1180,7 @@
               <div>
                 <h2>Stock actual</h2>
               </div>
-              <button class="btn ghost" type="button" onclick="cargarInventario(false)">Recargar</button>
+              <button class="btn ghost" type="button" onclick="cargarInventario(false, { forceRefresh: true })">Recargar</button>
             </div>
 
             <div id="inventarioStockLista" class="list list-scroll">
@@ -4138,46 +4138,107 @@
       produccionesRecientes: [],
       productosFabricados: []
     };
+    const CACHE_INVENTARIO_DASHBOARD_KEY = 'psylo-scibio:superqtas:inventario:v1';
+    const CACHE_INVENTARIO_DASHBOARD_TTL_MS = 2 * 60 * 1000;
+    let cargaInventarioId = 0;
+    let firmaInventarioDashboard = '';
 
     function initInventario() {
       document.getElementById('invFechaProduccion').value = '';
+      const cacheado = leerCacheInventarioDashboard_();
+      if (cacheado) {
+        aplicarDashboardInventario_(cacheado, { inicial: true, desdeCache: true });
+        cargarInventario(false, { silencioso: true });
+        return;
+      }
       cargarInventario(true);
     }
 
-    function cargarInventario(inicial) {
-      document.getElementById('estadoInventario').innerText = 'Cargando inventario...';
+    function leerCacheInventarioDashboard_() {
+      try {
+        const raw = localStorage.getItem(CACHE_INVENTARIO_DASHBOARD_KEY);
+        const cacheado = raw ? JSON.parse(raw) : null;
+        if (!cacheado || !cacheado.guardadoEn || !cacheado.data) return null;
+        if (Date.now() - cacheado.guardadoEn > CACHE_INVENTARIO_DASHBOARD_TTL_MS) return null;
+        return cacheado.data;
+      } catch (error) {
+        return null;
+      }
+    }
+
+    function guardarCacheInventarioDashboard_(data) {
+      try {
+        localStorage.setItem(CACHE_INVENTARIO_DASHBOARD_KEY, JSON.stringify({
+          guardadoEn: Date.now(),
+          data: data
+        }));
+      } catch (error) {
+        // El inventario sigue disponible si el navegador bloquea almacenamiento local.
+      }
+    }
+
+    function mensajeEstadoInventarioActualizado_() {
+      const sincronizacion = inventarioDashboard.sincronizacion || {};
+      return !sincronizacion.habilitada
+        ? 'Inventario en pausa para carga historica. Las operaciones se guardan sin crear movimientos de stock.'
+        : (inventarioDashboard.stockInicialPendiente
+          ? 'Inventario actualizado. Puede haber negativos mientras cargas conteos iniciales o lotes ya fabricados.'
+          : 'Inventario actualizado.');
+    }
+
+    function aplicarDashboardInventario_(data, options) {
+      const settings = options || {};
+      const proximo = data || inventarioDashboard;
+      const firma = JSON.stringify(proximo);
+      const esMismo = firma && firma === firmaInventarioDashboard;
+
+      inventarioDashboard = proximo;
+      firmaInventarioDashboard = firma;
+
+      if (!esMismo || !settings.silencioso) {
+        if (!document.getElementById('invFechaProduccion').value) {
+          document.getElementById('invFechaProduccion').value = inventarioDashboard.hoy || fechaHoyLocal_();
+        }
+
+        renderResumenInventario_();
+        renderProductosFabricadosInventario_();
+        renderAlertasInventario_();
+        renderStockInventario_();
+        renderMovimientosInventario_();
+        renderProduccionesRecientesInventario_();
+      }
+
+      if (settings.inicial) {
+        document.getElementById('invCantidadProduccion').value = '';
+        document.getElementById('invComentarioProduccion').value = '';
+      }
+
+      document.getElementById('estadoInventario').innerText = settings.desdeCache
+        ? 'Inventario reciente. Actualizando en segundo plano...'
+        : mensajeEstadoInventarioActualizado_();
+    }
+
+    function cargarInventario(inicial, options) {
+      const settings = options || {};
+      const requestId = ++cargaInventarioId;
+      if (!settings.silencioso) {
+        document.getElementById('estadoInventario').innerText = 'Cargando inventario...';
+      }
 
       google.script.run
         .withSuccessHandler(data => {
-          inventarioDashboard = data || inventarioDashboard;
-
-          if (!document.getElementById('invFechaProduccion').value) {
-            document.getElementById('invFechaProduccion').value = inventarioDashboard.hoy || fechaHoyLocal_();
-          }
-
-          renderResumenInventario_();
-          renderProductosFabricadosInventario_();
-          renderAlertasInventario_();
-          renderStockInventario_();
-          renderMovimientosInventario_();
-          renderProduccionesRecientesInventario_();
-
-          if (inicial) {
-            document.getElementById('invCantidadProduccion').value = '';
-            document.getElementById('invComentarioProduccion').value = '';
-          }
-
-          const sincronizacion = inventarioDashboard.sincronizacion || {};
-          document.getElementById('estadoInventario').innerText = !sincronizacion.habilitada
-            ? 'Inventario en pausa para carga historica. Las operaciones se guardan sin crear movimientos de stock.'
-            : (inventarioDashboard.stockInicialPendiente
-              ? 'Inventario actualizado. Puede haber negativos mientras cargas conteos iniciales o lotes ya fabricados.'
-              : 'Inventario actualizado.');
+          if (requestId !== cargaInventarioId) return;
+          guardarCacheInventarioDashboard_(data);
+          aplicarDashboardInventario_(data, {
+            inicial: inicial,
+            silencioso: Boolean(settings.silencioso)
+          });
         })
         .withFailureHandler(err => {
+          if (requestId !== cargaInventarioId || settings.silencioso) return;
           document.getElementById('estadoInventario').innerText = construirMensajeEstadoError_('No se pudo cargar inventario', err);
         })
-        .getDashboardInventarioQTAS();
+        .getDashboardInventarioQTAS({ forceRefresh: settings.forceRefresh === true });
     }
 
     function renderResumenInventario_() {
@@ -4315,13 +4376,8 @@
 
       google.script.run
         .withSuccessHandler(resp => {
-          inventarioDashboard = resp.dashboard || inventarioDashboard;
-          renderResumenInventario_();
-          renderProductosFabricadosInventario_();
-          renderAlertasInventario_();
-          renderStockInventario_();
-          renderMovimientosInventario_();
-          renderProduccionesRecientesInventario_();
+          guardarCacheInventarioDashboard_(resp.dashboard || inventarioDashboard);
+          aplicarDashboardInventario_(resp.dashboard || inventarioDashboard, {});
           document.getElementById('invCantidadProduccion').value = '';
           document.getElementById('invComentarioProduccion').value = '';
           document.getElementById('estadoInventario').innerText =

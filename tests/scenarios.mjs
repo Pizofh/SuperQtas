@@ -1182,6 +1182,20 @@ export const SCENARIOS = [
       ctx.assert(bolsas, 'Bolsa_Zip_Negra debe existir en snapshot.');
       ctx.equal(ctx.num(alcohol.Stock_Actual), 100, 'Alcohol debe quedar con stock 100.');
       ctx.equal(ctx.num(bolsas.Stock_Actual), 20, 'Bolsa_Zip_Negra debe quedar con stock 20.');
+
+      const dashboard = await ctx.call('getDashboardInventarioQTAS');
+      const alcoholDashboard = (dashboard.stock || []).find(row =>
+        row.item === 'Alcohol' && row.unidad === 'g'
+      );
+      ctx.assert(alcoholDashboard, 'El dashboard debe reflejar el snapshot actualizado.');
+      ctx.equal(ctx.num(alcoholDashboard.stockActual), 100, 'El dashboard debe mostrar el stock actualizado.');
+
+      const dashboardCacheado = await ctx.call('getDashboardInventarioQTAS');
+      ctx.equal(
+        (dashboardCacheado.stock || []).length,
+        (dashboard.stock || []).length,
+        'La segunda lectura del dashboard debe conservar el inventario disponible.'
+      );
     }
   },
   {
