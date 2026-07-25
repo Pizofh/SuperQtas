@@ -32,6 +32,7 @@ function registrarCompraQTAS(payload) {
   return withScriptLock_('registrar compra', () => {
     asegurarModeloOperativoQTAS_();
     validarCompraQTAS_(payload);
+    const procesarPostCompraSincrono = Boolean(payload && payload.procesarPostCompraSincrono === true);
 
     const mediosActivos = leerMediosPagoConfiguradosQTAS_()
       .filter(row => row.activo)
@@ -107,26 +108,32 @@ function registrarCompraQTAS(payload) {
       fechaCompra: fechaCompraBase,
       lineas: lineasPreparadas
     });
-    const inventario = sincronizarInventarioDesdeCompraQTAS_({
-      ss: ss,
-      compraId: compraId,
-      fechaCompra: fechaCompraBase,
-      lineas: lineasPreparadas
-    });
+    let inventario;
+    let costoProductoCalculado;
+    let postProceso;
 
-    let costoProductoCalculado = null;
-    try {
-      costoProductoCalculado = reconstruirCostoProductoCalculadoInternoQTAS_({
-        ss: ss,
-        fechaBase: new Date(),
-        ahora: ahora
+    if (procesarPostCompraSincrono) {
+      const resultado = procesarPostCompraDetalleQTAS_(ss, [compraId], ahora);
+      inventario = resultado.inventario;
+      costoProductoCalculado = resultado.costoProductoCalculado;
+      postProceso = {
+        queued: false,
+        processed: true
+      };
+    } else {
+      postProceso = encolarPostProcesoCompraQTAS_({
+        spreadsheetId: ss.getId(),
+        compraId: compraId,
+        programar: !payload || payload.programarPostCompra !== false
       });
-    } catch (error) {
-      Logger.log(`No se pudo refrescar Costo_Producto_Calc tras Compra ${compraId}: ${error.message}`);
+      inventario = {
+        ok: true,
+        queued: true,
+        movimientos: 0
+      };
       costoProductoCalculado = {
-        ok: false,
-        skipped: true,
-        reason: error.message,
+        ok: true,
+        queued: true,
         rows: 0,
         inserted: 0,
         updated: 0,
@@ -145,9 +152,262 @@ function registrarCompraQTAS(payload) {
       origenFondos: origenesFondosCompra.origenFondos,
       origenesFondosAsignados: origenesFondosCompra.rows.length,
       itemsResumen: itemsResumen,
-      costoProductoCalculado: costoProductoCalculado
+      compraReciente: resumenCompraRecienteQTAS_({
+        Compra_ID: compraId,
+        Fecha_Compra: fechaCompra,
+        Proveedor: proveedor,
+        Items_Resumen: itemsResumen,
+        Total_Compra: totalCompra,
+        Medio_Pago: medioPago,
+        Comentario_Compra: comentarioCompra
+      }, construirResumenFondosCompraDesdeFilasQTAS_(origenesFondosCompra.rows)),
+      costoProductoCalculado: costoProductoCalculado,
+      postProceso: postProceso
     };
   });
+}
+
+const QTAS_POST_COMPRA_QUEUE_KEY = 'QTAS_POST_COMPRA_QUEUE_V1';
+const QTAS_POST_COMPRA_PROCESSING_KEY = 'QTAS_POST_COMPRA_PROCESSING_V1';
+const QTAS_POST_COMPRA_TRIGGER = 'procesarColaPostCompraQTAS';
+const QTAS_POST_COMPRA_MAX_COMPRAS_POR_EJECUCION = 8;
+const QTAS_POST_COMPRA_PROCESSING_MAX_MS = 10 * 60 * 1000;
+
+function encolarPostProcesoCompraQTAS_(payload) {
+  const settings = Object.assign({
+    spreadsheetId: '',
+    compraId: 0,
+    programar: true
+  }, payload || {});
+  const spreadsheetId = texto_(settings.spreadsheetId);
+  const compraId = numero_(settings.compraId);
+  if (!spreadsheetId || compraId <= 0) {
+    throw new Error('Falta la compra o el libro para encolar el postproceso.');
+  }
+
+  const pendientes = leerColaPostCompraQTAS_();
+  const existe = pendientes.some(item =>
+    texto_(item.spreadsheetId) === spreadsheetId && numero_(item.compraId) === compraId
+  );
+  if (!existe) {
+    pendientes.push({
+      spreadsheetId: spreadsheetId,
+      compraId: compraId,
+      queuedAt: new Date().toISOString()
+    });
+    guardarColaPostCompraQTAS_(pendientes);
+  }
+
+  const programacion = settings.programar ? programarColaPostCompraQTAS_() : {
+    scheduled: false,
+    reason: 'Programacion diferida desactivada.'
+  };
+  return {
+    ok: true,
+    queued: true,
+    compraId: compraId,
+    position: pendientes.findIndex(item =>
+      texto_(item.spreadsheetId) === spreadsheetId && numero_(item.compraId) === compraId
+    ) + 1,
+    pending: pendientes.length,
+    scheduled: programacion.scheduled,
+    scheduleReason: programacion.reason || ''
+  };
+}
+
+function procesarColaPostCompraQTAS() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(250)) {
+    return {
+      ok: true,
+      deferred: true,
+      reason: 'Hay otra operacion registrando datos.'
+    };
+  }
+
+  let lote = [];
+  try {
+    const properties = PropertiesService.getScriptProperties();
+    const procesandoDesde = texto_(properties.getProperty(QTAS_POST_COMPRA_PROCESSING_KEY));
+    const procesandoDesdeMs = procesandoDesde ? new Date(procesandoDesde).getTime() : 0;
+    const procesoVigente = procesandoDesdeMs &&
+      new Date().getTime() - procesandoDesdeMs < QTAS_POST_COMPRA_PROCESSING_MAX_MS;
+    if (procesoVigente) {
+      return {
+        ok: true,
+        deferred: true,
+        reason: 'Ya hay un postproceso de compra en curso.'
+      };
+    }
+    if (procesandoDesde) properties.deleteProperty(QTAS_POST_COMPRA_PROCESSING_KEY);
+    const pendientes = leerColaPostCompraQTAS_();
+    if (!pendientes.length) return { ok: true, processed: 0, pending: 0 };
+
+    lote = pendientes.slice(0, QTAS_POST_COMPRA_MAX_COMPRAS_POR_EJECUCION);
+    const restantes = pendientes.slice(QTAS_POST_COMPRA_MAX_COMPRAS_POR_EJECUCION);
+    properties.setProperty(QTAS_POST_COMPRA_PROCESSING_KEY, new Date().toISOString());
+    guardarColaPostCompraQTAS_(restantes);
+  } finally {
+    lock.releaseLock();
+  }
+
+  try {
+    const porLibro = lote.reduce((index, item) => {
+      const spreadsheetId = texto_(item.spreadsheetId);
+      if (!spreadsheetId) return index;
+      if (!index[spreadsheetId]) index[spreadsheetId] = [];
+      index[spreadsheetId].push(item);
+      return index;
+    }, {});
+    const resultados = [];
+    const reintentos = [];
+
+    Object.keys(porLibro).forEach(spreadsheetId => {
+      const compras = porLibro[spreadsheetId];
+      const ss = SpreadsheetApp.openById(spreadsheetId);
+      const compraIds = compras.map(item => numero_(item.compraId));
+      const resultado = procesarPostCompraDetalleQTAS_(ss, compraIds, new Date());
+      const completado = resultado.inventario.ok && resultado.costoProductoCalculado.ok;
+      if (!completado) compras.forEach(item => reintentos.push(item));
+      resultados.push({
+        spreadsheetId: spreadsheetId,
+        compras: compraIds,
+        completed: completado,
+        inventario: resultado.inventario,
+        costoProductoCalculado: resultado.costoProductoCalculado
+      });
+    });
+
+    const pendientesSiguientes = finalizarPostProcesoCompraQTAS_(reintentos);
+    return {
+      ok: true,
+      processed: lote.length,
+      pending: pendientesSiguientes.length,
+      results: resultados
+    };
+  } catch (error) {
+    Logger.log(`No se pudo procesar la cola postcompra: ${error.message}`);
+    const pendientesSiguientes = finalizarPostProcesoCompraQTAS_(lote);
+    return {
+      ok: false,
+      retryScheduled: true,
+      reason: error.message,
+      pending: pendientesSiguientes.length
+    };
+  }
+}
+
+function finalizarPostProcesoCompraQTAS_(reintentos) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(5000);
+  try {
+    const pendientesActuales = leerColaPostCompraQTAS_();
+    const pendientes = unirColaPostCompraQTAS_(reintentos, pendientesActuales);
+    guardarColaPostCompraQTAS_(pendientes);
+    PropertiesService.getScriptProperties().deleteProperty(QTAS_POST_COMPRA_PROCESSING_KEY);
+    if (pendientes.length) programarColaPostCompraQTAS_();
+    return pendientes;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function unirColaPostCompraQTAS_(primero, segundo) {
+  const vistos = {};
+  return (primero || []).concat(segundo || []).filter(item => {
+    const key = [texto_(item && item.spreadsheetId), numero_(item && item.compraId)].join('|');
+    if (!texto_(item && item.spreadsheetId) || numero_(item && item.compraId) <= 0 || vistos[key]) return false;
+    vistos[key] = true;
+    return true;
+  });
+}
+
+function procesarPostCompraDetalleQTAS_(ss, compraIds, ahora) {
+  const ids = (compraIds || []).reduce((index, value) => {
+    const compraId = numero_(value);
+    if (compraId > 0) index[compraId] = true;
+    return index;
+  }, {});
+  const detalleSheet = ss.getSheetByName(QTAS.sheets.compraDetalle);
+  const detalleRows = leerObjetos_(detalleSheet)
+    .filter(row => ids[numero_(row.Compra_ID)] && !esRegistroAnulado_(row.Estado_Registro));
+  let inventario;
+  let costoProductoCalculado;
+
+  try {
+    inventario = sincronizarInventarioDesdeCompraQTAS_({
+      ss: ss,
+      lineas: detalleRows
+    });
+  } catch (error) {
+    Logger.log(`No se pudo sincronizar inventario postcompra: ${error.message}`);
+    inventario = { ok: false, skipped: true, reason: error.message, movimientos: 0 };
+  }
+
+  try {
+    costoProductoCalculado = reconstruirCostoProductoCalculadoInternoQTAS_({
+      ss: ss,
+      fechaBase: new Date(),
+      ahora: ahora || new Date()
+    });
+  } catch (error) {
+    Logger.log(`No se pudo refrescar Costo_Producto_Calc postcompra: ${error.message}`);
+    costoProductoCalculado = {
+      ok: false,
+      skipped: true,
+      reason: error.message,
+      rows: 0,
+      inserted: 0,
+      updated: 0,
+      stale: 0,
+      fechaBase: fechaInput_(new Date())
+    };
+  }
+
+  return {
+    inventario: inventario,
+    costoProductoCalculado: costoProductoCalculado
+  };
+}
+
+function leerColaPostCompraQTAS_() {
+  const raw = texto_(PropertiesService.getScriptProperties().getProperty(QTAS_POST_COMPRA_QUEUE_KEY));
+  if (!raw) return [];
+  try {
+    const value = JSON.parse(raw);
+    return Array.isArray(value) ? value.filter(item =>
+      texto_(item && item.spreadsheetId) && numero_(item && item.compraId) > 0
+    ) : [];
+  } catch (error) {
+    Logger.log(`La cola postcompra tenia un formato invalido: ${error.message}`);
+    return [];
+  }
+}
+
+function guardarColaPostCompraQTAS_(items) {
+  const properties = PropertiesService.getScriptProperties();
+  if (!items || !items.length) {
+    properties.deleteProperty(QTAS_POST_COMPRA_QUEUE_KEY);
+    return;
+  }
+  properties.setProperty(QTAS_POST_COMPRA_QUEUE_KEY, JSON.stringify(items));
+}
+
+function programarColaPostCompraQTAS_() {
+  try {
+    const existe = ScriptApp.getProjectTriggers()
+      .some(trigger => trigger.getHandlerFunction() === QTAS_POST_COMPRA_TRIGGER);
+    if (existe) return { scheduled: true, reason: 'Ya existe una ejecucion programada.' };
+
+    ScriptApp.newTrigger(QTAS_POST_COMPRA_TRIGGER)
+      .timeBased()
+      .after(15 * 1000)
+      .create();
+    return { scheduled: true, reason: '' };
+  } catch (error) {
+    Logger.log(`No se pudo programar la cola postcompra: ${error.message}`);
+    return { scheduled: false, reason: error.message };
+  }
 }
 
 function prepararLineaCompraQTAS_(context) {
@@ -454,15 +714,21 @@ function listarComprasRecientesQTAS_() {
       return numero_(b.Compra_ID) - numero_(a.Compra_ID);
     })
     .slice(0, 12)
-    .map(row => ({
-      compraId: numero_(row.Compra_ID),
-      fechaCompra: fechaInput_(row.Fecha_Compra),
-      proveedor: texto_(row.Proveedor),
-      itemsResumen: texto_(row.Items_Resumen),
-      totalCompra: redondear_(numero_(row.Total_Compra)),
-      medioPago: texto_(row.Medio_Pago),
-      origenFondos: resumenOrigenesFondosCompraQTAS_(origenesPorCompra[numero_(row.Compra_ID)])
-    }));
+    .map(row => resumenCompraRecienteQTAS_(row, origenesPorCompra[numero_(row.Compra_ID)]));
+}
+
+function resumenCompraRecienteQTAS_(row, origenes) {
+  return {
+    compraId: numero_(row && row.Compra_ID),
+    fechaCompra: fechaInput_(row && row.Fecha_Compra),
+    proveedor: texto_(row && row.Proveedor),
+    itemsResumen: texto_(row && row.Items_Resumen),
+    totalCompra: redondear_(numero_(row && row.Total_Compra)),
+    medioPago: texto_(row && row.Medio_Pago),
+    comentarioCompra: texto_(row && row.Comentario_Compra),
+    origenFondos: resumenOrigenesFondosCompraQTAS_(origenes),
+    aportesFondos: resumenAportesFondosCompraQTAS_(origenes)
+  };
 }
 
 function listarOrigenesFondosDisponiblesQTAS_() {
@@ -824,10 +1090,12 @@ function distribuirMontoOrigenFondosQTAS_(montoBase, aportantes) {
   });
 }
 
-function construirCompraOrigenIdQTAS_(compraDetalleId, aportante) {
+function construirCompraOrigenIdQTAS_(compraDetalleId, aportante, origenFondos) {
   const detalle = texto_(compraDetalleId).replace(/[^A-Za-z0-9_-]+/g, '_');
   const persona = texto_(aportante).replace(/[^A-Za-z0-9_-]+/g, '_');
-  return `COF-${detalle}-${persona}`.slice(0, 99);
+  const origen = texto_(origenFondos).replace(/[^A-Za-z0-9_-]+/g, '_');
+  const sufijoOrigen = origen ? `-${origen}` : '';
+  return `COF-${detalle}${sufijoOrigen}-${persona}`.slice(0, 99);
 }
 
 function leerOrigenesFondosPorCompraQTAS_() {
@@ -848,7 +1116,9 @@ function leerOrigenesFondosPorCompraQTAS_() {
     if (!acc[compraId]) {
       acc[compraId] = {
         origenes: [],
-        aportantes: []
+        aportantes: [],
+        montosPorOrigen: {},
+        montosPorAportante: {}
       };
     }
 
@@ -856,10 +1126,20 @@ function leerOrigenesFondosPorCompraQTAS_() {
     if (origen && acc[compraId].origenes.indexOf(origen) < 0) {
       acc[compraId].origenes.push(origen);
     }
+    if (origen) {
+      acc[compraId].montosPorOrigen[origen] = redondear_(
+        numero_(acc[compraId].montosPorOrigen[origen]) + numero_(row.Monto_Asignado)
+      );
+    }
 
     const aportante = normalizarAportanteOrigenFondosQTAS_(row.Aportante);
     if (aportante && acc[compraId].aportantes.indexOf(aportante) < 0) {
       acc[compraId].aportantes.push(aportante);
+    }
+    if (aportante) {
+      acc[compraId].montosPorAportante[aportante] = redondear_(
+        numero_(acc[compraId].montosPorAportante[aportante]) + numero_(row.Monto_Asignado)
+      );
     }
 
     return acc;
@@ -869,6 +1149,311 @@ function leerOrigenesFondosPorCompraQTAS_() {
 function resumenOrigenesFondosCompraQTAS_(row) {
   if (!row || !row.origenes || !row.origenes.length) return '';
   return row.origenes.join(' | ');
+}
+
+function resumenAportesFondosCompraQTAS_(row) {
+  const montos = row && row.montosPorOrigen ? row.montosPorOrigen : {};
+  return Object.keys(montos)
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+    .map(origen => `${origen} ${moneda_(numero_(montos[origen]))}`)
+    .join(' | ');
+}
+
+function getResumenCompraParaCuadreFondosQTAS(payload) {
+  validarModeloSoloLecturaQTAS_({
+    sheetNames: [
+      QTAS.sheets.compras,
+      QTAS.sheets.compraDetalle,
+      QTAS.sheets.compraOrigenesFondos
+    ],
+    validarConfig: false
+  });
+
+  const compraId = numero_(payload && payload.compraId);
+  if (compraId <= 0) throw new Error('Falta la compra para cuadrar sus fondos.');
+
+  const ss = SpreadsheetApp.getActive();
+  const datos = obtenerDatosCompraParaCuadreFondosQTAS_(ss, compraId);
+  return resumenCompraParaCuadreFondosQTAS_(datos);
+}
+
+function cuadrarFondosCompraQTAS(payload) {
+  return withScriptLock_('cuadrar fondos compra', () => {
+    validarModeloSoloLecturaQTAS_({
+      sheetNames: [
+        QTAS.sheets.compras,
+        QTAS.sheets.compraDetalle,
+        QTAS.sheets.compraOrigenesFondos
+      ],
+      validarConfig: false
+    });
+
+    const compraId = numero_(payload && payload.compraId);
+    if (compraId <= 0) throw new Error('Falta la compra para cuadrar sus fondos.');
+
+    const ss = SpreadsheetApp.getActive();
+    const datos = obtenerDatosCompraParaCuadreFondosQTAS_(ss, compraId);
+    const aportes = normalizarAportesCuadreFondosCompraQTAS_(payload && payload.aportes);
+    const totalAportes = redondear_(sumar_(Object.keys(aportes).map(origen => aportes[origen])));
+    const totalCompra = redondear_(numero_(datos.compra.Total_Compra));
+
+    if (Math.abs(totalAportes - totalCompra) > 0.009) {
+      throw new Error(
+        `Los aportes deben sumar ${moneda_(totalCompra)}. Actualmente suman ${moneda_(totalAportes)}.`
+      );
+    }
+
+    validarAsignacionesActualesCompraQTAS_(datos);
+    const nuevasFilas = construirFilasCuadreFondosCompraQTAS_({
+      compra: datos.compra,
+      detalles: datos.detalles,
+      filasActualesPorDetalle: datos.filasPorDetalle,
+      aportes: aportes,
+      comentarioCuadre: texto_(payload && payload.comentarioCuadre)
+    });
+    const totalAntes = redondear_(sumar_(datos.todasLasFilas.map(row => numero_(row.Monto_Asignado))));
+    const filasDespues = datos.todasLasFilas
+      .filter(row => numero_(row.Compra_ID) !== compraId)
+      .concat(nuevasFilas);
+    const totalDespues = redondear_(sumar_(filasDespues.map(row => numero_(row.Monto_Asignado))));
+
+    if (Math.abs(totalAntes - totalDespues) > 0.009) {
+      throw new Error('El cuadre alteraria el total general de fondos. No se aplico ningun cambio.');
+    }
+
+    validarFilasCuadreFondosCompraQTAS_(datos, nuevasFilas, aportes);
+    sobrescribirObjetosHojaQTAS_(datos.origenesSheet, datos.origenesHeaders, filasDespues);
+    limpiarCachesEjecucionQTAS_();
+    invalidarCacheDocumentoQTAS_('origenes_fondos_reglas_memoria_v2');
+
+    const resumenFondos = construirResumenFondosCompraDesdeFilasQTAS_(nuevasFilas);
+    return {
+      ok: true,
+      compraId: compraId,
+      totalCompra: totalCompra,
+      aportes: aportes,
+      filasActualizadas: nuevasFilas.length,
+      totalGeneralAntes: totalAntes,
+      totalGeneralDespues: totalDespues,
+      compra: resumenCompraRecienteQTAS_(datos.compra, resumenFondos)
+    };
+  });
+}
+
+function obtenerDatosCompraParaCuadreFondosQTAS_(ss, compraId) {
+  const comprasSheet = ss.getSheetByName(QTAS.sheets.compras);
+  const detalleSheet = ss.getSheetByName(QTAS.sheets.compraDetalle);
+  const origenesSheet = ss.getSheetByName(QTAS.sheets.compraOrigenesFondos);
+  const compra = leerObjetos_(comprasSheet)
+    .find(row => numero_(row.Compra_ID) === compraId && !esRegistroAnulado_(row.Estado_Registro));
+  if (!compra) throw new Error('La compra no esta disponible para cuadrar fondos.');
+
+  const detalles = leerObjetos_(detalleSheet)
+    .filter(row => numero_(row.Compra_ID) === compraId && !esRegistroAnulado_(row.Estado_Registro));
+  if (!detalles.length) throw new Error('La compra no tiene lineas activas para cuadrar.');
+
+  const todasLasFilas = leerObjetos_(origenesSheet);
+  const filasCompra = todasLasFilas.filter(row => numero_(row.Compra_ID) === compraId);
+  const filasPorDetalle = filasCompra.reduce((index, row) => {
+    const detalleId = texto_(row.Compra_Detalle_ID);
+    if (!detalleId) return index;
+    if (!index[detalleId]) index[detalleId] = [];
+    index[detalleId].push(row);
+    return index;
+  }, {});
+
+  return {
+    compra: compra,
+    detalles: detalles,
+    todasLasFilas: todasLasFilas,
+    filasCompra: filasCompra,
+    filasPorDetalle: filasPorDetalle,
+    origenesSheet: origenesSheet,
+    origenesHeaders: getHeaders_(origenesSheet)
+  };
+}
+
+function resumenCompraParaCuadreFondosQTAS_(datos) {
+  const resumenFondos = construirResumenFondosCompraDesdeFilasQTAS_(datos.filasCompra || []);
+  return Object.assign(
+    resumenCompraRecienteQTAS_(datos.compra, resumenFondos),
+    {
+      aportes: normalizarAportesCuadreFondosCompraQTAS_(resumenFondos.montosPorOrigen),
+      aportantes: resumenFondos.montosPorAportante || {}
+    }
+  );
+}
+
+function construirResumenFondosCompraDesdeFilasQTAS_(rows) {
+  return (rows || []).reduce((resumen, row) => {
+    const origen = normalizarOrigenFondosQTAS_(row.Origen_Fondos);
+    const aportante = normalizarAportanteOrigenFondosQTAS_(row.Aportante);
+    const monto = redondear_(numero_(row.Monto_Asignado));
+    if (origen && resumen.origenes.indexOf(origen) < 0) resumen.origenes.push(origen);
+    if (origen) {
+      resumen.montosPorOrigen[origen] = redondear_(numero_(resumen.montosPorOrigen[origen]) + monto);
+    }
+    if (aportante && resumen.aportantes.indexOf(aportante) < 0) resumen.aportantes.push(aportante);
+    if (aportante) {
+      resumen.montosPorAportante[aportante] = redondear_(numero_(resumen.montosPorAportante[aportante]) + monto);
+    }
+    return resumen;
+  }, {
+    origenes: [],
+    aportantes: [],
+    montosPorOrigen: {},
+    montosPorAportante: {}
+  });
+}
+
+function normalizarAportesCuadreFondosCompraQTAS_(value) {
+  const raw = value || {};
+  return {
+    Caja: redondear_(Math.max(0, numero_(raw.Caja !== undefined ? raw.Caja : raw.caja))),
+    Steve: redondear_(Math.max(0, numero_(raw.Steve !== undefined ? raw.Steve : raw.steve))),
+    Majo: redondear_(Math.max(0, numero_(raw.Majo !== undefined ? raw.Majo : raw.majo))),
+    Mush: redondear_(Math.max(0, numero_(raw.Mush !== undefined ? raw.Mush : raw.mush)))
+  };
+}
+
+function validarAsignacionesActualesCompraQTAS_(datos) {
+  (datos.detalles || []).forEach(detalle => {
+    const detalleId = texto_(detalle.Compra_Detalle_ID);
+    const filas = datos.filasPorDetalle[detalleId] || [];
+    const totalAsignado = redondear_(sumar_(filas.map(row => numero_(row.Monto_Asignado))));
+    const totalLinea = redondear_(numero_(detalle.Costo_Total_Linea));
+    if (!filas.length || Math.abs(totalAsignado - totalLinea) > 0.009) {
+      throw new Error(
+        `La linea ${detalleId || 'sin ID'} no tiene una asignacion de fondos confiable. No se aplico el cuadre.`
+      );
+    }
+  });
+}
+
+function construirFilasCuadreFondosCompraQTAS_(context) {
+  const aportes = normalizarAportesCuadreFondosCompraQTAS_(context && context.aportes);
+  const totalCompra = redondear_(numero_(context && context.compra && context.compra.Total_Compra));
+  const detalles = context && context.detalles ? context.detalles : [];
+  const asignaciones = distribuirAportesCuadreEntreDetallesQTAS_(detalles, aportes, totalCompra);
+  const fechaCompra = resolverFechaOperacion_(context.compra.Fecha_Compra, new Date());
+  const reglaCaja = aportes.Caja > 0
+    ? obtenerSnapshotOrigenFondosDesdeCacheQTAS_(
+      cargarReglasOrigenesFondosEnMemoriaQTAS_(),
+      'Caja',
+      fechaCompra
+    )
+    : null;
+  const rows = [];
+
+  asignaciones.forEach(asignacion => {
+    const detalle = asignacion.detalle;
+    const detalleId = texto_(detalle.Compra_Detalle_ID);
+    const anteriores = (context.filasActualesPorDetalle && context.filasActualesPorDetalle[detalleId]) || [];
+    const fuente = unirUnicos_(anteriores.map(row => texto_(row.Fuente_Registro)));
+    const notaAnterior = unirUnicos_(anteriores.map(row => texto_(row.Nota)));
+    const nota = unirUnicos_([
+      notaAnterior,
+      texto_(context.comentarioCuadre),
+      'Cuadre operativo de fondos'
+    ]);
+    const fechaFila = anteriores[0] && anteriores[0].Fecha_Compra
+      ? anteriores[0].Fecha_Compra
+      : fechaCompra;
+
+    if (asignacion.montos.Caja > 0) {
+      distribuirMontoOrigenFondosQTAS_(asignacion.montos.Caja, reglaCaja.aportantes).forEach(item => {
+        rows.push({
+          Compra_Origen_ID: construirCompraOrigenIdQTAS_(detalleId, item.aportante, 'Caja'),
+          Compra_ID: numero_(context.compra.Compra_ID),
+          Compra_Detalle_ID: detalleId,
+          Fecha_Compra: fechaFila,
+          Origen_Fondos: 'Caja',
+          Aportante: item.aportante,
+          Porcentaje: item.porcentaje,
+          Monto_Asignado: item.montoAsignado,
+          Fuente_Registro: unirUnicos_([fuente, `Cuadre Caja ${reglaCaja.reglaId}`]),
+          Nota: nota
+        });
+      });
+    }
+
+    ['Steve', 'Majo', 'Mush'].forEach(aportante => {
+      const monto = redondear_(numero_(asignacion.montos[aportante]));
+      if (monto <= 0) return;
+      rows.push({
+        Compra_Origen_ID: construirCompraOrigenIdQTAS_(detalleId, aportante, aportante),
+        Compra_ID: numero_(context.compra.Compra_ID),
+        Compra_Detalle_ID: detalleId,
+        Fecha_Compra: fechaFila,
+        Origen_Fondos: aportante,
+        Aportante: aportante,
+        Porcentaje: 100,
+        Monto_Asignado: monto,
+        Fuente_Registro: unirUnicos_([fuente, 'Cuadre directo']),
+        Nota: nota
+      });
+    });
+  });
+
+  return rows;
+}
+
+function distribuirAportesCuadreEntreDetallesQTAS_(detalles, aportes, totalCompra) {
+  const origenes = ['Caja', 'Steve', 'Majo', 'Mush'];
+  const total = redondear_(numero_(totalCompra));
+  if (total <= 0) throw new Error('La compra debe tener un total positivo para cuadrar fondos.');
+  const asignaciones = (detalles || []).map(detalle => {
+    const totalLinea = redondear_(numero_(detalle.Costo_Total_Linea));
+    let restante = totalLinea;
+    const montos = {};
+    origenes.forEach((origen, index) => {
+      const esUltimo = index === origenes.length - 1;
+      const monto = esUltimo
+        ? restante
+        : redondear_(totalLinea * numero_(aportes[origen]) / total);
+      montos[origen] = monto;
+      restante = redondear_(restante - monto);
+    });
+    return { detalle: detalle, montos: montos };
+  });
+
+  if (!asignaciones.length) throw new Error('No hay lineas para cuadrar fondos.');
+  const ultima = asignaciones[asignaciones.length - 1].montos;
+  origenes.forEach(origen => {
+    const asignado = redondear_(sumar_(asignaciones.map(item => numero_(item.montos[origen]))));
+    ultima[origen] = redondear_(numero_(ultima[origen]) + numero_(aportes[origen]) - asignado);
+    if (ultima[origen] < -0.009) {
+      throw new Error('No se pudo distribuir los aportes entre las lineas de la compra.');
+    }
+  });
+
+  return asignaciones;
+}
+
+function validarFilasCuadreFondosCompraQTAS_(datos, filas, aportes) {
+  const ids = {};
+  (filas || []).forEach(row => {
+    const id = texto_(row.Compra_Origen_ID);
+    if (!id || ids[id]) throw new Error('El cuadre generaria identificadores de fondos duplicados.');
+    ids[id] = true;
+  });
+
+  (datos.detalles || []).forEach(detalle => {
+    const detalleId = texto_(detalle.Compra_Detalle_ID);
+    const totalFilas = redondear_(sumar_((filas || [])
+      .filter(row => texto_(row.Compra_Detalle_ID) === detalleId)
+      .map(row => numero_(row.Monto_Asignado))));
+    if (Math.abs(totalFilas - numero_(detalle.Costo_Total_Linea)) > 0.009) {
+      throw new Error(`El cuadre no conserva el total de la linea ${detalleId}.`);
+    }
+  });
+
+  const resumen = construirResumenFondosCompraDesdeFilasQTAS_(filas);
+  Object.keys(aportes).forEach(origen => {
+    if (Math.abs(numero_(resumen.montosPorOrigen[origen]) - numero_(aportes[origen])) > 0.009) {
+      throw new Error(`El aporte final de ${origen} no coincide con el valor indicado.`);
+    }
+  });
 }
 
 function construirItemsSugeridosComprasQTAS_(productos, costosVigentes, options) {

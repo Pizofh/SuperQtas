@@ -1079,6 +1079,43 @@
             </div>
           </section>
 
+          <section class="card" id="cuadreFondosCompraPanel">
+            <div class="section-head">
+              <div>
+                <h2>Cuadrar fondos</h2>
+                <div class="muted">Corrige quien asumio una compra sin cambiar sus costos ni su total.</div>
+              </div>
+            </div>
+            <div id="compraCuadreFondosInfo" class="field-feedback">
+              Selecciona <b>Cuadrar fondos</b> en una compra reciente.
+            </div>
+            <div class="grid-2">
+              <div>
+                <label>Caja</label>
+                <input id="cuadreCompraCaja" type="number" min="0" step="0.01" disabled oninput="recalcularAportesCuadreCompra()">
+              </div>
+              <div>
+                <label>Mush directo</label>
+                <input id="cuadreCompraMush" type="number" min="0" step="0.01" disabled oninput="recalcularAportesCuadreCompra()">
+              </div>
+              <div>
+                <label>Steve directo</label>
+                <input id="cuadreCompraSteve" type="number" min="0" step="0.01" disabled oninput="recalcularAportesCuadreCompra()">
+              </div>
+              <div>
+                <label>Majo directo</label>
+                <input id="cuadreCompraMajo" type="number" min="0" step="0.01" disabled oninput="recalcularAportesCuadreCompra()">
+              </div>
+            </div>
+            <div class="helper">La parte puesta por Caja conserva la regla historica de su fecha. Los aportes directos se asignan a una sola persona.</div>
+            <label>Comentario de cuadre</label>
+            <input id="comentarioCuadreCompra" disabled placeholder="Ej.: Mush repuso el pago de Caja">
+            <button id="guardarCuadreCompraBtn" class="btn full" type="button" disabled onclick="guardarCuadreFondosCompra()">
+              Guardar cuadre de fondos
+            </button>
+            <div id="estadoCuadreCompra" class="status-box">El cuadre conserva el total de la compra.</div>
+          </section>
+
           <section class="card">
             <div class="section-head">
               <div>
@@ -3202,7 +3239,16 @@
 
       google.script.run
         .withSuccessHandler(resp => {
-          cuadresPendientes = normalizarCuadresPendientesLocales_(resp.cuadres || []);
+          const pendiente = Object.assign({}, ventaCuadreSeleccionada, {
+            motivoCuadre: comentarioCuadre,
+            estadoCuadre: resp.estadoCuadre || 'Pendiente',
+            fechaPendienteCuadre: fechaHoyLocal_()
+          });
+          cuadresPendientes = normalizarCuadresPendientesLocales_(
+            (cuadresPendientes || [])
+              .filter(row => String(row.ventaId) !== String(pendiente.ventaId))
+              .concat([pendiente])
+          );
           renderCuadresPendientes();
           cancelarCuadreVenta();
           document.getElementById('estadoCuadreVenta').innerText = 'Cuadre pendiente registrado.';
@@ -3255,7 +3301,9 @@
       document.getElementById('estadoCuadresPendientes').innerText = 'Resolviendo cuadre...';
       google.script.run
         .withSuccessHandler(resp => {
-          cuadresPendientes = normalizarCuadresPendientesLocales_(resp.cuadres || []);
+          cuadresPendientes = normalizarCuadresPendientesLocales_(
+            (cuadresPendientes || []).filter(row => String(row.ventaId) !== String(resp.ventaId || ventaId))
+          );
           renderCuadresPendientes();
           if (ventaCuadreSeleccionada && String(ventaCuadreSeleccionada.ventaId) === String(ventaId)) {
             cancelarCuadreVenta();
@@ -3277,6 +3325,7 @@
       comprasRecientes: [],
       proveedores: []
     };
+    let compraCuadreFondosSeleccionada = null;
 
     function initCompras() {
       document.getElementById('fechaCompra').value = '';
@@ -3790,6 +3839,8 @@
     }
 
     function guardarCompra() {
+      const guardarButton = document.getElementById('guardarCompraBtn');
+      if (guardarButton && guardarButton.disabled) return;
       const payload = {
         fechaCompra: document.getElementById('fechaCompra').value,
         proveedor: document.getElementById('proveedorCompra').value.trim(),
@@ -3838,6 +3889,7 @@
         return;
       }
 
+      if (guardarButton) guardarButton.disabled = true;
       document.getElementById('estadoCompra').innerText = 'Registrando compra...';
 
       google.script.run
@@ -3847,15 +3899,38 @@
               `Compra ${resp.compraId} guardada. Total ${moneda_(resp.totalCompra)}. Costos actualizados: ${resp.costosActualizados}.`,
               resp.origenFondos
                 ? `Origen de fondos: ${resp.origenFondos}. Asignaciones: ${resp.origenesFondosAsignados || 0}.`
-                : 'Compra guardada sin origen de fondos asignado.'
+                : 'Compra guardada sin origen de fondos asignado.',
+              resp.postProceso && resp.postProceso.queued
+                ? 'Inventario y costo de productos se actualizan en segundo plano.'
+                : ''
             ].join(' ');
           limpiarFormularioCompra();
-          cargarCatalogoCompras(false);
+          if (resp.compraReciente) {
+            catalogoCompras.comprasRecientes = [resp.compraReciente]
+              .concat((catalogoCompras.comprasRecientes || []).filter(item =>
+                String(item.compraId) !== String(resp.compraReciente.compraId)
+              ))
+              .slice(0, 12);
+            renderComprasRecientes();
+          }
+          if (guardarButton) guardarButton.disabled = false;
+          if (resp.postProceso && resp.postProceso.queued) {
+            solicitarProcesamientoPostCompra_();
+          }
         })
         .withFailureHandler(err => {
           document.getElementById('estadoCompra').innerText = construirMensajeEstadoError_('No se pudo guardar la compra', err);
+          if (guardarButton) guardarButton.disabled = false;
         })
         .registrarCompraQTAS(payload);
+    }
+
+    function solicitarProcesamientoPostCompra_() {
+      google.script.run
+        .withFailureHandler(error => {
+          console.warn('El postproceso de compra quedo programado para reintento.', error);
+        })
+        .procesarColaPostCompraQTAS();
     }
 
     function limpiarFormularioCompra() {
@@ -3883,13 +3958,126 @@
           <strong>C${escapeHtml(String(row.compraId))} | ${escapeHtml(row.proveedor)}</strong>
           <div>${escapeHtml(row.fechaCompra)} | ${escapeHtml(row.medioPago || '')}</div>
           ${row.origenFondos ? `<div class="helper">Fondos: ${escapeHtml(row.origenFondos)}</div>` : ''}
+          ${row.aportesFondos ? `<div class="helper">Aportes: ${escapeHtml(row.aportesFondos)}</div>` : ''}
           <div><b>${escapeHtml(moneda_(row.totalCompra || 0))}</b></div>
           <div class="helper">${escapeHtml(row.itemsResumen || '')}</div>
+          ${row.comentarioCompra ? `<div class="helper">Nota: ${escapeHtml(row.comentarioCompra)}</div>` : ''}
           <div class="list-item-actions">
+            <button class="btn secondary" type="button" onclick="seleccionarCompraParaCuadreFondos(${row.compraId})">Cuadrar fondos</button>
             <button class="btn danger" type="button" onclick="eliminarCompraReciente(${row.compraId})">Eliminar</button>
           </div>
         </div>
       `).join('');
+    }
+
+    function seleccionarCompraParaCuadreFondos(compraId) {
+      const estado = document.getElementById('estadoCuadreCompra');
+      estado.innerText = 'Cargando fondos de la compra...';
+
+      google.script.run
+        .withSuccessHandler(resumen => {
+          compraCuadreFondosSeleccionada = resumen || null;
+          if (!compraCuadreFondosSeleccionada) return;
+
+          document.getElementById('compraCuadreFondosInfo').innerHTML = [
+            `<strong>${escapeHtml(compraCuadreFondosSeleccionada.proveedor || '')}</strong>`,
+            escapeHtml(compraCuadreFondosSeleccionada.fechaCompra || ''),
+            escapeHtml(compraCuadreFondosSeleccionada.itemsResumen || ''),
+            `Total: <strong>${escapeHtml(moneda_(compraCuadreFondosSeleccionada.totalCompra || 0))}</strong>`,
+            `Medio: ${escapeHtml(compraCuadreFondosSeleccionada.medioPago || 'Sin medio')}`,
+            compraCuadreFondosSeleccionada.comentarioCompra
+              ? `Nota: ${escapeHtml(compraCuadreFondosSeleccionada.comentarioCompra)}`
+              : ''
+          ].filter(Boolean).join('<br>');
+          const aportes = compraCuadreFondosSeleccionada.aportes || {};
+          document.getElementById('cuadreCompraCaja').value = numero_(aportes.Caja);
+          document.getElementById('cuadreCompraSteve').value = numero_(aportes.Steve);
+          document.getElementById('cuadreCompraMajo').value = numero_(aportes.Majo);
+          document.getElementById('cuadreCompraMush').value = numero_(aportes.Mush);
+          document.getElementById('comentarioCuadreCompra').value = '';
+          [
+            'cuadreCompraCaja',
+            'cuadreCompraSteve',
+            'cuadreCompraMajo',
+            'cuadreCompraMush',
+            'comentarioCuadreCompra'
+          ].forEach(id => { document.getElementById(id).disabled = false; });
+          recalcularAportesCuadreCompra();
+          document.getElementById('cuadreFondosCompraPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        })
+        .withFailureHandler(err => {
+          document.getElementById('estadoCuadreCompra').innerText = construirMensajeEstadoError_('No se pudo cargar el cuadre de fondos', err);
+        })
+        .getResumenCompraParaCuadreFondosQTAS({ compraId: compraId });
+    }
+
+    function aportesCuadreCompraActual_() {
+      return {
+        Caja: numero_(document.getElementById('cuadreCompraCaja').value),
+        Steve: numero_(document.getElementById('cuadreCompraSteve').value),
+        Majo: numero_(document.getElementById('cuadreCompraMajo').value),
+        Mush: numero_(document.getElementById('cuadreCompraMush').value)
+      };
+    }
+
+    function recalcularAportesCuadreCompra() {
+      const boton = document.getElementById('guardarCuadreCompraBtn');
+      if (!compraCuadreFondosSeleccionada) {
+        boton.disabled = true;
+        return;
+      }
+      const aportes = aportesCuadreCompraActual_();
+      const totalAportes = Object.values(aportes).reduce((sum, value) => sum + Math.max(0, numero_(value)), 0);
+      const totalCompra = numero_(compraCuadreFondosSeleccionada.totalCompra);
+      const diferencia = redondearNumero_(totalCompra - totalAportes);
+      const valido = Math.abs(diferencia) <= 0.009;
+      boton.disabled = !valido;
+      document.getElementById('estadoCuadreCompra').innerText = valido
+        ? `Aportes completos: ${moneda_(totalAportes)}. La parte de Caja usa su regla historica.`
+        : `Faltan o sobran ${moneda_(Math.abs(diferencia))}. Debe sumar ${moneda_(totalCompra)}.`;
+    }
+
+    function guardarCuadreFondosCompra() {
+      if (!compraCuadreFondosSeleccionada) return;
+      const boton = document.getElementById('guardarCuadreCompraBtn');
+      const aportes = aportesCuadreCompraActual_();
+      boton.disabled = true;
+      document.getElementById('estadoCuadreCompra').innerText = 'Guardando cuadre de fondos...';
+
+      google.script.run
+        .withSuccessHandler(resp => {
+          if (resp.compra) {
+            catalogoCompras.comprasRecientes = (catalogoCompras.comprasRecientes || []).map(item =>
+              String(item.compraId) === String(resp.compra.compraId) ? resp.compra : item
+            );
+            renderComprasRecientes();
+          }
+          document.getElementById('estadoCuadreCompra').innerText = 'Fondos cuadrado. La compra conserva su total y sus costos.';
+          cancelarCuadreFondosCompra();
+        })
+        .withFailureHandler(err => {
+          boton.disabled = false;
+          document.getElementById('estadoCuadreCompra').innerText = construirMensajeEstadoError_('No se pudo cuadrar los fondos', err);
+        })
+        .cuadrarFondosCompraQTAS({
+          compraId: compraCuadreFondosSeleccionada.compraId,
+          aportes: aportes,
+          comentarioCuadre: document.getElementById('comentarioCuadreCompra').value.trim()
+        });
+    }
+
+    function cancelarCuadreFondosCompra() {
+      compraCuadreFondosSeleccionada = null;
+      document.getElementById('compraCuadreFondosInfo').innerHTML = 'Selecciona <b>Cuadrar fondos</b> en una compra reciente.';
+      document.getElementById('comentarioCuadreCompra').value = '';
+      [
+        'cuadreCompraCaja',
+        'cuadreCompraSteve',
+        'cuadreCompraMajo',
+        'cuadreCompraMush',
+        'comentarioCuadreCompra'
+      ].forEach(id => { document.getElementById(id).disabled = true; });
+      document.getElementById('guardarCuadreCompraBtn').disabled = true;
     }
 
     function eliminarCompraReciente(compraId) {

@@ -40,6 +40,7 @@ function compraPayloadBase(overrides = {}) {
     medioPago: 'Efectivo',
     comentarioCompra: 'Escenario automatizado',
     lineas: [],
+    procesarPostCompraSincrono: true,
     ...overrides
   };
 }
@@ -256,13 +257,17 @@ export const SCENARIOS = [
         ventaId: venta.ventaId,
         comentarioCuadre: 'Confirmar valor recibido'
       });
-      ctx.equal(ctx.num(cuadre.cuadres.length), 1, 'La venta debe aparecer como cuadre pendiente.');
-      ctx.equal(String(cuadre.cuadres[0].motivoCuadre), 'Confirmar valor recibido', 'Debe conservarse el motivo del cuadre.');
+      ctx.equal(String(cuadre.estadoCuadre), 'Pendiente', 'La venta debe quedar marcada como cuadre pendiente.');
+      let cuadresPendientes = await ctx.call('getCuadresPendientesQTAS');
+      ctx.equal(ctx.num(cuadresPendientes.length), 1, 'La venta debe aparecer como cuadre pendiente.');
+      ctx.equal(String(cuadresPendientes[0].motivoCuadre), 'Confirmar valor recibido', 'Debe conservarse el motivo del cuadre.');
 
       cuadre = await ctx.call('resolverVentaCuadreQTAS', {
         ventaId: venta.ventaId
       });
-      ctx.equal(ctx.num(cuadre.cuadres.length), 0, 'Un cuadre resuelto no debe seguir visible.');
+      ctx.equal(String(cuadre.estadoCuadre), 'Resuelto', 'La venta debe marcarse como cuadre resuelto.');
+      cuadresPendientes = await ctx.call('getCuadresPendientesQTAS');
+      ctx.equal(ctx.num(cuadresPendientes.length), 0, 'Un cuadre resuelto no debe seguir visible.');
 
       await ctx.call('actualizarEstadoEnvioVentaQTAS', {
         ventaId: venta.ventaId,
@@ -736,6 +741,51 @@ export const SCENARIOS = [
         ctx.equal(ctx.num(fila.Porcentaje), esperado.porcentaje, `${aportante} debe recibir el porcentaje esperado.`);
         ctx.equal(ctx.num(fila.Monto_Asignado), esperado.monto, `${aportante} debe recibir el monto esperado.`);
       });
+
+      const resumenAntesCuadre = await ctx.call('getResumenCompraParaCuadreFondosQTAS', {
+        compraId: compraCaja.compraId
+      });
+      ctx.equal(ctx.num(resumenAntesCuadre.aportes.Caja), 30000, 'El resumen debe exponer el aporte actual de Caja.');
+
+      const cuadre = await ctx.call('cuadrarFondosCompraQTAS', {
+        compraId: compraCaja.compraId,
+        aportes: {
+          Caja: 10000,
+          Steve: 0,
+          Majo: 0,
+          Mush: 20000
+        },
+        comentarioCuadre: 'Mush cubre una parte de la compra.'
+      });
+      ctx.assert(cuadre.ok, 'El cuadre mixto de fondos debe guardarse.');
+      ctx.equal(ctx.num(cuadre.totalGeneralAntes), ctx.num(cuadre.totalGeneralDespues), 'El cuadre no debe alterar el total global de fondos.');
+
+      const stateCuadrado = await snapshotLigero(ctx, {
+        sheetNames: ['Compra_Origenes_Fondos'],
+        includeCompras: false
+      });
+      const filasCuadradas = ctx.sheetRows(stateCuadrado, 'Compra_Origenes_Fondos')
+        .filter(row => ctx.num(row.Compra_ID) === ctx.num(compraCaja.compraId));
+      ctx.equal(filasCuadradas.length, 4, 'Caja parcial mas Mush directo debe generar cuatro asignaciones.');
+      ctx.equal(
+        ctx.num(filasCuadradas.reduce((sum, row) => sum + ctx.num(row.Monto_Asignado), 0)),
+        30000,
+        'El cuadre debe conservar el total de la compra.'
+      );
+      const mushDirecto = filasCuadradas.find(row => row.Origen_Fondos === 'Mush' && row.Aportante === 'Mush');
+      ctx.assert(mushDirecto, 'Debe existir el aporte directo de Mush.');
+      ctx.equal(ctx.num(mushDirecto.Monto_Asignado), 20000, 'Mush debe asumir el monto directo indicado.');
+      const cajaCuadrada = filasCuadradas.filter(row => row.Origen_Fondos === 'Caja');
+      ctx.equal(cajaCuadrada.length, 3, 'La parte de Caja debe conservar sus tres aportantes.');
+      ctx.assert(
+        cajaCuadrada.every(row => row.Aportante !== 'Caja'),
+        'Caja debe continuar siendo origen y no un cuarto aportante.'
+      );
+      ctx.equal(
+        ctx.num(cajaCuadrada.reduce((sum, row) => sum + ctx.num(row.Monto_Asignado), 0)),
+        10000,
+        'La parte de Caja debe conservar el monto indicado.'
+      );
     }
   },
   {
