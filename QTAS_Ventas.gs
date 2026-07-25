@@ -1031,7 +1031,7 @@ function construirEnviosPendientesQTAS_(estado) {
 function marcarVentaParaCuadreQTAS(payload) {
   return withScriptLock_('marcar venta para cuadrar', () => {
     validarModeloSoloLecturaQTAS_({
-      sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos],
+      sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos, QTAS.sheets.ventasEnvio],
       validarConfig: false
     });
 
@@ -1067,7 +1067,7 @@ function marcarVentaParaCuadreQTAS(payload) {
 function resolverVentaCuadreQTAS(payload) {
   return withScriptLock_('resolver venta cuadrada', () => {
     validarModeloSoloLecturaQTAS_({
-      sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos],
+      sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos, QTAS.sheets.ventasEnvio],
       validarConfig: false
     });
 
@@ -1099,7 +1099,7 @@ function resolverVentaCuadreQTAS(payload) {
 
 function getResumenVentaParaCuadreQTAS(payload) {
   validarModeloSoloLecturaQTAS_({
-    sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos],
+    sheetNames: [QTAS.sheets.ventas, QTAS.sheets.pagos, QTAS.sheets.ventasEnvio],
     validarConfig: false
   });
 
@@ -1220,6 +1220,7 @@ function resumenVentaParaCuadreQTAS_(venta, pagos, seguimiento) {
     totalPagado: redondear_(numero_(venta.Total_Pagado)),
     saldo: redondear_(numero_(venta.Saldo)),
     estadoPago: texto_(venta.Estado_Pago),
+    tipoEntrega: normalizarTipoEntregaVentaQTAS_(seguimiento && seguimiento.Tipo_Entrega),
     mediosPagoTexto: pagosResumen.texto,
     mediosPago: pagosResumen.items,
     motivoCuadre: texto_(seguimiento && seguimiento.Comentario_Cuadre),
