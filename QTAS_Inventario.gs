@@ -1,7 +1,24 @@
-function getDashboardInventarioQTAS() {
-  asegurarModeloOperativoQTAS_();
-  const ss = SpreadsheetApp.getActive();
-  asegurarControlesInventarioBaseQTAS_(null, ss);
+const QTAS_INVENTARIO_DASHBOARD_CACHE_NAMESPACE = 'inventario_dashboard_v1';
+const QTAS_INVENTARIO_DASHBOARD_CACHE_TTL_SECONDS = 60;
+
+function getDashboardInventarioQTAS(payload) {
+  const settings = Object.assign({
+    forceRefresh: false
+  }, payload || {});
+  const cacheado = settings.forceRefresh
+    ? null
+    : leerCacheDocumentoQTAS_(QTAS_INVENTARIO_DASHBOARD_CACHE_NAMESPACE);
+  if (cacheado) return cacheado;
+
+  const ss = validarModeloSoloLecturaQTAS_({
+    sheetNames: [
+      QTAS.sheets.inventarioControl,
+      QTAS.sheets.producciones,
+      QTAS.sheets.inventarioMovimientos,
+      QTAS.sheets.inventarioSnapshot
+    ],
+    validarConfig: false
+  });
   const movimientosRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.inventarioMovimientos);
   const snapshotRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.inventarioSnapshot);
 
@@ -9,8 +26,8 @@ function getDashboardInventarioQTAS() {
     reconstruirInventarioInternoQTAS_({ ss: ss });
   }
 
-  const controles = listarControlesInventarioQTAS_();
-  const stock = listarSnapshotInventarioQTAS_();
+  const controles = listarControlesInventarioQTAS_(ss);
+  const stock = listarSnapshotInventarioQTAS_(ss);
   const alertas = stock
     .filter(row => row.estadoStock !== 'OK')
     .sort((a, b) => {
@@ -18,8 +35,8 @@ function getDashboardInventarioQTAS() {
       if (prioridad !== 0) return prioridad;
       return a.item.localeCompare(b.item);
     });
-  const movimientosRecientes = listarMovimientosInventarioRecientesQTAS_();
-  const produccionesRecientes = listarProduccionesRecientesQTAS_();
+  const movimientosRecientes = listarMovimientosInventarioRecientesQTAS_(ss);
+  const produccionesRecientes = listarProduccionesRecientesQTAS_(ss);
   const fabricados = controles
     .filter(row =>
       row.activo &&
@@ -36,7 +53,7 @@ function getDashboardInventarioQTAS() {
       nota: row.nota
     }));
 
-  return {
+  const dashboard = {
     ok: true,
     hoy: fechaInput_(new Date()),
     sincronizacion: estadoSincronizacionInventarioQTAS(),
@@ -59,6 +76,13 @@ function getDashboardInventarioQTAS() {
     produccionesRecientes: produccionesRecientes,
     productosFabricados: fabricados
   };
+
+  guardarCacheDocumentoQTAS_(
+    QTAS_INVENTARIO_DASHBOARD_CACHE_NAMESPACE,
+    dashboard,
+    QTAS_INVENTARIO_DASHBOARD_CACHE_TTL_SECONDS
+  );
+  return dashboard;
 }
 
 function pausarInventarioParaCargaHistoricaQTAS() {
@@ -553,8 +577,8 @@ function listarControlesInventarioQTAS_(spreadsheet) {
     });
 }
 
-function listarSnapshotInventarioQTAS_() {
-  const ss = SpreadsheetApp.getActive();
+function listarSnapshotInventarioQTAS_(spreadsheet) {
+  const ss = spreadsheet || SpreadsheetApp.getActive();
   const ref = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.inventarioSnapshot);
   if (!ref.ok) return [];
 
@@ -584,8 +608,8 @@ function listarSnapshotInventarioQTAS_() {
     });
 }
 
-function listarMovimientosInventarioRecientesQTAS_() {
-  const ss = SpreadsheetApp.getActive();
+function listarMovimientosInventarioRecientesQTAS_(spreadsheet) {
+  const ss = spreadsheet || SpreadsheetApp.getActive();
   const ref = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.inventarioMovimientos);
   if (!ref.ok) return [];
 
@@ -617,8 +641,8 @@ function listarMovimientosInventarioRecientesQTAS_() {
     .slice(0, 30);
 }
 
-function listarProduccionesRecientesQTAS_() {
-  const ss = SpreadsheetApp.getActive();
+function listarProduccionesRecientesQTAS_(spreadsheet) {
+  const ss = spreadsheet || SpreadsheetApp.getActive();
   const ref = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.producciones);
   if (!ref.ok) return [];
 
@@ -655,6 +679,7 @@ function reconstruirSnapshotInventarioQTAS_(payload) {
   const rows = construirSnapshotInventarioQTAS_(movimientos, controlsIndex);
 
   sobrescribirObjetosHojaQTAS_(snapshotRef.sheet, snapshotRef.headers, rows);
+  invalidarCacheDocumentoQTAS_(QTAS_INVENTARIO_DASHBOARD_CACHE_NAMESPACE);
   return rows;
 }
 
@@ -1302,6 +1327,7 @@ function establecerSincronizacionInventarioQTAS_(habilitada) {
   } else {
     properties.setProperty('QTAS_INVENTORY_SYNC_MODE', 'CargaHistorica');
   }
+  invalidarCacheDocumentoQTAS_(QTAS_INVENTARIO_DASHBOARD_CACHE_NAMESPACE);
   return estadoSincronizacionInventarioQTAS();
 }
 

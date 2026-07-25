@@ -130,6 +130,7 @@ function testResetEntornoQTAS(payload) {
     invalidarCacheDocumentoQTAS_('distribucion_reglas_memoria');
     invalidarCacheDocumentoQTAS_('origenes_fondos_reglas_memoria');
     invalidarCacheDocumentoQTAS_('origenes_fondos_reglas_memoria_v2');
+    invalidarCacheDocumentoQTAS_('inventario_dashboard_v1');
 
     sembrarProductosYPrecios_();
     sembrarConfig_();
