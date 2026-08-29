@@ -128,7 +128,7 @@
 
     .app-nav {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
     }
 
     .eyebrow {
@@ -616,6 +616,19 @@
       text-align: center;
     }
 
+    .report-shell {
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .report-frame {
+      display: block;
+      width: 100%;
+      height: clamp(560px, 75vh, 900px);
+      border: 0;
+      background: var(--card-strong);
+    }
+
     @keyframes fadeIn {
       from {
         opacity: 0;
@@ -718,6 +731,9 @@
             </button>
             <button class="btn ghost app-nav-btn" type="button" data-view="inventario" onclick="mostrarVistaApp('inventario')">
               Inventario
+            </button>
+            <button class="btn ghost app-nav-btn" type="button" data-view="reportes" onclick="mostrarVistaApp('reportes')">
+              Reportes
             </button>
             <button
               class="btn ghost app-nav-btn icon-only"
@@ -1256,6 +1272,20 @@
       </div>
     </section>
 
+    <section class="app-view hidden" data-view="reportes">
+      <section class="card report-shell">
+        <iframe
+          id="reportesFrame"
+          class="report-frame"
+          title="Reporte de márgenes y cobros de SuperQTAS"
+          src="https://datastudio.google.com/embed/reporting/0e92162d-6481-4edf-8df2-996f06f8b96d/page/p_2z2wruvx6d"
+          loading="lazy"
+          allowfullscreen
+          sandbox="allow-storage-access-by-user-activation allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+        ></iframe>
+      </section>
+    </section>
+
     <section class="app-view hidden" data-view="config">
       <section class="card">
         <div class="section-head">
@@ -1554,6 +1584,10 @@
         eyebrow: 'Psylo Scibio | SuperQTAS',
         title: 'Inventario y produccion'
       },
+      reportes: {
+        eyebrow: 'Psylo Scibio | SuperQTAS',
+        title: 'Reportes y margenes'
+      },
       config: {
         eyebrow: 'Psylo Scibio | SuperQTAS',
         title: 'Configuracion operativa'
@@ -1566,6 +1600,7 @@
         ventas: false,
         compras: false,
         inventario: false,
+        reportes: false,
         config: false
       }
     };
@@ -1733,6 +1768,12 @@
 
       if (appState.currentView === 'inventario') {
         cargarInventario(false);
+        return;
+      }
+
+      if (appState.currentView === 'reportes') {
+        const frame = document.getElementById('reportesFrame');
+        if (frame) frame.src = frame.src;
         return;
       }
 
