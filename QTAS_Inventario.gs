@@ -351,7 +351,7 @@ function eliminarMovimientosInventarioPorFuentesQTAS_(payload) {
     if (id) index[id] = true;
     return index;
   }, {});
-  const antes = leerObjetos_(movimientosRef.sheet);
+  const antes = leerObjetosConMeta_(movimientosRef.sheet);
   const despues = antes.filter(row => {
     if (compraId > 0 && numero_(row.Compra_ID) === compraId) return false;
     if (ventaId > 0 && numero_(row.Venta_ID) === ventaId) return false;
@@ -361,7 +361,10 @@ function eliminarMovimientosInventarioPorFuentesQTAS_(payload) {
   const eliminados = antes.length - despues.length;
 
   if (eliminados) {
-    sobrescribirObjetosHojaQTAS_(movimientosRef.sheet, movimientosRef.headers, despues);
+    const sobrevivientes = new Set(despues.map(row => row.__rowNumber));
+    const plan = planificarEliminacionFilasQTAS_(movimientosRef.sheet, movimientosRef.headers,
+      antes.filter(row => !sobrevivientes.has(row.__rowNumber)));
+    ejecutarEliminacionFilasQTAS_(plan);
     reconstruirSnapshotInventarioQTAS_({ ss: ss, movimientos: despues });
   }
 

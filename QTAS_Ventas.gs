@@ -766,17 +766,17 @@ function eliminarVentaRecienteQTAS(payload) {
     const ventasEnvioCanonica = Boolean(ventasEnvioSheet);
     const costoDetalleRef = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.ventaDetalleCostosCalculado);
 
-    const ventasAntes = leerObjetos_(ventasSheet);
+    const ventasAntes = leerObjetosConMeta_(ventasSheet);
     const venta = ventasAntes.find(row => numero_(row.Venta_ID) === ventaId);
     if (!venta || esRegistroAnulado_(venta.Estado_Registro)) {
       throw new Error('La venta ya no esta disponible para eliminar.');
     }
 
-    const detalleAntes = leerObjetos_(detalleSheet);
-    const pagosAntes = leerObjetos_(pagosSheet);
-    const distribucionAntes = leerObjetos_(distribucionSheet);
-    const ventasEnvioAntes = ventasEnvioCanonica ? leerObjetos_(ventasEnvioSheet) : [];
-    const costoDetalleAntes = costoDetalleRef.ok ? leerObjetos_(costoDetalleRef.sheet) : [];
+    const detalleAntes = leerObjetosConMeta_(detalleSheet);
+    const pagosAntes = leerObjetosConMeta_(pagosSheet);
+    const distribucionAntes = leerObjetosConMeta_(distribucionSheet);
+    const ventasEnvioAntes = ventasEnvioCanonica ? leerObjetosConMeta_(ventasEnvioSheet) : [];
+    const costoDetalleAntes = costoDetalleRef.ok ? leerObjetosConMeta_(costoDetalleRef.sheet) : [];
 
     const ventasDespues = ventasAntes.filter(row => numero_(row.Venta_ID) !== ventaId);
     const detalleDespues = detalleAntes.filter(row => numero_(row.Venta_ID) !== ventaId);
@@ -785,16 +785,22 @@ function eliminarVentaRecienteQTAS(payload) {
     const ventasEnvioDespues = ventasEnvioAntes.filter(row => numero_(row.Venta_ID) !== ventaId);
     const costoDetalleDespues = costoDetalleAntes.filter(row => numero_(row.Venta_ID) !== ventaId);
 
-    sobrescribirObjetosHojaQTAS_(ventasSheet, ventasHeaders, ventasDespues);
-    sobrescribirObjetosHojaQTAS_(detalleSheet, detalleHeaders, detalleDespues);
-    sobrescribirObjetosHojaQTAS_(pagosSheet, pagosHeaders, pagosDespues);
-    sobrescribirObjetosHojaQTAS_(distribucionSheet, distribucionHeaders, distribucionDespues);
+    const filasVenta = rows => rows.filter(row => numero_(row.Venta_ID) === ventaId);
+    const planes = [
+      planificarEliminacionFilasQTAS_(ventasSheet, ventasHeaders, filasVenta(ventasAntes)),
+      planificarEliminacionFilasQTAS_(detalleSheet, detalleHeaders, filasVenta(detalleAntes)),
+      planificarEliminacionFilasQTAS_(pagosSheet, pagosHeaders, filasVenta(pagosAntes)),
+      planificarEliminacionFilasQTAS_(distribucionSheet, distribucionHeaders, filasVenta(distribucionAntes))
+    ];
     if (ventasEnvioCanonica) {
-      sobrescribirObjetosHojaQTAS_(ventasEnvioSheet, QTAS.schemas[QTAS.sheets.ventasEnvio], ventasEnvioDespues);
+      planes.push(planificarEliminacionFilasQTAS_(ventasEnvioSheet,
+        getHeaders_(ventasEnvioSheet), filasVenta(ventasEnvioAntes)));
     }
     if (costoDetalleRef.ok) {
-      sobrescribirObjetosHojaQTAS_(costoDetalleRef.sheet, costoDetalleRef.headers, costoDetalleDespues);
+      planes.push(planificarEliminacionFilasQTAS_(costoDetalleRef.sheet,
+        costoDetalleRef.headers, filasVenta(costoDetalleAntes)));
     }
+    planes.forEach(plan => ejecutarEliminacionFilasQTAS_(plan));
 
     const secuenciaVenta = resincronizarIdNumericoPersistenteQTAS_(
       'venta_id',

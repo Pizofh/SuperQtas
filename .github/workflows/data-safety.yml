@@ -1,0 +1,25 @@
+name: Data safety checks
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  data-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Test filtered sale deletion and daily backup retention
+        run: npm run test:data-safety
+      - name: Build and verify production surface without deploying
+        run: |
+          printf '%s' '{"scriptId":"BUILD_VALIDATION_ONLY"}' > .clasp.json
+          npm run build:gas:prod
+          npm run verify:gas:prod

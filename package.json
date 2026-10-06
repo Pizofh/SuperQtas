@@ -6,6 +6,7 @@
     "auth:qtas:bootstrap": "node tests/bootstrap-qtas-auth.mjs",
     "build:gas:prod": "node scripts/build-gas-bundle.mjs --target prod",
     "verify:gas:prod": "node scripts/verify-prod-surface.mjs",
+    "test:data-safety": "node --test tests/data-safety.test.mjs",
     "test:qtas": "node tests/run-qtas-tests.mjs",
     "test:qtas:full": "npm run test:qtas",
     "test:qtas:probe": "node tests/run-qtas-tests.mjs --probe",

@@ -121,6 +121,54 @@ function sobrescribirObjetosHojaQTAS_(sheet, headers, objects) {
     .setValues(objects.map(obj => filaDesdeHeaders_(headers, obj)));
 }
 
+// Borrar solo filas seleccionadas, sin volver a escribir las que sobreviven.
+// El plan se valida completo antes de efectuar la primera eliminacion.
+function planificarEliminacionFilasQTAS_(sheet, headers, objects) {
+  if (!sheet || !headers || !headers.length) {
+    throw new Error('Falta la hoja o sus encabezados para eliminar filas.');
+  }
+  const lastRow = sheet.getLastRow();
+  const selected = (objects || []).map(obj => ({
+    rowNumber: obj.__rowNumber,
+    values: headers.map(header => obj[header] === undefined || obj[header] === null ? '' : obj[header])
+  })).sort((a, b) => b.rowNumber - a.rowNumber);
+  const seen = {};
+  selected.forEach(item => {
+    if (!Number.isInteger(item.rowNumber) || item.rowNumber < 2 ||
+        item.rowNumber > lastRow || seen[item.rowNumber]) {
+      throw new Error('Fila invalida o duplicada en el plan de eliminacion.');
+    }
+    seen[item.rowNumber] = true;
+    const current = sheet.getRange(item.rowNumber, 1, 1, headers.length).getValues()[0];
+    if (JSON.stringify(current) !== JSON.stringify(item.values)) {
+      throw new Error('La fila cambio desde la lectura. No se elimina ninguna fila de esta hoja.');
+    }
+  });
+  const groups = [];
+  selected.forEach(item => {
+    const previous = groups[groups.length - 1];
+    if (previous && item.rowNumber === previous.startRow - 1) {
+      previous.startRow = item.rowNumber;
+      previous.values.unshift(item.values);
+    } else {
+      groups.push({ startRow: item.rowNumber, values: [item.values] });
+    }
+  });
+  return { sheet: sheet, columns: headers.length, groups: groups, count: selected.length };
+}
+
+function ejecutarEliminacionFilasQTAS_(plan) {
+  plan.groups.forEach(group => {
+    const current = plan.sheet.getRange(group.startRow, 1, group.values.length, plan.columns).getValues();
+    if (JSON.stringify(current) !== JSON.stringify(group.values)) {
+      throw new Error('Las filas cambiaron desde la validacion. Se detiene la eliminacion.');
+    }
+    // De abajo hacia arriba: los numeros de las filas pendientes siguen siendo validos.
+    plan.sheet.deleteRows(group.startRow, group.values.length);
+  });
+  return plan.count;
+}
+
 function reemplazarObjetos_(sheet, headers, objects) {
   if (!sheet || !headers || !headers.length) return;
 
