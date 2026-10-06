@@ -1,3 +1,68 @@
+// Ejecutable desde el editor de QA cuando la credencial del harness no esta disponible.
+// Solo crea una pestana temporal y una copia manual del libro de QA.
+function testSeguridadHistoricosQTAS() {
+  const ss = SpreadsheetApp.getActive();
+  if (!ss || !/QA/i.test(ss.getName())) {
+    throw new Error('Esta prueba solo se ejecuta en un libro de QA.');
+  }
+  const name = '__QTAS_SEGURIDAD_' + Utilities.getUuid().slice(0, 8);
+  let sheet;
+  let backupId = '';
+  try {
+    sheet = ss.insertSheet(name);
+    const firstDate = new Date('2025-08-01T05:00:00.123Z');
+    const secondDate = new Date('2026-07-01T05:00:00.456Z');
+    const grid = [
+      ['Venta_ID', 'Fecha_Base', 'Medio_Pago', 'Formula'],
+      [1, firstDate, 'NequiMajo', '=40+2'],
+      [9, new Date('2026-10-04T05:00:00Z'), 'NequiSteve', '=2+2'],
+      [2, secondDate, 'Daviplata', '=30+3'],
+      [9, new Date('2026-10-04T05:00:00Z'), 'NequiSteve', '=3+3']
+    ];
+    sheet.getRange(1, 1, grid.length, grid[0].length).setValues(grid);
+    sheet.getRange(2, 2, 4, 1).setNumberFormat('yyyy-mm-dd hh:mm:ss');
+    sheet.getRange(1, 1, grid.length, grid[0].length).createFilter()
+      .setColumnFilterCriteria(3, SpreadsheetApp.newFilterCriteria()
+        .setHiddenValues(['NequiMajo', 'Daviplata']).build());
+    SpreadsheetApp.flush();
+    if (!sheet.isRowHiddenByFilter(2) || !sheet.isRowHiddenByFilter(4)) {
+      throw new Error('La prueba no pudo reproducir el filtro de las filas historicas.');
+    }
+    const rows = leerObjetosConMeta_(sheet).filter(row => row.Venta_ID === 9);
+    const plan = planificarEliminacionFilasQTAS_(sheet, grid[0], rows);
+    if (ejecutarEliminacionFilasQTAS_(plan) !== 2) {
+      throw new Error('La eliminacion selectiva no retiro exactamente las dos filas elegidas.');
+    }
+    SpreadsheetApp.flush();
+    const values = sheet.getRange(2, 1, 2, 4).getValues();
+    const formulas = sheet.getRange(2, 4, 2, 1).getFormulas();
+    const formats = sheet.getRange(2, 2, 2, 1).getNumberFormats();
+    if (sheet.getLastRow() !== 3 || values[0][0] !== 1 || values[1][0] !== 2 ||
+        values[0][1].getTime() !== firstDate.getTime() ||
+        values[1][1].getTime() !== secondDate.getTime() ||
+        formulas[0][0] !== '=40+2' || formulas[1][0] !== '=30+3' ||
+        formats.some(row => row[0] !== 'yyyy-mm-dd hh:mm:ss')) {
+      throw new Error('Las filas historicas no conservaron fechas, formulas y formatos.');
+    }
+    ss.deleteSheet(sheet);
+    sheet = null;
+    const backup = crearBackupManualQTAS();
+    backupId = backup.backupFileId;
+    const metadata = JSON.parse(DriveApp.getFileById(backupId).getDescription());
+    if (!backup.ok || !backup.created || !metadata.verified || metadata.kind !== 'manual') {
+      throw new Error('La copia nativa de QA no quedo verificada.');
+    }
+    const result = { ok: true, filteredDeletion: true, preservedHistoricalDates: true,
+      preservedFormulasAndFormats: true, verifiedNativeBackup: true,
+      spreadsheetId: ss.getId(), temporarySheetRemoved: true, testBackupTrashed: true };
+    console.log(JSON.stringify(result));
+    return result;
+  } finally {
+    if (sheet) ss.deleteSheet(sheet);
+    if (backupId) DriveApp.getFileById(backupId).setTrashed(true);
+  }
+}
+
 function testPingQTAS() {
   const ss = SpreadsheetApp.getActive();
   const fechaHistoricaEsperada = '2024-01-01 00:00:00';
