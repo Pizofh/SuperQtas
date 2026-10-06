@@ -22,7 +22,7 @@ function instalarBackupDiarioQTAS(payload) {
     // Crear primero: si falla, el activador anterior sigue instalado.
     const trigger = ScriptApp.newTrigger('ejecutarBackupDiarioQTAS')
       .timeBased().everyDays(1).atHour(requestedHour)
-      .inTimezone(ss.getSpreadsheetTimeZone()).create();
+      .inTimezone(zonaHorariaBackupsQTAS_(ss)).create();
     PropertiesService.getScriptProperties().setProperties({
       QTAS_BACKUP_SOURCE_ID: ss.getId(),
       QTAS_BACKUP_HOUR: String(requestedHour)
@@ -30,7 +30,7 @@ function instalarBackupDiarioQTAS(payload) {
     oldTriggers.forEach(old => ScriptApp.deleteTrigger(old));
     return {
       ok: true, spreadsheetId: ss.getId(), spreadsheetName: ss.getName(),
-      hour: requestedHour, timeZone: ss.getSpreadsheetTimeZone(),
+      hour: requestedHour, timeZone: zonaHorariaBackupsQTAS_(ss),
       folderId: folder.getId(), folderName: folder.getName(),
       retainedDailyBackups: 3, triggerId: trigger.getUniqueId(),
       handler: 'ejecutarBackupDiarioQTAS'
@@ -52,12 +52,17 @@ function getEstadoBackupsQTAS() {
   return {
     ok: true, spreadsheetId: ss.getId(), spreadsheetName: ss.getName(),
     folderId: folderId, scheduledHour: Number(props.getProperty('QTAS_BACKUP_HOUR') || 3),
-    timeZone: ss.getSpreadsheetTimeZone(), retainedDailyBackups: 3,
+    timeZone: zonaHorariaBackupsQTAS_(ss), retainedDailyBackups: 3,
     dailyTriggerInstalled: triggerCount > 0, triggerCount: triggerCount,
     lastSuccessfulBackup: props.getProperty('QTAS_BACKUP_LAST_SUCCESS') || '',
     lastError: props.getProperty('QTAS_BACKUP_LAST_ERROR') || '',
     destructiveOpsAllowed: operacionesDestructivasPermitidasQTAS_()
   };
+}
+
+function zonaHorariaBackupsQTAS_(ss) {
+  const zone = ss.getSpreadsheetTimeZone();
+  return typeof zone === 'string' && zone.trim() ? zone.trim() : 'America/Bogota';
 }
 
 function obtenerSpreadsheetBackupsQTAS_() {
@@ -82,7 +87,7 @@ function crearBackupSpreadsheetQTAS_(options) {
       const sourceFile = DriveApp.getFileById(ss.getId());
       const folder = asegurarCarpetaBackupsQTAS_(sourceFile);
       const now = new Date();
-      const day = Utilities.formatDate(now, ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd');
+      const day = Utilities.formatDate(now, zonaHorariaBackupsQTAS_(ss), 'yyyy-MM-dd');
       const managed = listarBackupsDiariosQTAS_(folder, ss.getId());
       if (daily && managed.length && managed[0].metadata.day > day) {
         throw new Error('Hay un backup de una fecha posterior. Se conserva la retencion sin crear otra copia.');
@@ -98,7 +103,7 @@ function crearBackupSpreadsheetQTAS_(options) {
       } else {
         const manifest = manifestSpreadsheetBackupQTAS_(ss);
         const kind = daily ? 'DIARIO' : 'MANUAL';
-        const suffix = daily ? day : Utilities.formatDate(now, ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd_HH-mm-ss')
+        const suffix = daily ? day : Utilities.formatDate(now, zonaHorariaBackupsQTAS_(ss), 'yyyy-MM-dd_HH-mm-ss')
           + '_' + Utilities.getUuid().slice(0, 8);
         const name = `QTAS_BACKUP_${kind}__${ss.getId()}__${suffix}__${ss.getName()}`;
         file = sourceFile.makeCopy(name + '__PENDIENTE', folder);
@@ -131,7 +136,7 @@ function crearBackupSpreadsheetQTAS_(options) {
 
 function manifestSpreadsheetBackupQTAS_(ss) {
   return {
-    timeZone: ss.getSpreadsheetTimeZone(),
+    timeZone: zonaHorariaBackupsQTAS_(ss),
     sheets: ss.getSheets().map(sheet => {
       const range = sheet.getDataRange();
       const values = range.getValues();

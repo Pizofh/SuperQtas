@@ -221,3 +221,11 @@ test('eliminarVentaReciente recorre todas sus tablas sin vaciar historicos', () 
   assert.equal(result.inventario.movimientos, 1);
   for (const [name, sheet] of tables) assert.deepEqual(sheet.records, survivors.get(name), name);
 });
+
+
+test('una zona horaria vacia usa Bogota al copiar e instalar el activador', () => {
+  const e = environment(); e.source.getSpreadsheetTimeZone = () => null;
+  assert.equal(e.context.ejecutarBackupDiarioQTAS().day, '2026-10-06');
+  assert.equal(e.context.instalarBackupDiarioQTAS().timeZone, 'America/Bogota');
+  assert.equal(e.triggers[0].zone, 'America/Bogota');
+});
