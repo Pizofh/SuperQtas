@@ -200,6 +200,7 @@ The experience is designed for daily operational use, with guided catalogs, dire
 
 ## Additional Documentation
 
+- [Architecture and release diagrams](./docs/ARCHITECTURE_OVERVIEW.md)
 - [TESTING_QTAS.md](./TESTING_QTAS.md)
 - [OPERACION_QTAS.md](./OPERACION_QTAS.md)
 - [LOOKER_QTAS.md](./LOOKER_QTAS.md)
