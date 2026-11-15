@@ -4013,6 +4013,7 @@
           ${row.comentarioCompra ? `<div class="helper">Nota: ${escapeHtml(row.comentarioCompra)}</div>` : ''}
           <div class="list-item-actions">
             <button class="btn secondary" type="button" onclick="seleccionarCompraParaCuadreFondos(${row.compraId})">Cuadrar fondos</button>
+            <button class="btn secondary" type="button" onclick="conciliarInventarioCompra(${row.compraId})">Conciliar inventario</button>
             <button class="btn danger" type="button" onclick="eliminarCompraReciente(${row.compraId})">Eliminar</button>
           </div>
         </div>
@@ -4127,6 +4128,22 @@
         'comentarioCuadreCompra'
       ].forEach(id => { document.getElementById(id).disabled = true; });
       document.getElementById('guardarCuadreCompraBtn').disabled = true;
+    }
+
+    function conciliarInventarioCompra(compraId) {
+      if (!confirm('Conciliar solamente movimientos faltantes de la compra C' + compraId + '? No reemplaza conteos fisicos.')) return;
+      document.getElementById('estadoCompra').innerText = 'Conciliando inventario de C' + compraId + '...';
+      google.script.run
+        .withSuccessHandler(resp => {
+          document.getElementById('estadoCompra').innerText =
+            'Compra C' + compraId + ': ' + resp.movimientosCreados + ' movimiento(s) nuevos. Verifica el stock fisico.';
+          cargarInventario(false, { forceRefresh: true });
+        })
+        .withFailureHandler(err => {
+          document.getElementById('estadoCompra').innerText =
+            construirMensajeEstadoError_('No se pudo conciliar inventario', err);
+        })
+        .conciliarMovimientosComprasQTAS({ compraIds: [compraId] });
     }
 
     function eliminarCompraReciente(compraId) {
