@@ -176,7 +176,10 @@ function testResetEntornoQTAS(payload) {
       : asegurarModeloOperativoQTAS_({
         aplicarFormatos: Boolean(settings.aplicarFormatos)
       });
-    const configSheet = materializarConfigMediosPagoQTAS_();
+    // El libro de QA ya tiene el esquema materializado. Evitar autoResizeColumns
+    // en cada reset: es formato visual y no afecta las aserciones del harness.
+    const configSheet = ss.getSheetByName(QTAS.sheets.config) ||
+      materializarConfigMediosPagoQTAS_();
     const sheetNames = testHojasSoportadasQTAS_()
       .concat([configSheet.getName()])
       .filter((sheetName, index, array) => array.indexOf(sheetName) === index);
