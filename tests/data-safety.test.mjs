@@ -229,3 +229,60 @@ test('una zona horaria vacia usa Bogota al copiar e instalar el activador', () =
   assert.equal(e.context.instalarBackupDiarioQTAS().timeZone, 'America/Bogota');
   assert.equal(e.triggers[0].zone, 'America/Bogota');
 });
+
+
+test('si una fila derivada de costos persiste tras deleteRows, la limpia sin tocar historicos', () => {
+  const e = environment(), c = e.context, tables = new Map();
+  const names = {
+    ventas: 'Ventas',
+    detalle: 'Venta_Detalle',
+    pagos: 'Pagos',
+    distribucionIngresos: 'Distribucion_Ingresos',
+    ventasEnvio: 'Ventas_Envio',
+    ventaDetalleCostosCalculado: 'Venta_Detalle_Costos_Calc',
+    inventarioMovimientos: 'Inventario_Movimientos'
+  };
+  const headers = ['Venta_ID', 'Detalle_ID', 'Detalle_Costo_ID', 'Nombre', 'Estado_Registro'];
+  for (const name of Object.values(names)) {
+    tables.set(name, new Sheet(name, [
+      headers,
+      [1, 'DET-000001-01', 'VDC-DET-000001-01', 'Historica', 'Activo'],
+      [9, 'DET-000009-01', 'VDC-DET-000009-01', 'Por borrar', 'Activo']
+    ]));
+  }
+  const costos = tables.get(names.ventaDetalleCostosCalculado);
+  // Simula el caso real de QA: deleteRows retorna, pero la fila derivada persiste.
+  costos.deleteRows = (r, n) => { costos.deleted.push([r, n]); };
+  const getRangeOriginal = costos.getRange.bind(costos);
+  let limpiezaDirigida = 0;
+  costos.getRange = (r, col, count, width) => {
+    const range = getRangeOriginal(r, col, count, width);
+    range.clearContent = () => {
+      assert.equal(r, 3, 'Solo se permite limpiar la fila de la venta objetivo');
+      assert.equal(count, 1);
+      costos.records[r - 1].values.fill('');
+      limpiezaDirigida++;
+    };
+    return range;
+  };
+  const ss = { getId: () => 'qa-test-book', getSheetByName: name => tables.get(name) };
+  c.SpreadsheetApp.getActive = () => ss;
+  c.QTAS = { sheets: names, schemas: {}, status: { registro: { anulado: 'Anulado' } } };
+  c.validarModeloSoloLecturaQTAS_ = () => {};
+  c.construirEstadoVentasQTAS_ = () => ({});
+  c.ventasRecientesDesdeEstadoQTAS_ = () => [{ ventaId: 9 }];
+  c.obtenerHojaVentasEnvioQTAS_ = () => tables.get(names.ventasEnvio);
+  c.resolverHojaCanonicaOperativaQTAS_ = (_, name) => ({
+    ok: true, sheet: tables.get(name), headers
+  });
+  c.resincronizarIdNumericoPersistenteQTAS_ = () => 1;
+  c.eliminarMovimientosInventarioPorFuentesQTAS_ = () => ({ ok: true, movimientos: 0 });
+  c.limpiarCachesEjecucionQTAS_ = () => {};
+  c.dashboardVentasConsistenteQTAS_ = () => ({});
+  const result = c.eliminarVentaRecienteQTAS({ ventaId: 9 });
+  assert.equal(result.ok, true);
+  assert.equal(limpiezaDirigida, 1, 'Debe activarse el fallback para la fila residual');
+  assert.equal(c.leerObjetos_(costos).filter(row => row.Venta_ID === 9).length, 0);
+  assert.equal(c.leerObjetos_(costos).filter(row => row.Venta_ID === 1).length, 1);
+  assert.equal(c.leerObjetos_(tables.get(names.ventas)).length, 1);
+});
