@@ -8,7 +8,7 @@ function context() {
   for (const name of ['QTAS_Utils.gs', 'QTAS_Inventario.gs']) {
     vm.runInContext(fs.readFileSync(new URL('../' + name, import.meta.url), 'utf8'), sandbox, { filename: name });
   }
-  sandbox.TIPOS_COMPRA_ITEM = ['Insumo', 'Producto', 'Gasto'];
+  vm.runInContext("function normalizarTipoCompraItemQTAS_(v) { return String(v || 'Insumo'); }", sandbox);
   sandbox.QTAS = { status: { registro: { anulado: 'Anulado' } } };
   return sandbox;
 }
