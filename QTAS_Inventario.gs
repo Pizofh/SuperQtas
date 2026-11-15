@@ -184,6 +184,127 @@ function guardarControlInventarioQTAS(payload) {
   });
 }
 
+// TEMPORAL: retirar en GitHub despues de ejecutar una vez y verificar el conteo.
+function corregirProduccionPRD000074TemporalQTAS() {
+  // Backup nativo verificado antes de cualquier cambio sobre el libro activo.
+  const respaldo = crearBackupManualQTAS();
+  if (!respaldo || !respaldo.ok || !respaldo.backupFileId) {
+    throw new Error('No hay backup manual verificado. No se modifico nada.');
+  }
+
+  return withScriptLock_('corregir PRD-000074', () => {
+    const ss = validarModeloSoloLecturaQTAS_({
+      sheetNames: [
+        QTAS.sheets.producciones,
+        QTAS.sheets.produccionDetalle,
+        QTAS.sheets.inventarioMovimientos,
+        QTAS.sheets.inventarioSnapshot
+      ],
+      validarConfig: false
+    });
+    const definir = (nombre, predicado) => {
+      const sheet = ss.getSheetByName(nombre);
+      const headers = getHeaders_(sheet);
+      const rows = leerObjetosConMeta_(sheet).filter(predicado);
+      return { sheet: sheet, headers: headers, rows: rows };
+    };
+    const produccionId = 'PRD-000074';
+    const produccion = definir(QTAS.sheets.producciones,
+      row => texto_(row.Produccion_ID) === produccionId);
+    const detalles = definir(QTAS.sheets.produccionDetalle,
+      row => texto_(row.Produccion_ID) === produccionId);
+    const movimientos = definir(QTAS.sheets.inventarioMovimientos,
+      row => texto_(row.Produccion_ID) === produccionId);
+
+    // Evitar modificar una copia antigua, una segunda ejecucion o una produccion
+    // que haya sido cambiada por alguien mas desde el respaldo de referencia.
+    const exigir = (condicion, mensaje) => {
+      if (!condicion) throw new Error('Correccion cancelada sin cambios: ' + mensaje);
+    };
+    const check = (row, operacion, tipo, item, cantidad, unidad) =>
+      texto_(row.Operacion) === operacion &&
+      normalizarTipoCompraItemQTAS_(row.Tipo_Item) === tipo &&
+      normalizarClaveTexto_(row.Item) === normalizarClaveTexto_(item) &&
+      Math.abs(numero_(row.Cantidad) - cantidad) < 0.0001 &&
+      normalizarUnidadCanonicaQTAS_(row.Unidad) === unidad;
+    exigir(produccion.rows.length === 1, 'Se esperaba una produccion unica.');
+    exigir(texto_(produccion.rows[0].Producto_Estandar) === 'Choco' &&
+      normalizarUnidadCanonicaQTAS_(produccion.rows[0].Unidad) === 'und' &&
+      numero_(produccion.rows[0].Cantidad_Producida) === 60 &&
+      !esRegistroAnulado_(produccion.rows[0].Estado_Registro),
+      'La produccion no coincide con Choco 60 und activa.');
+    exigir(detalles.rows.length === 3 && movimientos.rows.length === 3,
+      'Se esperaban exactamente tres detalles y tres movimientos.');
+    const detalleEsperado = [
+      ['Entrada', 'Producto', 'Choco', 60, 'und'],
+      ['Salida', 'Insumo', 'Chocolate', 420, 'g'],
+      ['Salida', 'Producto', 'AcSup', 42, 'g']
+    ];
+    const detalleOrdenado = detalles.rows.slice().sort((a, b) =>
+      texto_(a.Produccion_Detalle_ID).localeCompare(texto_(b.Produccion_Detalle_ID))
+    );
+    const movimientoOrdenado = movimientos.rows.slice().sort((a, b) =>
+      texto_(a.Detalle_ID).localeCompare(texto_(b.Detalle_ID))
+    );
+    detalleEsperado.forEach((esperado, index) => {
+      exigir(check(detalleOrdenado[index], ...esperado), 'Detalle ' + (index + 1) + ' inesperado.');
+      exigir(check(movimientoOrdenado[index], ...esperado), 'Movimiento ' + (index + 1) + ' inesperado.');
+      exigir(texto_(movimientoOrdenado[index].Detalle_ID) ===
+        texto_(detalleOrdenado[index].Produccion_Detalle_ID),
+        'Detalle y movimiento no coinciden.');
+    });
+    const stock = listarSnapshotInventarioQTAS_(ss);
+    const choco = stock.find(row => row.tipoItem === 'Producto' &&
+      normalizarClaveTexto_(row.item) === 'choco' && row.unidad === 'und');
+    exigir(choco && numero_(choco.stockActual) === 28,
+      'El stock de Choco cambio respecto al respaldo exportado (28). Recalcular antes.');
+    exigir(sincronizacionInventarioHabilitadaQTAS_(),
+      'El inventario esta pausado, no procede la correccion.');
+    // Solo despues de pasar todas las validaciones aplicamos las seis filas.
+    const ahora = new Date();
+    const nuevos = [37, 259, 25.9];
+    const antiguo = [60, 420, 42];
+    const cambios = [37, -259, -25.9];
+    const detalleNuevo = detalleOrdenado.map((row, i) =>
+      Object.assign({}, row, { Cantidad: nuevos[i] }));
+    const movimientoNuevo = movimientoOrdenado.map((row, i) =>
+      Object.assign({}, row, { Cantidad: nuevos[i], Cantidad_Signada: cambios[i] }));
+    const produccionNueva = Object.assign({}, produccion.rows[0], {
+      Cantidad_Producida: 37,
+      Comentario_Produccion: unirUnicos_([
+        texto_(produccion.rows[0].Comentario_Produccion),
+        'Correccion de 60 a 37 por conteo fisico de 5 Choco; backup ' + respaldo.backupFileId
+      ])
+    });
+    actualizarFilaObjeto_(produccion.sheet, produccion.rows[0].__rowNumber,
+      produccion.headers, produccionNueva);
+    detalleNuevo.forEach(row => actualizarFilaObjeto_(detalles.sheet, row.__rowNumber,
+      detalles.headers, row));
+    movimientoNuevo.forEach(row => actualizarFilaObjeto_(movimientos.sheet, row.__rowNumber,
+      movimientos.headers, row));
+    const snapshot = reconstruirSnapshotInventarioQTAS_({ ss: ss });
+    const stockNuevo = snapshot.find(row => row.Tipo_Item === 'Producto' &&
+      normalizarClaveTexto_(row.Item) === 'choco' &&
+      normalizarUnidadCanonicaQTAS_(row.Unidad) === 'und');
+    exigir(stockNuevo && Math.abs(numero_(stockNuevo.Stock_Actual) - 5) < 0.0001,
+      'Se actualizaron filas pero el stock final no es 5: revisar backup ' + respaldo.backupFileId);
+    limpiarCachesEjecucionQTAS_();
+    return {
+      ok: true,
+      produccionId: produccionId,
+      anterior: 60,
+      corregida: 37,
+      chocosStock: stockNuevo.Stock_Actual,
+      chocolateConsumoAnterior: 420,
+      chocolateConsumoNuevo: 259,
+      acSupConsumoAnterior: 42,
+      acSupConsumoNuevo: 25.9,
+      backupId: respaldo.backupFileId,
+      actualizadoEn: ahora.toISOString()
+    };
+  });
+}
+
 function registrarProduccionQTAS(payload) {
   return withScriptLock_('registrar produccion', () => {
     validarModeloSoloLecturaQTAS_({
