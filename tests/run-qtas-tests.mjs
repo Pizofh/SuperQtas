@@ -204,6 +204,7 @@ function createScenarioContext(config, scriptClient) {
 
   return {
     async call(functionName, ...parameters) {
+      const startedAt = Date.now();
       let response;
       try {
         response = await ejecutarConReintentoApiGoogle_(
@@ -218,9 +219,14 @@ function createScenarioContext(config, scriptClient) {
           })
         );
       } catch (error) {
+        console.error(`[API FAIL] ${functionName} (${Date.now() - startedAt} ms)`);
         throw createAppsScriptTransportError(functionName, error, config);
       }
 
+      const elapsedMs = Date.now() - startedAt;
+      if (elapsedMs >= 10000) {
+        console.log(`[API SLOW] ${functionName} (${elapsedMs} ms)`);
+      }
       const operation = response.data || {};
       if (operation.error) {
         throw createAppsScriptExecutionError(functionName, operation.error);
