@@ -215,6 +215,42 @@ function encolarPostProcesoCompraQTAS_(payload) {
   };
 }
 
+// Repara solo los detalles de compras recientes que aun no tienen movimiento.
+// No reconstruye el ledger completo: conserva conteos fisicos y ajustes manuales.
+function conciliarMovimientosComprasQTAS(payload) {
+  return withScriptLock_('conciliar compras en inventario', () => {
+    const compraIds = (payload && payload.compraIds || []).map(value => numero_(value))
+      .filter(value => Number.isInteger(value) && value > 0);
+    if (!compraIds.length) throw new Error('Indica al menos un ID de compra.');
+    if (compraIds.length > 20) throw new Error('Concilia maximo 20 compras por ejecucion.');
+    if (!sincronizacionInventarioHabilitadaQTAS_()) {
+      throw new Error('El inventario esta pausado para carga historica; no es seguro conciliar compras.');
+    }
+    const ss = validarModeloSoloLecturaQTAS_({
+      sheetNames: [QTAS.sheets.compras, QTAS.sheets.compraDetalle,
+        QTAS.sheets.inventarioControl, QTAS.sheets.inventarioMovimientos, QTAS.sheets.inventarioSnapshot],
+      validarConfig: false
+    });
+    const ids = [...new Set(compraIds)];
+    const cabeceras = leerObjetos_(ss.getSheetByName(QTAS.sheets.compras));
+    const comprasValidas = ids.filter(id => cabeceras.some(row =>
+      numero_(row.Compra_ID) === id && !esRegistroAnulado_(row.Estado_Registro)
+    ));
+    if (comprasValidas.length !== ids.length) {
+      throw new Error('Una de las compras solicitadas no existe o esta anulada.');
+    }
+    const detalle = leerObjetos_(ss.getSheetByName(QTAS.sheets.compraDetalle))
+      .filter(row => comprasValidas.includes(numero_(row.Compra_ID)) &&
+        !esRegistroAnulado_(row.Estado_Registro));
+    const resumen = sincronizarInventarioDesdeCompraQTAS_({ ss: ss, lineas: detalle });
+    if (!resumen.ok || resumen.skipped) {
+      throw new Error(resumen.reason || 'No se pudo conciliar inventario.');
+    }
+    return { ok: true, compraIds: comprasValidas, detalles: detalle.length,
+      movimientosCreados: resumen.movimientos };
+  });
+}
+
 function procesarColaPostCompraQTAS() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(250)) {

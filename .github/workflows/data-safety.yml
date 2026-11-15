@@ -18,6 +18,8 @@ jobs:
           node-version: 20
       - name: Test filtered sale deletion and daily backup retention
         run: npm run test:data-safety
+      - name: Test inventory aliases
+        run: node --test tests/inventory-alias.test.mjs
       - name: Build and verify production surface without deploying
         run: |
           printf '%s' '{"scriptId":"BUILD_VALIDATION_ONLY"}' > .clasp.json
