@@ -4,7 +4,12 @@ import vm from 'node:vm';
 import test from 'node:test';
 
 function context() {
-  const sandbox = vm.createContext({ console });
+  const sandbox = vm.createContext({
+    console,
+    Utilities: { formatDate: date => date.toISOString().slice(0, 10), getUuid: () => 'test-uuid' },
+    SpreadsheetApp: { getActive: () => ({ getSpreadsheetTimeZone: () => 'America/Bogota' }) },
+    Session: { getScriptTimeZone: () => 'America/Bogota' }
+  });
   for (const name of ['QTAS_Utils.gs', 'QTAS_Inventario.gs']) {
     vm.runInContext(fs.readFileSync(new URL('../' + name, import.meta.url), 'utf8'), sandbox, { filename: name });
   }
