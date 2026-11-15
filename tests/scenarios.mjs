@@ -583,6 +583,9 @@ export const SCENARIOS = [
       }));
 
       ctx.equal(ctx.num(resp.costosActualizados), 0, 'Un gasto puro no debe actualizar costos.');
+      ctx.assert(resp.costoProductoCalculado && resp.costoProductoCalculado.ok === true &&
+        resp.costoProductoCalculado.skipped === true,
+        'Un gasto puro debe omitir el recalculo global de Costo_Producto_Calc.');
 
       const state = await snapshotLigero(ctx, {
         sheetNames: ['Compra_Detalle', 'Costos_Referencia']
@@ -973,24 +976,26 @@ export const SCENARIOS = [
       await ctx.reset();
 
       const medio = 'TransferTest';
-      await ctx.batch([
-        batchStep('guardarMedioPagoQTAS', {
-          medioPago: medio,
-          nota: 'Creado por test',
-          activo: true
-        }),
-        batchStep('registrarCompraQTAS', compraPayloadBase({
-          proveedor: 'Proveedor Medio Test',
-          medioPago: medio,
-          lineas: [
-            compraLinea('Producto', 'AcSup', 2, 'g', 18000, true, 'Compra con medio nuevo')
-          ]
-        })),
-        batchStep('cambiarEstadoMedioPagoQTAS', {
-          medioPago: medio,
-          activo: false
-        })
-      ]);
+      // Cada operacion merece su propio limite de tiempo y un error identificable.
+      // Mantener el escenario integrado: alta -> compra -> desactivacion -> rechazo.
+      await ctx.call('guardarMedioPagoQTAS', {
+        medioPago: medio,
+        nota: 'Creado por test',
+        activo: true
+      });
+      const compra = await ctx.call('registrarCompraQTAS', compraPayloadBase({
+        proveedor: 'Proveedor Medio Test',
+        medioPago: medio,
+        lineas: [
+          compraLinea('Producto', 'AcSup', 2, 'g', 18000, true, 'Compra con medio nuevo')
+        ]
+      }));
+      ctx.assert(compra.ok && ctx.num(compra.compraId) > 0,
+        'Debe registrarse la compra con el medio habilitado.');
+      await ctx.call('cambiarEstadoMedioPagoQTAS', {
+        medioPago: medio,
+        activo: false
+      });
 
       await ctx.expectError(
         'registrarCompraQTAS',
