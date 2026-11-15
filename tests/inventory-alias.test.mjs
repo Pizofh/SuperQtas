@@ -13,7 +13,7 @@ function context() {
   for (const name of ['QTAS_Utils.gs', 'QTAS_Inventario.gs']) {
     vm.runInContext(fs.readFileSync(new URL('../' + name, import.meta.url), 'utf8'), sandbox, { filename: name });
   }
-  vm.runInContext("function normalizarTipoCompraItemQTAS_(v) { return String(v || 'Insumo'); }", sandbox);
+  vm.runInContext("function normalizarTipoCompraItemQTAS_(v) { return String(v || 'Insumo'); } function normalizarClaveProductoQTAS_(item, unidad) { return String(item).toLowerCase() + '-' + String(unidad); }", sandbox);
   sandbox.QTAS = { status: { registro: { anulado: 'Anulado' } } };
   return sandbox;
 }
