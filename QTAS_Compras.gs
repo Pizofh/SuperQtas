@@ -367,6 +367,9 @@ function procesarPostCompraDetalleQTAS_(ss, compraIds, ahora) {
   const detalleSheet = ss.getSheetByName(QTAS.sheets.compraDetalle);
   const detalleRows = leerObjetos_(detalleSheet)
     .filter(row => ids[numero_(row.Compra_ID)] && !esRegistroAnulado_(row.Estado_Registro));
+  const tieneCostosActualizables = detalleRows.some(row =>
+    (row.Impacta_Costo === true || normalizarClaveTexto_(row.Impacta_Costo) === 'true') && numero_(row.Costo_Unitario) > 0
+  );
   let inventario;
   let costoProductoCalculado;
 
@@ -380,24 +383,38 @@ function procesarPostCompraDetalleQTAS_(ss, compraIds, ahora) {
     inventario = { ok: false, skipped: true, reason: error.message, movimientos: 0 };
   }
 
-  try {
-    costoProductoCalculado = reconstruirCostoProductoCalculadoInternoQTAS_({
-      ss: ss,
-      fechaBase: new Date(),
-      ahora: ahora || new Date()
-    });
-  } catch (error) {
-    Logger.log(`No se pudo refrescar Costo_Producto_Calc postcompra: ${error.message}`);
+  if (!tieneCostosActualizables) {
+    // Un gasto sin impacto de costos no debe reconstruir el catalogo completo.
     costoProductoCalculado = {
-      ok: false,
+      ok: true,
       skipped: true,
-      reason: error.message,
+      reason: 'La compra no contiene lineas que actualicen costos.',
       rows: 0,
       inserted: 0,
       updated: 0,
       stale: 0,
-      fechaBase: fechaInput_(new Date())
+      fechaBase: fechaInput_(ahora || new Date())
     };
+  } else {
+    try {
+      costoProductoCalculado = reconstruirCostoProductoCalculadoInternoQTAS_({
+        ss: ss,
+        fechaBase: new Date(),
+        ahora: ahora || new Date()
+      });
+    } catch (error) {
+      Logger.log(`No se pudo refrescar Costo_Producto_Calc postcompra: ${error.message}`);
+      costoProductoCalculado = {
+        ok: false,
+        skipped: true,
+        reason: error.message,
+        rows: 0,
+        inserted: 0,
+        updated: 0,
+        stale: 0,
+        fechaBase: fechaInput_(new Date())
+      };
+    }
   }
 
   return {
@@ -1651,6 +1668,8 @@ function actualizarCostosDesdeCompraQTAS_(context) {
   const sheet = ss.getSheetByName(QTAS.sheets.costosReferencia);
   const headers = getHeaders_(sheet);
   const fechaCompra = resolverFechaOperacion_(context.fechaCompra, new Date());
+  // El gasto puro nunca altera Costos_Referencia: evitar leer el historico completo.
+  if (!(context.lineas || []).some(linea => linea.Impacta_Costo)) return 0;
   const rows = leerObjetosConMeta_(sheet);
   let actualizados = 0;
 
