@@ -192,7 +192,12 @@ function testResetEntornoQTAS(payload) {
     });
 
     testResetearPropiedadesQTAS_('QTAS_SEQ_');
-    PropertiesService.getScriptProperties().deleteProperty('QTAS_POST_VENTA_QUEUE_V1');
+    // Las colas diferidas son compartidas entre escenarios del mismo proyecto QA.
+    // No deben procesarse compras antiguas ni reutilizar IDs al empezar otro caso.
+    const scriptProperties = PropertiesService.getScriptProperties();
+    scriptProperties.deleteProperty('QTAS_POST_VENTA_QUEUE_V1');
+    scriptProperties.deleteProperty('QTAS_POST_COMPRA_QUEUE_V1');
+    scriptProperties.deleteProperty('QTAS_POST_COMPRA_PROCESSING_V1');
     limpiarCachesEjecucionQTAS_();
     invalidarCacheDocumentoQTAS_('precios_referencia_memoria');
     invalidarCacheDocumentoQTAS_('distribucion_reglas_memoria');
