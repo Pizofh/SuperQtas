@@ -77,7 +77,7 @@ function environment() {
     return pattern === 'yyyy-MM-dd' ? day : `${day}_${parts.hour}-${parts.minute}-${parts.second}`;
   }
   const context = vm.createContext({ Date: ClockDate, console, Set,
-    SpreadsheetApp: { getActive: () => active, openById: id => { if (!store.has(id)) throw new Error('Missing'); return store.get(id).spreadsheet; } },
+    SpreadsheetApp: { getActive: () => active, flush: () => {}, openById: id => { if (!store.has(id)) throw new Error('Missing'); return store.get(id).spreadsheet; } },
     DriveApp: { getFileById: id => store.get(id), getFolderById: id => { assert.equal(id, 'folder'); return folder; }, getRootFolder: () => folder },
     PropertiesService: { getScriptProperties: () => props },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
@@ -203,7 +203,7 @@ test('eliminarVentaReciente recorre todas sus tablas sin vaciar historicos', () 
     [2, 'old2', 'Historica Steve', 'Activo', new Date('2025-02-01T05:00:00Z'), '', 'NequiSteve']
   ], [2]));
   const survivors = new Map([...tables].map(([name, s]) => [name, structuredClone([s.records[0], s.records[1], s.records[3]])]));
-  const ss = { getSheetByName: name => tables.get(name) };
+  const ss = { getId: () => 'qa-test-book', getSheetByName: name => tables.get(name) };
   c.SpreadsheetApp.getActive = () => ss;
   c.QTAS = { sheets: names, schemas: {}, status: { registro: { anulado: 'Anulado' } } };
   c.validarModeloSoloLecturaQTAS_ = () => {};
