@@ -810,23 +810,38 @@ function eliminarVentaRecienteQTAS(payload) {
     );
     if (colaActual.length !== colaAnterior.length) guardarColaPostVentaQTAS_(colaActual);
 
-    // Sheets puede exponer escrituras de un postproceso previo que no estaban en la
-    // primera lectura. Reconcilia una segunda vez solo los costos de esta venta.
+    // La tabla de costos es derivada; en hojas filtradas el deleteRows puede dejar
+    // una fila residual. Leer despues del borrado y vaciar SOLO el registro
+    // identificado, sin reescribir las filas historicas supervivientes.
     if (costoDetalleRef.ok) {
       SpreadsheetApp.flush();
       const costosResiduales = leerObjetosConMeta_(costoDetalleRef.sheet)
         .filter(row => numero_(row.Venta_ID) === ventaId);
       if (costosResiduales.length) {
-        const planResidual = planificarEliminacionFilasQTAS_(
-          costoDetalleRef.sheet, costoDetalleRef.headers, costosResiduales
-        );
-        ejecutarEliminacionFilasQTAS_(planResidual);
-      }
-      SpreadsheetApp.flush();
-      const aunResiduales = leerObjetosConMeta_(costoDetalleRef.sheet)
-        .filter(row => numero_(row.Venta_ID) === ventaId);
-      if (aunResiduales.length) {
-        throw new Error('La venta se elimino, pero persisten registros de costos. No reintentes la eliminacion: revisa la consistencia.');
+        const columnaVenta = costoDetalleRef.headers.indexOf('Venta_ID');
+        const columnaDetalle = costoDetalleRef.headers.indexOf('Detalle_Costo_ID');
+        if (columnaVenta < 0 || columnaDetalle < 0) {
+          throw new Error('No se puede verificar la estructura de costos antes de limpiar los residuos.');
+        }
+        costosResiduales.forEach(row => {
+          const range = costoDetalleRef.sheet.getRange(
+            row.__rowNumber, 1, 1, costoDetalleRef.headers.length
+          );
+          const actual = range.getValues()[0];
+          if (numero_(actual[columnaVenta]) !== ventaId ||
+              texto_(actual[columnaDetalle]) !== texto_(row.Detalle_Costo_ID)) {
+            throw new Error('La fila residual de costos cambio. Se cancela la limpieza de seguridad.');
+          }
+          range.clearContent();
+        });
+        SpreadsheetApp.flush();
+        const pendientes = leerObjetosConMeta_(costoDetalleRef.sheet)
+          .filter(row => numero_(row.Venta_ID) === ventaId);
+        if (pendientes.length) {
+          throw new Error('Persisten costos de la venta eliminada tras la limpieza selectiva.');
+        }
+        Logger.log('Se limpiaron ' + costosResiduales.length +
+          ' filas de costos residuales de la venta ' + ventaId);
       }
     }
 
