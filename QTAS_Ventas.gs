@@ -802,6 +802,34 @@ function eliminarVentaRecienteQTAS(payload) {
     }
     planes.forEach(plan => ejecutarEliminacionFilasQTAS_(plan));
 
+    // Una venta eliminada no debe quedar pendiente para el postproceso diferido.
+    // Evitar especialmente que una entrada obsoleta se aplique cuando se reutilice su ID.
+    const colaAnterior = leerColaPostVentaQTAS_();
+    const colaActual = colaAnterior.filter(item =>
+      texto_(item.spreadsheetId) !== ss.getId() || numero_(item.ventaId) !== ventaId
+    );
+    if (colaActual.length !== colaAnterior.length) guardarColaPostVentaQTAS_(colaActual);
+
+    // Sheets puede exponer escrituras de un postproceso previo que no estaban en la
+    // primera lectura. Reconcilia una segunda vez solo los costos de esta venta.
+    if (costoDetalleRef.ok) {
+      SpreadsheetApp.flush();
+      const costosResiduales = leerObjetosConMeta_(costoDetalleRef.sheet)
+        .filter(row => numero_(row.Venta_ID) === ventaId);
+      if (costosResiduales.length) {
+        const planResidual = planificarEliminacionFilasQTAS_(
+          costoDetalleRef.sheet, costoDetalleRef.headers, costosResiduales
+        );
+        ejecutarEliminacionFilasQTAS_(planResidual);
+      }
+      SpreadsheetApp.flush();
+      const aunResiduales = leerObjetosConMeta_(costoDetalleRef.sheet)
+        .filter(row => numero_(row.Venta_ID) === ventaId);
+      if (aunResiduales.length) {
+        throw new Error('La venta se elimino, pero persisten registros de costos. No reintentes la eliminacion: revisa la consistencia.');
+      }
+    }
+
     const secuenciaVenta = resincronizarIdNumericoPersistenteQTAS_(
       'venta_id',
       ventasSheet,
