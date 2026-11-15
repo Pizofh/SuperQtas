@@ -926,24 +926,22 @@ export const SCENARIOS = [
     run: async ctx => {
       await ctx.reset();
 
-      const results = await ctx.batch([
-        batchStep('guardarReglaDistribucionFrontendQTAS', {
-          fechaDesde: '2026-07-01',
-          steve: 50,
-          majo: 30,
-          mush: 20,
-          nota: 'Regla automatizada'
-        }),
-        batchStep('registrarVentaQTAS', ventaPayloadBase({
-          fechaVenta: '2026-07-02',
-          cliente: { nombre: 'Cliente Regla Test' },
-          lineas: [
-            ventaLinea('AcSup', 1, 'g', 20000)
-          ]
-        }))
-      ]);
-      const configuracion = results[0];
-      const venta = results[1];
+      // Evitar acumular operaciones costosas en una sola ejecucion de Apps Script.
+      // Mantener el mismo escenario y las mismas aserciones sobre ambas operaciones.
+      const configuracion = await ctx.call('guardarReglaDistribucionFrontendQTAS', {
+        fechaDesde: '2026-07-01',
+        steve: 50,
+        majo: 30,
+        mush: 20,
+        nota: 'Regla automatizada'
+      });
+      const venta = await ctx.call('registrarVentaQTAS', ventaPayloadBase({
+        fechaVenta: '2026-07-02',
+        cliente: { nombre: 'Cliente Regla Test' },
+        lineas: [
+          ventaLinea('AcSup', 1, 'g', 20000)
+        ]
+      }));
 
       ctx.assert(
         (configuracion.reglasDistribucion || []).some(row => row.fechaDesde === '2026-07-01' && ctx.num(row.steve) === 50),
