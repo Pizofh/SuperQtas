@@ -76,8 +76,8 @@ function environment() {
     const day = `${parts.year}-${parts.month}-${parts.day}`;
     return pattern === 'yyyy-MM-dd' ? day : `${day}_${parts.hour}-${parts.minute}-${parts.second}`;
   }
-  const context = vm.createContext({ Date: ClockDate, console, Set,
-    SpreadsheetApp: { getActive: () => active, openById: id => { if (!store.has(id)) throw new Error('Missing'); return store.get(id).spreadsheet; } },
+  const context = vm.createContext({ Date: ClockDate, console, Set, Logger: { log: () => {} },
+    SpreadsheetApp: { getActive: () => active, flush: () => {}, openById: id => { if (!store.has(id)) throw new Error('Missing'); return store.get(id).spreadsheet; } },
     DriveApp: { getFileById: id => store.get(id), getFolderById: id => { assert.equal(id, 'folder'); return folder; }, getRootFolder: () => folder },
     PropertiesService: { getScriptProperties: () => props },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
@@ -203,7 +203,7 @@ test('eliminarVentaReciente recorre todas sus tablas sin vaciar historicos', () 
     [2, 'old2', 'Historica Steve', 'Activo', new Date('2025-02-01T05:00:00Z'), '', 'NequiSteve']
   ], [2]));
   const survivors = new Map([...tables].map(([name, s]) => [name, structuredClone([s.records[0], s.records[1], s.records[3]])]));
-  const ss = { getSheetByName: name => tables.get(name) };
+  const ss = { getId: () => 'qa-test-book', getSheetByName: name => tables.get(name) };
   c.SpreadsheetApp.getActive = () => ss;
   c.QTAS = { sheets: names, schemas: {}, status: { registro: { anulado: 'Anulado' } } };
   c.validarModeloSoloLecturaQTAS_ = () => {};
@@ -228,4 +228,61 @@ test('una zona horaria vacia usa Bogota al copiar e instalar el activador', () =
   assert.equal(e.context.ejecutarBackupDiarioQTAS().day, '2026-10-06');
   assert.equal(e.context.instalarBackupDiarioQTAS().timeZone, 'America/Bogota');
   assert.equal(e.triggers[0].zone, 'America/Bogota');
+});
+
+
+test('si una fila derivada de costos persiste tras deleteRows, la limpia sin tocar historicos', () => {
+  const e = environment(), c = e.context, tables = new Map();
+  const names = {
+    ventas: 'Ventas',
+    detalle: 'Venta_Detalle',
+    pagos: 'Pagos',
+    distribucionIngresos: 'Distribucion_Ingresos',
+    ventasEnvio: 'Ventas_Envio',
+    ventaDetalleCostosCalculado: 'Venta_Detalle_Costos_Calc',
+    inventarioMovimientos: 'Inventario_Movimientos'
+  };
+  const headers = ['Venta_ID', 'Detalle_ID', 'Detalle_Costo_ID', 'Nombre', 'Estado_Registro'];
+  for (const name of Object.values(names)) {
+    tables.set(name, new Sheet(name, [
+      headers,
+      [1, 'DET-000001-01', 'VDC-DET-000001-01', 'Historica', 'Activo'],
+      [9, 'DET-000009-01', 'VDC-DET-000009-01', 'Por borrar', 'Activo']
+    ]));
+  }
+  const costos = tables.get(names.ventaDetalleCostosCalculado);
+  // Simula el caso real de QA: deleteRows retorna, pero la fila derivada persiste.
+  costos.deleteRows = (r, n) => { costos.deleted.push([r, n]); };
+  const getRangeOriginal = costos.getRange.bind(costos);
+  let limpiezaDirigida = 0;
+  costos.getRange = (r, col, count, width) => {
+    const range = getRangeOriginal(r, col, count, width);
+    range.clearContent = () => {
+      assert.equal(r, 3, 'Solo se permite limpiar la fila de la venta objetivo');
+      assert.equal(count, 1);
+      costos.records[r - 1].values.fill('');
+      limpiezaDirigida++;
+    };
+    return range;
+  };
+  const ss = { getId: () => 'qa-test-book', getSheetByName: name => tables.get(name) };
+  c.SpreadsheetApp.getActive = () => ss;
+  c.QTAS = { sheets: names, schemas: {}, status: { registro: { anulado: 'Anulado' } } };
+  c.validarModeloSoloLecturaQTAS_ = () => {};
+  c.construirEstadoVentasQTAS_ = () => ({});
+  c.ventasRecientesDesdeEstadoQTAS_ = () => [{ ventaId: 9 }];
+  c.obtenerHojaVentasEnvioQTAS_ = () => tables.get(names.ventasEnvio);
+  c.resolverHojaCanonicaOperativaQTAS_ = (_, name) => ({
+    ok: true, sheet: tables.get(name), headers
+  });
+  c.resincronizarIdNumericoPersistenteQTAS_ = () => 1;
+  c.eliminarMovimientosInventarioPorFuentesQTAS_ = () => ({ ok: true, movimientos: 0 });
+  c.limpiarCachesEjecucionQTAS_ = () => {};
+  c.dashboardVentasConsistenteQTAS_ = () => ({});
+  const result = c.eliminarVentaRecienteQTAS({ ventaId: 9 });
+  assert.equal(result.ok, true);
+  assert.equal(limpiezaDirigida, 1, 'Debe activarse el fallback para la fila residual');
+  assert.equal(c.leerObjetos_(costos).filter(row => row.Venta_ID === 9).length, 0);
+  assert.equal(c.leerObjetos_(costos).filter(row => row.Venta_ID === 1).length, 1);
+  assert.equal(c.leerObjetos_(tables.get(names.ventas)).length, 1);
 });

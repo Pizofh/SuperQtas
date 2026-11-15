@@ -1131,10 +1131,14 @@ export const SCENARIOS = [
         0,
         'No deben quedar detalles de la venta eliminada.'
       );
+      const costosHuerfanos = ctx.sheetRows(state, 'Venta_Detalle_Costos_Calc')
+        .filter(row => ctx.num(row.Venta_ID) === ctx.num(venta2.ventaId));
       ctx.equal(
-        ctx.sheetRows(state, 'Venta_Detalle_Costos_Calc').filter(row => ctx.num(row.Venta_ID) === ctx.num(venta2.ventaId)).length,
+        costosHuerfanos.length,
         0,
-        'No debe quedar analitica de costos para la venta eliminada.'
+        'No debe quedar analitica de costos para la venta eliminada. ' +
+        'Filas eliminadas segun ERP: ' + ctx.num(eliminacion.removed.ventaDetalleCostosCalculado) +
+        '. IDs residuales: ' + costosHuerfanos.map(row => String(row.Detalle_Costo_ID || row.Detalle_ID)).join(', ')
       );
 
       const venta3 = await ctx.call('registrarVentaQTAS', ventaPayloadBase({
