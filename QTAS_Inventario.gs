@@ -470,10 +470,19 @@ function reconstruirInventarioInternoQTAS_(payload) {
     };
   }
 
+  // Conservar ajustes por conteo fisico al reconstruir el ledger desde fuentes comerciales.
+  // Esos ajustes tienen una identidad unica y no son regenerables desde compras o ventas.
+  const ajustesExistentes = leerObjetos_(movimientosRef.sheet)
+    .filter(row => normalizarClaveTexto_(row.Fuente_Tipo) === 'ajusteinventario')
+    .filter(row => texto_(row.Fuente_ID));
+  const ajustesUnicos = ajustesExistentes.filter((row, index, rows) =>
+    rows.findIndex(other => texto_(other.Fuente_ID) === texto_(row.Fuente_ID)) === index
+  );
   const movimientos = []
     .concat(construirMovimientosInventarioDesdeComprasQTAS_({ ss: ss }))
     .concat(construirMovimientosInventarioDesdeProduccionesQTAS_({ ss: ss }))
     .concat(construirMovimientosInventarioDesdeVentasQTAS_({ ss: ss }))
+    .concat(ajustesUnicos)
     .sort((a, b) => {
       const fechaA = resolverFechaOperacion_(a.Fecha_Movimiento, new Date());
       const fechaB = resolverFechaOperacion_(b.Fecha_Movimiento, new Date());
