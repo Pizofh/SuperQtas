@@ -134,39 +134,31 @@ These are the most important operational sheets in the model:
 
 ## Quality, QA, and Deployment
 
-The repository already works with a real separation between QA and production.
+The repository uses **one GitHub Actions pipeline**: [Quality and Deploy](./.github/workflows/quality-deploy.yml), and **one test entrypoint**: `tests/suite.mjs`.
 
-- `qa` deploys to the test Apps Script project.
-- `main` is reserved for production.
-- Each push to `qa` can run headless Apps Script tests.
-- The smoke suite acts as the fast validation layer.
-- The full suite can be enabled manually or through a repository/environment variable.
-- Production deployment is triggered manually from GitHub Actions.
+- Pull requests to `main`: every unit test + production build/surface verification. No deployment.
+- Push to `qa`: same local quality gates + deployment to isolated QA + Apps Script probe + critical smoke suite.
+- Manual `full_qa`: quality gates + complete QA E2E suite of 24 scenarios.
+- Manual `release` on `main`: local quality gates + **complete QA E2E suite**, then (and only then) production deploy with `DEPLOY_PROD` confirmation and `production` environment gate.
+- Manual `diagnose`: select an existing scenario from the same suite for troubleshooting; no independent tests or production release.
 
-QA push validation is controlled with GitHub Actions repository variables:
+QA credentials are mandatory; missing credentials fail the gate. Smoke scenarios are already included in the full suite and are never repeated in the same release run. E2E tests reset an isolated QA spreadsheet, **never the production spreadsheet**. All QA E2E jobs are serialized through one concurrency group.
 
-- `QTAS_RUN_SMOKE_SUITE_ON_QA_PUSH=true` runs the harness, probe, and smoke suite.
-- `QTAS_RUN_FULL_SUITE_ON_QA_PUSH=true` runs the harness, probe, and complete suite; it skips the separate smoke run because those scenarios are included.
-- Set both suite variables to `false` to deploy QA without tests.
-- `QTAS_RUN_TESTS_ON_QA_PUSH=true` is optional and runs only the harness and probe when both suite variables are `false`.
-
-Production also uses a reduced bundle:
-
-- It excludes testing helpers from the production bundle.
-- Migration and export modules were removed from the codebase as part of the production cleanup.
-- Backup routines stay available in production because scheduled backup is part of the operational surface.
-- It strips out manual and destructive functions that are not part of the normal ERP runtime.
+Production is deployed from a reduced verified bundle excluding test and destructive helpers. See [TESTING_QTAS.md](./TESTING_QTAS.md) for commands, secrets, and release criteria.
 
 ## Useful Scripts
 
 ```bash
-npm run push:gas:test
-npm run test:qtas:probe:qa
-npm run test:qtas:smoke:qa
-npm run test:qtas:qa
+npm run test:suite -- --level unit
+npm run test:suite -- --level list
+npm run test:suite -- --level smoke --config tests/qtas.test.config.json
+npm run test:suite -- --level full --config tests/qtas.test.config.json
+npm run test:suite -- --level diagnose --scenario venta_con_deuda --config tests/qtas.test.config.json
 npm run build:gas:prod
-npm run deploy:prod:push
+npm run verify:gas:prod
 ```
+
+For deployment, use **Quality and Deploy** in GitHub Actions, not a separate manual production workflow.
 
 ## Setup
 
@@ -185,8 +177,8 @@ npm run deploy:prod:push
 3. Configure `.clasp.json` for production.
 4. Configure `.clasp.test.json` for QA.
 5. Install dependencies with `npm install`.
-6. Push to QA and validate the probe and smoke suite.
-7. Deploy to production only after QA passes.
+6. Push to `qa` to execute the integrated smoke gate.
+7. Use the manual `release` operation on `main` to run full E2E before production.
 
 ## Interface
 

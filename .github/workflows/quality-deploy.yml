@@ -1,0 +1,153 @@
+name: Quality and Deploy
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [qa]
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Accion: full_qa, release o diagnose"
+        required: true
+        type: choice
+        default: full_qa
+        options:
+          - full_qa
+          - release
+          - diagnose
+      scenario_id:
+        description: "Solo diagnose: ID del escenario existente"
+        required: false
+        type: string
+        default: ""
+      confirm_prod:
+        description: "Solo release: escribe DEPLOY_PROD"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Quality gate - all unit tests and production bundle checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies (locked)
+        run: npm ci
+      - name: Reject invalid release requests before touching QA
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.operation == 'release' }}
+        env:
+          OPERATION_BRANCH: ${{ github.ref }}
+          RELEASE_CONFIRMATION: ${{ inputs.confirm_prod }}
+        run: |
+          if [ "$OPERATION_BRANCH" != 'refs/heads/main' ] || [ "$RELEASE_CONFIRMATION" != 'DEPLOY_PROD' ]; then
+            echo "::error::Production release requires main and confirm_prod=DEPLOY_PROD."
+            exit 1
+          fi
+      - name: Run all unit tests
+        run: npm run test:suite -- --level unit
+      - name: Verify GAS production surface
+        run: |
+          printf '%s' '{"scriptId":"BUILD_VALIDATION_ONLY"}' > .clasp.json
+          npm run build:gas:prod
+          npm run verify:gas:prod
+
+  qa:
+    name: QA gate - deployed Apps Script E2E
+    needs: quality
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 85
+    concurrency:
+      group: superqtas-qa-spreadsheet
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies (locked)
+        run: npm ci
+      - name: Configure QA (required, never silently skipped)
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          CLASP_JSON_TEST: ${{ secrets.CLASP_JSON_TEST }}
+          QTAS_TEST_CONFIG_JSON: ${{ secrets.QTAS_TEST_CONFIG_JSON }}
+          GOOGLE_AUTHORIZED_USER_JSON: ${{ secrets.GOOGLE_AUTHORIZED_USER_JSON_TEST }}
+        run: |
+          for name in CLASPRC_JSON CLASP_JSON_TEST QTAS_TEST_CONFIG_JSON GOOGLE_AUTHORIZED_USER_JSON; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing QA configuration: $name"
+              exit 1
+            fi
+          done
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          printf '%s' "$CLASP_JSON_TEST" > .clasp.test.json
+          printf '%s' "$QTAS_TEST_CONFIG_JSON" > tests/qtas.test.config.json
+      - name: Deploy exact tested revision to QA
+        run: npm run deploy:test:push
+      - name: Probe actual QA deployment
+        env:
+          GOOGLE_AUTHORIZED_USER_JSON: ${{ secrets.GOOGLE_AUTHORIZED_USER_JSON_TEST }}
+        run: npm run test:suite -- --level probe --config tests/qtas.test.config.json
+      - name: Run unified E2E suite
+        env:
+          GOOGLE_AUTHORIZED_USER_JSON: ${{ secrets.GOOGLE_AUTHORIZED_USER_JSON_TEST }}
+          OPERATION: ${{ inputs.operation }}
+          SCENARIO_ID: ${{ inputs.scenario_id }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "Validating QA smoke level"
+            npm run test:suite -- --level smoke --config tests/qtas.test.config.json
+          elif [ "$OPERATION" = "diagnose" ]; then
+            test -n "$SCENARIO_ID" || { echo "::error::diagnose requires scenario_id"; exit 1; }
+            npm run test:suite -- --level diagnose --config tests/qtas.test.config.json --scenario "$SCENARIO_ID"
+          else
+            echo "Validating all E2E scenarios before completion/release"
+            npm run test:suite -- --level full --config tests/qtas.test.config.json
+          fi
+      - name: Upload failure diagnostic
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: qtas-qa-failure-${{ github.run_id }}
+          path: tests/.artifacts/last-failure.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  production:
+    name: Production deployment (manual release only)
+    needs: [quality, qa]
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.operation == 'release' && inputs.confirm_prod == 'DEPLOY_PROD' }}
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies (locked)
+        run: npm ci
+      - name: Configure production credentials
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          CLASP_JSON_PROD: ${{ secrets.CLASP_JSON_PROD }}
+        run: |
+          test -n "$CLASPRC_JSON" || { echo "::error::Missing CLASPRC_JSON"; exit 1; }
+          test -n "$CLASP_JSON_PROD" || { echo "::error::Missing CLASP_JSON_PROD"; exit 1; }
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          printf '%s' "$CLASP_JSON_PROD" > .clasp.json
+      - name: Reverify production bundle and deploy exact validated commit
+        run: npm run deploy:prod:push
