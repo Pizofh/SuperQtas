@@ -105,10 +105,16 @@ jobs:
           GOOGLE_AUTHORIZED_USER_JSON: ${{ secrets.GOOGLE_AUTHORIZED_USER_JSON_TEST }}
           OPERATION: ${{ inputs.operation }}
           SCENARIO_ID: ${{ inputs.scenario_id }}
+          QA_FULL_ON_PUSH: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[full-qa]') }}
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
-            echo "Validating QA smoke level"
-            npm run test:suite -- --level smoke --config tests/qtas.test.config.json
+            if [ "$QA_FULL_ON_PUSH" = "true" ]; then
+              echo "Validating ALL QA E2E scenarios (explicit [full-qa] commit marker)"
+              npm run test:suite -- --level full --config tests/qtas.test.config.json
+            else
+              echo "Validating QA smoke level"
+              npm run test:suite -- --level smoke --config tests/qtas.test.config.json
+            fi
           elif [ "$OPERATION" = "diagnose" ]; then
             test -n "$SCENARIO_ID" || { echo "::error::diagnose requires scenario_id"; exit 1; }
             npm run test:suite -- --level diagnose --config tests/qtas.test.config.json --scenario "$SCENARIO_ID"

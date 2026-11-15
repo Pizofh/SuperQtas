@@ -232,7 +232,18 @@ function createScenarioContext(config, scriptClient) {
         throw createAppsScriptExecutionError(functionName, operation.error);
       }
 
-      return operation.response ? operation.response.result : null;
+      const result = operation.response ? operation.response.result : null;
+      // registrarVentaQTAS ya devuelve perfil por paso. Mostrarlo en CI solo
+      // cuando la operacion fue lenta, para investigar Sheets/lock/posventa.
+      if (elapsedMs >= 10000 && result && result.performance &&
+          Array.isArray(result.performance.topSteps)) {
+        const top = result.performance.topSteps.slice(0, 5)
+          .map(item => String(item.step) + '=' + Number(item.ms || 0) + 'ms')
+          .join(' | ');
+        console.log('[API PERF] ' + functionName + ' | total=' +
+          Number(result.performance.totalMs || 0) + 'ms | ' + top);
+      }
+      return result;
     },
 
     async expectError(functionName, parameters, expectedText) {

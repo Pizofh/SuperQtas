@@ -8,6 +8,7 @@
 |---|---|---|
 | Pull request hacia `main` | Todas las pruebas unitarias + build y verificación de superficie de producción | Ninguno |
 | Push a `qa` | Unitarias + build/verificación + deploy QA + probe + 10 escenarios smoke (mínimo exigido) | Solo QA |
+| Push a `qa` con `[full-qa]` en el mensaje del commit | Misma suite unificada, pero ejecuta **todos los escenarios E2E** en lugar de smoke | Solo QA |
 | Actions → Quality and Deploy → `full_qa` | Unitarias + build/verificación + deploy QA + probe + 24 escenarios E2E (mínimo exigido) | Solo QA |
 | Actions → Quality and Deploy → `release` en `main` | Todas las puertas anteriores **con E2E completa**; producción solo después de aprobarlas | QA y luego producción |
 | Actions → Quality and Deploy → `diagnose` | Puertas locales + deploy QA + probe + escenario indicado de la misma suite | Solo QA |
@@ -36,7 +37,7 @@ npm run test:suite -- --level diagnose --scenario venta_eliminacion_reciente_reu
 - `full`: todos los escenarios de `tests/scenarios.mjs`, mínimo 24; conserva aislamiento con `testResetEntornoQTAS`.
 - `diagnose`: ejecuta **uno de esos mismos escenarios**, no otra suite. Nunca autoriza producción.
 
-Todos los niveles E2E usan el runner de Apps Script `tests/run-qtas-tests.mjs`, sin duplicar casos. Por defecto se activa *fail-fast*: al encontrar un fallo se detiene la ejecución, pero un release solo es válido si pasan **todos** los escenarios del nivel requerido. El runner registra las llamadas lentas a Apps Script.
+Todos los niveles E2E usan el runner de Apps Script `tests/run-qtas-tests.mjs`, sin duplicar casos. Por defecto se activa *fail-fast*: al encontrar un fallo se detiene la ejecución, pero un release solo es válido si pasan **todos** los escenarios del nivel requerido. El runner registra las llamadas lentas a Apps Script y, cuando la función ya devuelve un perfil de rendimiento, sus cinco pasos más lentos. La marca `[full-qa]` en un commit de `qa` permite lanzar la E2E completa desde el mismo workflow; es opcional y no habilita producción.
 
 ## Configuración de QA
 
