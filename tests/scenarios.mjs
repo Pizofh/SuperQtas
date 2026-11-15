@@ -1341,16 +1341,34 @@ export const SCENARIOS = [
           activo: true
         })
       ]);
-      await ctx.call('registrarCompraQTAS', compraPayloadBase({
-        proveedor: 'Proveedor Produccion Test',
-        lineas: [
+      // El límite Apps Script (~6 min) es por invocación. Registrar insumos
+      // en lotes comerciales pequeños conserva la cobertura de todos los
+      // movimientos sin concentrar cinco actualizaciones costosas en una llamada.
+      // Un batch de Apps Script NO sirve aqui: vuelve a acumular el mismo tiempo.
+      const gruposCompra = [
+        [
           compraLinea('Producto', 'AcMed', 10, 'g', 140000, true, 'Base activa'),
-          compraLinea('Insumo', 'Capsulas', 100, 'und', 1500, true, 'Capsulas vacias'),
+          compraLinea('Insumo', 'Capsulas', 100, 'und', 1500, true, 'Capsulas vacias')
+        ],
+        [
           compraLinea('Insumo', 'Bolsa_Zip_Negra', 10, 'und', 3000, true, 'Zip negra micros'),
-          compraLinea('Insumo', 'Bolsa_Papel_0_5lb', 10, 'und', 3000, true, 'Bolsa papel micros'),
+          compraLinea('Insumo', 'Bolsa_Papel_0_5lb', 10, 'und', 3000, true, 'Bolsa papel micros')
+        ],
+        [
           compraLinea('Insumo', 'Calca_Micros_Logo', 1, 'und', 5000, true, 'Calca logo micros')
         ]
-      }));
+      ];
+      for (const [indice, lineas] of gruposCompra.entries()) {
+        const compra = await ctx.call('registrarCompraQTAS', compraPayloadBase({
+          proveedor: 'Proveedor Produccion Test',
+          comentarioCompra: 'Lote de insumos QA ' + (indice + 1),
+          lineas
+        }));
+        ctx.assert(compra.ok && ctx.num(compra.compraId) > 0,
+          'Cada lote de insumos debe registrarse correctamente.');
+        ctx.assert(compra.inventario && compra.inventario.ok,
+          'Cada lote debe sincronizar inventario correctamente.');
+      }
       const produccion = await ctx.call('registrarProduccionQTAS', {
         fechaProduccion: '2026-06-20',
         producto: '100mg',
