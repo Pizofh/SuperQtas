@@ -76,7 +76,7 @@ function environment() {
     const day = `${parts.year}-${parts.month}-${parts.day}`;
     return pattern === 'yyyy-MM-dd' ? day : `${day}_${parts.hour}-${parts.minute}-${parts.second}`;
   }
-  const context = vm.createContext({ Date: ClockDate, console, Set,
+  const context = vm.createContext({ Date: ClockDate, console, Set, Logger: { log: () => {} },
     SpreadsheetApp: { getActive: () => active, flush: () => {}, openById: id => { if (!store.has(id)) throw new Error('Missing'); return store.get(id).spreadsheet; } },
     DriveApp: { getFileById: id => store.get(id), getFolderById: id => { assert.equal(id, 'folder'); return folder; }, getRootFolder: () => folder },
     PropertiesService: { getScriptProperties: () => props },
