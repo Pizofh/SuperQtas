@@ -43,6 +43,16 @@ jobs:
           cache: npm
       - name: Install dependencies (locked)
         run: npm ci
+      - name: Reject invalid release requests before touching QA
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.operation == 'release' }}
+        env:
+          OPERATION_BRANCH: ${{ github.ref }}
+          RELEASE_CONFIRMATION: ${{ inputs.confirm_prod }}
+        run: |
+          if [ "$OPERATION_BRANCH" != 'refs/heads/main' ] || [ "$RELEASE_CONFIRMATION" != 'DEPLOY_PROD' ]; then
+            echo "::error::Production release requires main and confirm_prod=DEPLOY_PROD."
+            exit 1
+          fi
       - name: Run all unit tests
         run: npm run test:suite -- --level unit
       - name: Verify GAS production surface
