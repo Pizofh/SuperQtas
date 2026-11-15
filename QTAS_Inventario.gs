@@ -123,6 +123,76 @@ function mostrarEstadoSincronizacionInventarioQTAS() {
   return estado;
 }
 
+// Correccion contabilizada como movimiento nuevo: no reescribe compras, ventas ni saldos anteriores.
+function ajustarStockInventarioQTAS(payload) {
+  return withScriptLock_('ajustar stock de inventario', () => {
+    const tipoItem = normalizarTipoCompraItemQTAS_(payload && payload.tipoItem);
+    const item = normalizarItemInventarioQTAS_(tipoItem, payload && payload.item);
+    const unidad = normalizarUnidadCanonicaQTAS_(payload && payload.unidad);
+    const motivo = texto_(payload && payload.motivo);
+    const nuevoRaw = payload && payload.stockNuevo;
+    const esperadoRaw = payload && payload.stockEsperado;
+    const nuevo = Number(nuevoRaw);
+    const esperado = Number(esperadoRaw);
+
+    if (!item || !unidad || !motivo || motivo.length < 8) {
+      throw new Error('Selecciona un insumo y escribe un motivo de al menos 8 caracteres.');
+    }
+    if (nuevoRaw === '' || nuevoRaw === null || nuevoRaw === undefined ||
+        !Number.isFinite(nuevo) || nuevo < 0 ||
+        esperadoRaw === '' || esperadoRaw === null || esperadoRaw === undefined ||
+        !Number.isFinite(esperado)) {
+      throw new Error('El stock nuevo y el esperado deben ser valores numericos validos.');
+    }
+    if (!sincronizacionInventarioHabilitadaQTAS_()) {
+      throw new Error('El inventario esta pausado para carga historica. No se pueden crear ajustes.');
+    }
+
+    const ss = validarModeloSoloLecturaQTAS_({
+      sheetNames: [QTAS.sheets.inventarioControl, QTAS.sheets.inventarioMovimientos, QTAS.sheets.inventarioSnapshot],
+      validarConfig: false
+    });
+    const ref = resolverHojaCanonicaOperativaQTAS_(ss, QTAS.sheets.inventarioMovimientos);
+    if (!ref.ok) throw new Error(ref.reason || 'No se puede acceder al ledger de inventario.');
+
+    const controles = listarControlesInventarioQTAS_(ss);
+    const index = construirIndiceControlesInventarioQTAS_(controles);
+    const key = claveControlInventarioQTAS_(tipoItem, item, unidad);
+    const control = index[key];
+    if (!control || !control.activo || control.modoStock === 'NoControlado') {
+      throw new Error('El item no tiene un control de inventario activo.');
+    }
+
+    // Leer el ledger bajo lock, no confiar en el snapshot cacheado del navegador.
+    const movimientos = leerObjetos_(ref.sheet);
+    const actualRow = construirSnapshotInventarioQTAS_(movimientos, index)
+      .find(row => claveControlInventarioQTAS_(row.Tipo_Item, row.Item, row.Unidad) === key);
+    const actual = actualRow ? redondear_(numero_(actualRow.Stock_Actual)) : 0;
+    if (Math.abs(actual - esperado) > 0.009) {
+      throw new Error('El stock cambio desde que se cargo la pantalla. Recarga el inventario y vuelve a intentar.');
+    }
+
+    const delta = redondear_(nuevo - actual);
+    if (Math.abs(delta) > 0.009) {
+      appendMovimientosInventarioQTAS_(ref.sheet, ref.headers, [crearMovimientoInventarioQTAS_({
+        fechaMovimiento: new Date(),
+        fuenteTipo: 'AjusteInventario',
+        fuenteId: 'AJUSTE-MANUAL-' + Utilities.getUuid(),
+        operacion: delta > 0 ? 'Entrada' : 'Salida',
+        tipoItem: tipoItem,
+        item: item,
+        cantidad: Math.abs(delta),
+        unidad: unidad,
+        nota: 'Ajuste manual. Anterior=' + actual + ', nuevo=' + redondear_(nuevo) + '. Motivo: ' + motivo
+      })]);
+    }
+
+    reconstruirSnapshotInventarioQTAS_({ ss: ss });
+    return { ok: true, item: item, unidad: unidad, anterior: actual,
+      nuevo: redondear_(nuevo), diferencia: delta, movimientoCreado: Math.abs(delta) > 0.009 };
+  });
+}
+
 function guardarControlInventarioQTAS(payload) {
   return withScriptLock_('guardar control inventario', () => {
     asegurarModeloOperativoQTAS_();
@@ -812,6 +882,10 @@ function listarControlesInventarioQTAS_(spreadsheet) {
   return leerObjetos_(ref.sheet)
     .map(row => normalizarControlInventarioQTAS_(row))
     .filter(row => row.item && row.unidad)
+    .filter((row, index, all) => all.findIndex(candidate =>
+      claveControlInventarioQTAS_(candidate.tipoItem, candidate.item, candidate.unidad) ===
+      claveControlInventarioQTAS_(row.tipoItem, row.item, row.unidad)
+    ) === index)
     .sort((a, b) => {
       if (a.tipoItem !== b.tipoItem) return a.tipoItem.localeCompare(b.tipoItem);
       if (a.item !== b.item) return a.item.localeCompare(b.item);
@@ -1015,7 +1089,7 @@ function construirSnapshotInventarioQTAS_(movimientosRaw, controlsIndex) {
     .map(row => ({
       fechaMovimiento: row.Fecha_Movimiento || row.fechaMovimiento || '',
       tipoItem: normalizarTipoCompraItemQTAS_(row.Tipo_Item || row.tipoItem),
-      item: texto_(row.Item || row.item),
+      item: normalizarItemInventarioQTAS_(row.Tipo_Item || row.tipoItem, row.Item || row.item),
       unidad: normalizarUnidadCanonicaQTAS_(row.Unidad || row.unidad),
       cantidadSignada: redondear_(numero_(row.Cantidad_Signada || row.cantidadSignada))
     }))
@@ -1554,7 +1628,7 @@ function construirCandidatosControlInventarioQTAS_(ss) {
   const mapa = {};
   const add = function(tipoItem, item, unidad) {
     const tipo = normalizarTipoCompraItemQTAS_(tipoItem);
-    const nombre = texto_(item);
+    const nombre = normalizarItemInventarioQTAS_(tipo, item);
     const unidadCanonica = normalizarUnidadCanonicaQTAS_(unidad);
     if (!nombre || !unidadCanonica || tipo === 'Gasto') return;
     mapa[claveControlInventarioQTAS_(tipo, nombre, unidadCanonica)] = {
@@ -1617,7 +1691,7 @@ function normalizarControlInventarioQTAS_(row) {
   return {
     controlId: texto_(row.Control_ID || row.controlId),
     tipoItem: normalizarTipoCompraItemQTAS_(row.Tipo_Item || row.tipoItem),
-    item: texto_(row.Item || row.item),
+    item: normalizarItemInventarioQTAS_(row.Tipo_Item || row.tipoItem, row.Item || row.item),
     unidad: normalizarUnidadCanonicaQTAS_(row.Unidad || row.unidad),
     modoStock: normalizarModoStockInventarioQTAS_(row.Modo_Stock || row.modoStock),
     stockMinimo: redondear_(Math.max(0, numero_(row.Stock_Minimo || row.stockMinimo))),
@@ -1661,10 +1735,23 @@ function obtenerModoStockPorDefectoInventarioQTAS_(tipoItem, item, unidad) {
   return unidadCanonica ? 'Directo' : 'NoControlado';
 }
 
+// Identidad estable del insumo, independiente de tildes en registros historicos.
+// No cambiamos filas del libro: el ledger conserva trazabilidad y el snapshot agrega ambas variantes.
+function normalizarItemInventarioQTAS_(tipoItem, item) {
+  const nombre = texto_(item);
+  if (
+    normalizarTipoCompraItemQTAS_(tipoItem) === 'Insumo' &&
+    normalizarClaveTexto_(nombre) === 'capsulas'
+  ) {
+    return 'Capsulas';
+  }
+  return nombre;
+}
+
 function claveControlInventarioQTAS_(tipoItem, item, unidad) {
   return [
     normalizarTipoCompraItemQTAS_(tipoItem),
-    texto_(item),
+    normalizarItemInventarioQTAS_(tipoItem, item),
     normalizarUnidadCanonicaQTAS_(unidad)
   ].join('|');
 }
@@ -1681,7 +1768,7 @@ function crearMovimientoInventarioQTAS_(context) {
     Fuente_ID: texto_(context.fuenteId),
     Operacion: operacion,
     Tipo_Item: normalizarTipoCompraItemQTAS_(context.tipoItem),
-    Item: texto_(context.item),
+    Item: normalizarItemInventarioQTAS_(context.tipoItem, context.item),
     Cantidad: cantidad,
     Unidad: normalizarUnidadCanonicaQTAS_(context.unidad),
     Cantidad_Signada: cantidadSignada,
