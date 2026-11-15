@@ -4371,7 +4371,7 @@
         return;
       }
 
-      cont.innerHTML = rows.map(row => `
+      cont.innerHTML = rows.map((row, index) => `
         <div class="list-item">
           <strong>${escapeHtml(row.item || '')}</strong>
           <div>${escapeHtml(row.tipoItem || '')} | ${escapeHtml(row.unidad || '')} | Modo ${escapeHtml(row.modoStock || '')}</div>
@@ -4380,8 +4380,55 @@
             ${row.stockMinimo > 0 ? `Min ${escapeHtml(cantidadTextoInventario_(row.stockMinimo))}` : 'Sin minimo'}${row.stockObjetivo > 0 ? ` | Objetivo ${escapeHtml(cantidadTextoInventario_(row.stockObjetivo))}` : ''}${row.ultimoMovimiento ? ` | Ult. mov. ${escapeHtml(row.ultimoMovimiento)}` : ''}
           </div>
           <div><span class="status-pill ${claseEstadoStockInventario_(row.estadoStock)}">${escapeHtml(row.estadoStock || 'OK')}</span></div>
+          <div class="list-item-actions">
+            <button class="btn secondary" type="button" onclick="ajustarInventarioDesdeLista_(${index})">Ajustar stock físico</button>
+          </div>
         </div>
       `).join('');
+    }
+
+    function ajustarInventarioDesdeLista_(index) {
+      const row = (inventarioDashboard.stock || [])[index];
+      if (!row) return;
+      if (!(inventarioDashboard.sincronizacion || {}).habilitada) {
+        alert('El inventario esta en pausa para carga historica. Reactivalo antes de ajustar.');
+        return;
+      }
+      const input = prompt('Stock físico comprobado de ' + row.item + ' (' + row.unidad + '):', String(row.stockActual));
+      if (input === null) return;
+      const nuevo = Number(input.trim().replace(',', '.'));
+      if (!input.trim() || !Number.isFinite(nuevo) || nuevo < 0) {
+        alert('Indica una cantidad numerica valida y no negativa.');
+        return;
+      }
+      const motivo = prompt('Motivo del ajuste (mínimo 8 caracteres; queda en el historial):', 'Conteo físico verificado');
+      if (motivo === null) return;
+      if (motivo.trim().length < 8) {
+        alert('Describe el motivo del ajuste con al menos 8 caracteres.');
+        return;
+      }
+      const delta = redondearNumero_(nuevo - numero_(row.stockActual));
+      if (!confirm('Ajustar ' + row.item + ' de ' + row.stockActual + ' a ' + nuevo +
+        ' ' + row.unidad + ' (diferencia ' + delta + ')? Se registrará un movimiento auditable.')) return;
+      document.getElementById('estadoInventario').innerText = 'Guardando ajuste físico...';
+      google.script.run
+        .withSuccessHandler(resp => {
+          document.getElementById('estadoInventario').innerText = 'Ajuste registrado. Diferencia: ' + resp.diferencia;
+          cargarInventario(false, { forceRefresh: true });
+        })
+        .withFailureHandler(err => {
+          document.getElementById('estadoInventario').innerText =
+            construirMensajeEstadoError_('No se pudo ajustar inventario', err);
+          cargarInventario(false, { forceRefresh: true });
+        })
+        .ajustarStockInventarioQTAS({
+          tipoItem: row.tipoItem,
+          item: row.item,
+          unidad: row.unidad,
+          stockEsperado: row.stockActual,
+          stockNuevo: nuevo,
+          motivo: motivo.trim()
+        });
     }
 
     function renderMovimientosInventario_() {
