@@ -18,6 +18,10 @@ const DEFAULT_CONFIG = {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const selected = selectScenarios(args);
+  if (args.scenarios.length && selected.length !== args.scenarios.length) {
+    const found = new Set(selected.map(item => item.id));
+    throw new Error('Escenario(s) no reconocido(s): ' + args.scenarios.filter(id => !found.has(id)).join(', '));
+  }
 
   if (args.list) {
     printScenarioList(selected);
@@ -57,6 +61,10 @@ async function main() {
       const artifact = await buildFailureArtifact(context, scenario, error);
       await writeFailureArtifact(config.failureArtifactPath, artifact);
       results.push({ id: scenario.id, ok: false, elapsedMs, error: error.message });
+      if (args.failFast) {
+        console.error('[STOP] Deteniendo la suite tras el primer fallo (--fail-fast).');
+        break;
+      }
     }
   }
 
@@ -75,6 +83,7 @@ function parseArgs(argv) {
     configPath: null,
     list: false,
     probe: false,
+    failFast: false,
     scenarios: [],
     tags: []
   };
@@ -88,6 +97,10 @@ function parseArgs(argv) {
     }
     if (current === '--probe') {
       args.probe = true;
+      continue;
+    }
+    if (current === '--fail-fast') {
+      args.failFast = true;
       continue;
     }
     if (current === '--config') {
