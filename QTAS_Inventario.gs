@@ -499,10 +499,8 @@ function registrarProduccionInternaQTAS_(payload) {
     const detalleFaltante = seleccionarFilasPendientesProduccionQTAS_(
       detallesMaterializados, detalleExistente, 'Produccion_Detalle_ID'
     );
-    if (detalleFaltante.length) {
-      escribirFilas_(produccionDetalleSheet,
-        detalleFaltante.map(row => filaDesdeHeaders_(detalleHeaders, row)));
-    }
+    // Validar TODOS los detalles y movimientos existentes antes de escribir
+    // una sola fila, para evitar cambios parciales ante inconsistencias.
     // Un detalle persistido puede tener su movimiento pendiente: comparar ledger por ID.
     const ledger = ss.getSheetByName(QTAS.sheets.inventarioMovimientos);
     const movimientosExistentes = leerObjetos_(ledger)
@@ -513,6 +511,10 @@ function registrarProduccionInternaQTAS_(payload) {
     const movimientosFaltantes = seleccionarFilasPendientesProduccionQTAS_(
       esperados, movimientosExistentes, 'Detalle_ID'
     );
+    if (detalleFaltante.length) {
+      escribirFilas_(produccionDetalleSheet,
+        detalleFaltante.map(row => filaDesdeHeaders_(detalleHeaders, row)));
+    }
     detalleParaMovimientos = detallesMaterializados.filter(row =>
       movimientosFaltantes.some(mov => texto_(mov.Detalle_ID) === texto_(row.Produccion_Detalle_ID))
     );
