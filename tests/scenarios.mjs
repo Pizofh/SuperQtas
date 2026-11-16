@@ -1428,12 +1428,26 @@ export const SCENARIOS = [
         'Las ventas menores a 25 unidades no deben consumir frasco ni calca de instrucciones.'
       );
 
-      await ctx.call('registrarVentaQTAS', ventaPayloadBase({
+      const ventaBajoPedido = await ctx.call('registrarVentaQTAS', ventaPayloadBase({
         cliente: { nombre: 'Cliente Micro Bajo Pedido Test' },
+        programarPostVenta: false,
         lineas: [
           ventaLinea('100mg', 9, 'und', 2000)
         ]
       }));
+      ctx.assert(ventaBajoPedido.ok && ctx.num(ventaBajoPedido.ventaId) > 0,
+        'La venta bajo pedido debe quedar identificada.');
+      if (!ventaBajoPedido.inventario || ventaBajoPedido.inventario.ok !== true) {
+        ctx.assert(ventaBajoPedido.postProceso && ventaBajoPedido.postProceso.queued === true,
+          'Una venta con inventario pendiente debe quedar encolada, no confirmada como procesada.');
+        // Reprocesar la MISMA venta desde la cola, sin repetir el registro comercial.
+        // El proceso debe recuperar la produccion parcial sin duplicar IDs.
+        const cola = await ctx.call('procesarColaPostVentaQTAS');
+        ctx.assert(cola.ok && Array.isArray(cola.results) &&
+          cola.results.some(item => item.completed === true &&
+            item.ventas.includes(ctx.num(ventaBajoPedido.ventaId))),
+          'La recuperacion del postproceso debe finalizar para la venta original.');
+      }
       const estadoBajoPedido = await snapshotLigero(ctx, {
         sheetNames: ['Inventario_Snapshot', 'Producciones', 'Produccion_Detalle']
       });
