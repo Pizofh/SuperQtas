@@ -428,7 +428,8 @@ function registrarProduccionInternaQTAS_(payload) {
     componentes: null,
     componentesProduccion: null,
     ahora: new Date(),
-    reconstruirSnapshot: true
+    reconstruirSnapshot: true,
+    produccionIdExistente: ''
   }, payload || {});
   const ss = settings.ss || SpreadsheetApp.getActive();
   const producto = texto_(settings.producto);
@@ -461,7 +462,8 @@ function registrarProduccionInternaQTAS_(payload) {
   const produccionDetalleSheet = ss.getSheetByName(QTAS.sheets.produccionDetalle);
   const produccionesHeaders = getHeaders_(produccionesSheet);
   const detalleHeaders = getHeaders_(produccionDetalleSheet);
-  const produccionId = siguienteIdConPrefijoPersistenteQTAS_(
+  const produccionIdExistente = texto_(settings.produccionIdExistente);
+  const produccionId = produccionIdExistente || siguienteIdConPrefijoPersistenteQTAS_(
     'produccion_id',
     produccionesSheet,
     'Produccion_ID',
@@ -482,37 +484,112 @@ function registrarProduccionInternaQTAS_(payload) {
     disponibilidadCalcas: construirDisponibilidadCalcasInventarioQTAS_(ss)
   });
 
-  escribirFilas_(produccionesSheet, [filaDesdeHeaders_(produccionesHeaders, {
-    Produccion_ID: produccionId,
-    Fecha_Produccion: fechaProduccion,
-    Producto_Estandar: producto,
-    Cantidad_Producida: cantidad,
-    Unidad: unidad,
-    Comentario_Produccion: comentario,
-    Estado_Registro: QTAS.status.registro.activo
-  })]);
-  escribirFilas_(
-    produccionDetalleSheet,
-    detallesMaterializados.map(row => filaDesdeHeaders_(detalleHeaders, row))
-  );
+  let detalleParaMovimientos = detallesMaterializados;
+  if (produccionIdExistente) {
+    const existentes = leerObjetos_(produccionesSheet)
+      .filter(row => texto_(row.Produccion_ID) === produccionId);
+    if (existentes.length !== 1 ||
+        !esMismaClaveProductoQTAS_(existentes[0].Producto_Estandar, existentes[0].Unidad, producto, unidad) ||
+        numero_(existentes[0].Cantidad_Producida) !== cantidad ||
+        esRegistroAnulado_(existentes[0].Estado_Registro)) {
+      throw new Error('La produccion automatica parcial no coincide con el registro esperado.');
+    }
+    const detalleExistente = leerObjetos_(produccionDetalleSheet)
+      .filter(row => texto_(row.Produccion_ID) === produccionId);
+    const detalleFaltante = seleccionarFilasPendientesProduccionQTAS_(
+      detallesMaterializados, detalleExistente, 'Produccion_Detalle_ID'
+    );
+    if (detalleFaltante.length) {
+      escribirFilas_(produccionDetalleSheet,
+        detalleFaltante.map(row => filaDesdeHeaders_(detalleHeaders, row)));
+    }
+    // Un detalle persistido puede tener su movimiento pendiente: comparar ledger por ID.
+    const ledger = ss.getSheetByName(QTAS.sheets.inventarioMovimientos);
+    const movimientosExistentes = leerObjetos_(ledger)
+      .filter(row => texto_(row.Produccion_ID) === produccionId);
+    const esperados = construirMovimientosInventarioDesdeProduccionDetalleRowsQTAS_(
+      detallesMaterializados, fechaProduccionBase
+    );
+    const movimientosFaltantes = seleccionarFilasPendientesProduccionQTAS_(
+      esperados, movimientosExistentes, 'Detalle_ID'
+    );
+    detalleParaMovimientos = detallesMaterializados.filter(row =>
+      movimientosFaltantes.some(mov => texto_(mov.Detalle_ID) === texto_(row.Produccion_Detalle_ID))
+    );
+  } else {
+    escribirFilas_(produccionesSheet, [filaDesdeHeaders_(produccionesHeaders, {
+      Produccion_ID: produccionId,
+      Fecha_Produccion: fechaProduccion,
+      Producto_Estandar: producto,
+      Cantidad_Producida: cantidad,
+      Unidad: unidad,
+      Comentario_Produccion: comentario,
+      Estado_Registro: QTAS.status.registro.activo
+    })]);
+    escribirFilas_(
+      produccionDetalleSheet,
+      detallesMaterializados.map(row => filaDesdeHeaders_(detalleHeaders, row))
+    );
+  }
 
-  const inventario = sincronizarInventarioDesdeProduccionDetalleQTAS_({
-    ss: ss,
-    produccionId: produccionId,
-    fechaProduccion: fechaProduccionBase,
-    detalleRows: detallesMaterializados,
-    reconstruirSnapshot: settings.reconstruirSnapshot !== false
-  });
+  const inventario = detalleParaMovimientos.length
+    ? sincronizarInventarioDesdeProduccionDetalleQTAS_({
+        ss: ss,
+        produccionId: produccionId,
+        fechaProduccion: fechaProduccionBase,
+        detalleRows: detalleParaMovimientos,
+        reconstruirSnapshot: settings.reconstruirSnapshot !== false
+      })
+    : { ok: true, skipped: true, movimientos: 0 };
+  // Reconciliar desde ledger completo si hubo un registro incompleto previo.
+  if (produccionIdExistente && inventario.ok && settings.reconstruirSnapshot !== false) {
+    reconstruirSnapshotInventarioQTAS_({ ss: ss });
+  }
 
   return {
-    ok: true,
+    ok: inventario.ok === true,
     produccionId: produccionId,
     producto: producto,
     cantidad: cantidad,
     unidad: unidad,
     detalleLineas: detallesMaterializados.length,
+    recuperada: Boolean(produccionIdExistente),
     inventario: inventario
   };
+}
+
+// Reconciliacion estricta: nunca sustituir datos historicos ni duplicar IDs.
+function seleccionarFilasPendientesProduccionQTAS_(esperadas, existentes, campoId) {
+  const esperadasPorId = {};
+  (esperadas || []).forEach(row => {
+    const id = texto_(row[campoId]);
+    if (!id || esperadasPorId[id]) throw new Error('ID esperado de produccion vacio o duplicado.');
+    esperadasPorId[id] = row;
+  });
+  const existentesPorId = {};
+  (existentes || []).forEach(row => {
+    const id = texto_(row[campoId]);
+    if (!id || !esperadasPorId[id] || existentesPorId[id]) {
+      throw new Error('La produccion parcial contiene un ID inesperado o duplicado: ' + id);
+    }
+    existentesPorId[id] = row;
+    const esperado = esperadasPorId[id];
+    // Verificar campos operativos; fechas y notas pueden tener formatos distintos en Sheets.
+    ['Operacion', 'Tipo_Item', 'Item', 'Unidad', 'Cantidad'].forEach(campo => {
+      if (campo === 'Cantidad') {
+        if (Math.abs(numero_(row[campo]) - numero_(esperado[campo])) > 0.0001) {
+          throw new Error('Cantidad inconsistente para el detalle de produccion ' + id);
+        }
+      } else if (texto_(row[campo]) !== texto_(esperado[campo])) {
+        throw new Error('Campo ' + campo + ' inconsistente para el detalle de produccion ' + id);
+      }
+    });
+    if (campoId === 'Detalle_ID' &&
+        Math.abs(numero_(row.Cantidad_Signada) - numero_(esperado.Cantidad_Signada)) > 0.0001) {
+      throw new Error('Movimiento de inventario inconsistente para ' + id);
+    }
+  });
+  return (esperadas || []).filter(row => !existentesPorId[texto_(row[campoId])]);
 }
 
 function eliminarMovimientosInventarioPorFuentesQTAS_(payload) {
@@ -765,6 +842,9 @@ function registrarProduccionesAutomaticasDesdeVentaQTAS_(context) {
   const componentes = leerComponentesProductoActivosQTAS_(ss);
   const controlesIndex = construirIndiceControlesInventarioQTAS_(listarControlesInventarioQTAS_(ss));
   const stockIndex = construirIndiceStockInventarioQTAS_(listarSnapshotInventarioQTAS_(ss));
+  const produccionesAnteriores = leerObjetos_(ss.getSheetByName(QTAS.sheets.producciones))
+    .filter(row => texto_(row.Comentario_Produccion).indexOf('Produccion automatica por venta V') === 0 &&
+      !esRegistroAnulado_(row.Estado_Registro));
   const requeridos = {};
 
   (settings.detalleRows || []).forEach(row => {
@@ -818,11 +898,22 @@ function registrarProduccionesAutomaticasDesdeVentaQTAS_(context) {
     );
     const ventaIds = Object.keys(requerido.ventaIds).filter(Boolean).join(', ');
     const detalleIds = requerido.detalleIds.filter(Boolean).sort().join(', ');
+    const comentarioOrigen = 'Produccion automatica por venta V' + ventaIds;
+    const produccionesMismas = produccionesAnteriores.filter(row => {
+      const partes = texto_(row.Comentario_Produccion).split(' | ');
+      return partes[0] === comentarioOrigen && partes[1] === detalleIds &&
+        esMismaClaveProductoQTAS_(row.Producto_Estandar, row.Unidad, requerido.producto, requerido.unidad);
+    });
+    if (produccionesMismas.length > 1) {
+      throw new Error('Hay producciones automaticas duplicadas para ' + detalleIds + '. Revisar antes de continuar.');
+    }
     const produccion = registrarProduccionInternaQTAS_({
       ss: ss,
       producto: requerido.producto,
       unidad: requerido.unidad,
       cantidad: faltante,
+      produccionIdExistente: produccionesMismas.length
+        ? texto_(produccionesMismas[0].Produccion_ID) : '',
       fechaProduccion: requerido.fechaProduccion,
       comentarioProduccion: unirUnicos_([
         `Produccion automatica por venta V${ventaIds}`,
@@ -834,6 +925,9 @@ function registrarProduccionesAutomaticasDesdeVentaQTAS_(context) {
       ahora: new Date()
     });
 
+    if (!produccion.ok) {
+      throw new Error('No se completo el inventario de la produccion ' + produccion.produccionId);
+    }
     resumen.producciones.push({
       produccionId: produccion.produccionId,
       producto: requerido.producto,
