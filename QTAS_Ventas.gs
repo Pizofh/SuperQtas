@@ -213,10 +213,24 @@ function registrarVentaQTAS(payload) {
         );
         analiticaCostos = resultado.analiticaCostos;
         inventario = resultado.inventario;
-        postProceso = {
-          queued: false,
-          processed: true
-        };
+        if (!analiticaCostos.ok || !inventario.ok) {
+          // La venta ya se persistio: no repetirla. Encolar solo su posproceso
+          // para reparar inventario/costos pendientes de forma idempotente.
+          const pendiente = encolarPostProcesoVentaQTAS_({
+            spreadsheetId: ss.getId(),
+            ventaId: ventaId,
+            programar: !payload || payload.programarPostVenta !== false
+          });
+          postProceso = Object.assign({}, pendiente, {
+            processed: false,
+            reason: [analiticaCostos.reason, inventario.reason].filter(Boolean).join(' | ')
+          });
+        } else {
+          postProceso = {
+            queued: false,
+            processed: true
+          };
+        }
       } else {
         postProceso = medirBloqueRendimientoQTAS_(performance, 'encolarPostVenta', () =>
           encolarPostProcesoVentaQTAS_({
