@@ -4,6 +4,41 @@ function crearBackupManualQTAS(payload) {
   return crearBackupSpreadsheetQTAS_(Object.assign({}, payload || {}, { daily: false }));
 }
 
+// Respaldo de edicion: si el proyecto QA no puede usar DriveApp,
+// copiar y verificar con SpreadsheetApp (scope de Sheets, sin API Drive).
+// La ruta principal de produccion conserva su carpeta/retencion existente.
+// Nunca se omite ni se simula un respaldo para permitir escribir.
+function crearBackupEdicionQTAS_() {
+  try {
+    return crearBackupManualQTAS();
+  } catch (error) {
+    const message = String(error && error.message || error);
+    if (!/permission denied while enabling apis:\s*drive|access denied:\s*driveapp/i.test(message)) {
+      throw error;
+    }
+  }
+
+  const ss = obtenerSpreadsheetBackupsQTAS_();
+  const manifest = manifestSpreadsheetBackupQTAS_(ss);
+  const now = new Date();
+  const name = 'QTAS_BACKUP_EDICION__' + ss.getId() + '__' +
+    Utilities.formatDate(now, zonaHorariaBackupsQTAS_(ss), 'yyyy-MM-dd_HH-mm-ss') +
+    '_' + Utilities.getUuid().slice(0, 8) + '__' + ss.getName();
+  const backup = ss.copy(name + '__PENDIENTE');
+  // Si falla la verificacion, se interrumpe la edicion sin tocar su origen.
+  validarManifestBackupQTAS_(manifest, backup);
+  backup.rename(name);
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty('QTAS_BACKUP_LAST_SUCCESS', now.toISOString());
+  props.deleteProperty('QTAS_BACKUP_LAST_ERROR');
+  return {
+    ok: true, created: true, daily: false,
+    spreadsheetId: ss.getId(), spreadsheetName: ss.getName(),
+    backupFileId: backup.getId(), backupName: name,
+    backupMethod: 'SpreadsheetApp.copy', verified: true
+  };
+}
+
 function ejecutarBackupDiarioQTAS() {
   return crearBackupSpreadsheetQTAS_({ daily: true });
 }
