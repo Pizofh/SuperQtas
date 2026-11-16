@@ -34,7 +34,7 @@ test('capsulas con y sin tilde comparten identidad de inventario', () => {
   const stock = c.construirSnapshotInventarioQTAS_(rows, controls);
   assert.equal(stock.length, 1);
   assert.equal(stock[0].Stock_Actual, 2481);
-  assert.equal(stock[0].Item, 'Capsulas');
+  assert.equal(stock[0].Item, 'Cápsulas');
 });
 
 test('el consumo y la entrada de compra usan la misma identidad', () => {

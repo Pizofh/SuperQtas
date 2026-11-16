@@ -1969,7 +1969,7 @@ function normalizarItemInventarioQTAS_(tipoItem, item) {
     normalizarTipoCompraItemQTAS_(tipoItem) === 'Insumo' &&
     normalizarClaveTexto_(nombre) === 'capsulas'
   ) {
-    return 'Capsulas';
+    return 'Cápsulas';
   }
   return nombre;
 }

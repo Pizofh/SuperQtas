@@ -821,6 +821,7 @@
           </section>
 
           <button id="guardarVentaBtn" class="btn full" type="button" onclick="guardarVenta()">Guardar venta</button>
+          <button id="cancelarEdicionVentaBtn" class="btn ghost full hidden" type="button" onclick="cancelarEdicionVenta()">Cancelar edición</button>
           <div id="estado" class="status-box">Completa los datos para registrar una venta.</div>
         </main>
 
@@ -1055,6 +1056,7 @@
           </section>
 
           <button id="guardarCompraBtn" class="btn full" type="button" onclick="guardarCompra()">Guardar compra</button>
+          <button id="cancelarEdicionCompraBtn" class="btn ghost full hidden" type="button" onclick="cancelarEdicionCompra()">Cancelar edición</button>
           <div id="estadoCompra" class="status-box">Completa los datos para registrar una compra.</div>
         </main>
 
@@ -1805,6 +1807,7 @@
     let ventasPendientes = [];
     let enviosPendientes = [];
     let ventasRecientes = [];
+    let edicionVenta = null;
     let cuadresPendientes = [];
     let ventaCuadreSeleccionada = null;
     let cargaVentasRecientesId = 0;
@@ -2924,13 +2927,34 @@
         validarModelo: false
       };
 
+      const esEdicion = Boolean(edicionVenta);
+      if (esEdicion) {
+        if (pagos.length !== (edicionVenta.pagos || []).length) {
+          alert('Para editar, conserva la cantidad de pagos existentes. Usa Pagos pendientes para añadir.');
+          return;
+        }
+        payload.ventaId = edicionVenta.ventaId;
+        payload.version = edicionVenta.version;
+      }
       const guardarButton = document.getElementById('guardarVentaBtn');
       if (guardarButton && guardarButton.disabled) return;
       if (guardarButton) guardarButton.disabled = true;
       document.getElementById('estado').innerText = 'Registrando venta...';
 
-      google.script.run
+      const ejecutor = google.script.run
         .withSuccessHandler(resp => {
+          if (esEdicion) {
+            edicionVenta = null;
+            limpiarFormulario();
+            document.getElementById('guardarVentaBtn').innerText = 'Guardar venta';
+            document.getElementById('cancelarEdicionVentaBtn').classList.add('hidden');
+            document.getElementById('estado').innerText = 'Venta V' + resp.ventaId +
+              ' editada. Respaldo: ' + resp.backupId + '. Actualizando inventario y costos.';
+            if (guardarButton) guardarButton.disabled = false;
+            cargarPaneles();
+            solicitarProcesamientoPostVenta_();
+            return;
+          }
           sincronizarClienteCatalogoLocal_(resp.clienteId, resp.nombre);
           const dashboard = resp.dashboard || construirDashboardLocalTrasVenta_(resp);
           document.getElementById('estado').innerText = [
@@ -2955,7 +2979,9 @@
           document.getElementById('estado').innerText = construirMensajeEstadoError_('No se pudo guardar la venta', err);
           if (guardarButton) guardarButton.disabled = false;
         })
-        .registrarVentaQTAS(payload);
+        ;
+      if (esEdicion) ejecutor.editarVentaQTAS(payload);
+      else ejecutor.registrarVentaQTAS(payload);
     }
 
     function solicitarProcesamientoPostVenta_() {
@@ -3159,10 +3185,62 @@
           <div class="helper">${escapeHtml(row.productos || '')}</div>
           <div class="list-item-actions">
             <button class="btn secondary" type="button" onclick="seleccionarVentaParaCuadre(${row.ventaId})">Cuadrar</button>
+            <button class="btn secondary" type="button" onclick="iniciarEdicionVenta(${row.ventaId})">Editar</button>
             <button class="btn danger" type="button" onclick="eliminarVentaReciente(${row.ventaId})">Eliminar</button>
           </div>
         </div>
       `).join('');
+    }
+
+    function cancelarEdicionVenta() {
+      edicionVenta = null;
+      limpiarFormulario();
+      document.getElementById('guardarVentaBtn').innerText = 'Guardar venta';
+      document.getElementById('cancelarEdicionVentaBtn').classList.add('hidden');
+    }
+
+    function iniciarEdicionVenta(ventaId) {
+      document.getElementById('estado').innerText = 'Cargando venta V' + ventaId + '...';
+      google.script.run
+        .withSuccessHandler(data => {
+          cancelarEdicionVenta();
+          edicionVenta = data;
+          document.getElementById('fechaVenta').value = data.fechaVenta;
+          document.getElementById('clienteId').value = data.cliente.clienteId || '';
+          document.getElementById('nombre').value = data.cliente.nombre || '';
+          document.getElementById('comentarioVenta').value = data.comentarioVenta || '';
+          document.getElementById('productos').innerHTML = '';
+          (data.lineas || []).forEach(linea => {
+            agregarProducto();
+            const card = document.querySelector('#productos .producto-linea:last-child');
+            const sel = card.querySelector('.producto');
+            sel.value = linea.producto;
+            actualizarProducto(sel, true);
+            card.querySelector('.cantidad').value = linea.cantidad;
+            card.querySelector('.precioVendidoUnitario').value = linea.precioVendidoUnitario;
+            card.querySelector('.precioVendidoUnitario').dataset.manual = 'true';
+            card.querySelector('.descuentoLinea').value = linea.descuentoLinea;
+            card.querySelector('.comentarioLinea').value = linea.comentarioLinea || '';
+          });
+          document.getElementById('pagos').innerHTML = '';
+          (data.pagos || []).forEach(pago => {
+            agregarPago();
+            const card = document.querySelector('#pagos .pago-linea:last-child');
+            card.querySelector('.medio').value = pago.medio;
+            card.querySelector('.monto').value = pago.monto;
+            card.querySelector('.comentarioPago').value = pago.comentarioPago || '';
+          });
+          document.getElementById('guardarVentaBtn').innerText = 'Guardar cambios V' + ventaId;
+          document.getElementById('cancelarEdicionVentaBtn').classList.remove('hidden');
+          document.getElementById('estado').innerText =
+            'Editando V' + ventaId + '. Se conservan IDs y fechas de pagos. Se hará respaldo verificado.';
+          recalcular();
+          document.getElementById('fechaVenta').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        })
+        .withFailureHandler(err => {
+          document.getElementById('estado').innerText = construirMensajeEstadoError_('Error abriendo venta', err);
+        })
+        .obtenerVentaParaEdicionQTAS({ ventaId: ventaId });
     }
 
     function eliminarVentaReciente(ventaId) {
@@ -3375,6 +3453,7 @@
       proveedores: []
     };
     let compraCuadreFondosSeleccionada = null;
+    let edicionCompra = null;
 
     function initCompras() {
       document.getElementById('fechaCompra').value = '';
@@ -3938,11 +4017,28 @@
         return;
       }
 
+      const esEdicion = Boolean(edicionCompra);
+      if (esEdicion) {
+        payload.compraId = edicionCompra.compraId;
+        payload.version = edicionCompra.version;
+      }
       if (guardarButton) guardarButton.disabled = true;
       document.getElementById('estadoCompra').innerText = 'Registrando compra...';
 
-      google.script.run
+      const ejecutor = google.script.run
         .withSuccessHandler(resp => {
+          if (esEdicion) {
+            edicionCompra = null;
+            limpiarFormularioCompra();
+            document.getElementById('guardarCompraBtn').innerText = 'Guardar compra';
+            document.getElementById('cancelarEdicionCompraBtn').classList.add('hidden');
+            document.getElementById('estadoCompra').innerText = 'Compra C' + resp.compraId +
+              ' editada. Respaldo: ' + resp.backupId + '. Actualizando inventario y costos.';
+            if (guardarButton) guardarButton.disabled = false;
+            cargarCatalogoCompras(false);
+            solicitarProcesamientoPostCompra_();
+            return;
+          }
           document.getElementById('estadoCompra').innerText =
             [
               `Compra ${resp.compraId} guardada. Total ${moneda_(resp.totalCompra)}. Costos actualizados: ${resp.costosActualizados}.`,
@@ -3971,7 +4067,9 @@
           document.getElementById('estadoCompra').innerText = construirMensajeEstadoError_('No se pudo guardar la compra', err);
           if (guardarButton) guardarButton.disabled = false;
         })
-        .registrarCompraQTAS(payload);
+        ;
+      if (esEdicion) ejecutor.editarCompraQTAS(payload);
+      else ejecutor.registrarCompraQTAS(payload);
     }
 
     function solicitarProcesamientoPostCompra_() {
@@ -4014,6 +4112,7 @@
           <div class="list-item-actions">
             <button class="btn secondary" type="button" onclick="seleccionarCompraParaCuadreFondos(${row.compraId})">Cuadrar fondos</button>
             <button class="btn secondary" type="button" onclick="conciliarInventarioCompra(${row.compraId})">Conciliar inventario</button>
+            <button class="btn secondary" type="button" onclick="iniciarEdicionCompra(${row.compraId})">Editar</button>
             <button class="btn danger" type="button" onclick="eliminarCompraReciente(${row.compraId})">Eliminar</button>
           </div>
         </div>
@@ -4144,6 +4243,50 @@
             construirMensajeEstadoError_('No se pudo conciliar inventario', err);
         })
         .conciliarMovimientosComprasQTAS({ compraIds: [compraId] });
+    }
+
+    function cancelarEdicionCompra() {
+      edicionCompra = null;
+      limpiarFormularioCompra();
+      document.getElementById('guardarCompraBtn').innerText = 'Guardar compra';
+      document.getElementById('cancelarEdicionCompraBtn').classList.add('hidden');
+    }
+
+    function iniciarEdicionCompra(compraId) {
+      document.getElementById('estadoCompra').innerText = 'Cargando compra C' + compraId + '...';
+      google.script.run
+        .withSuccessHandler(data => {
+          cancelarEdicionCompra();
+          edicionCompra = data;
+          document.getElementById('fechaCompra').value = data.fechaCompra;
+          document.getElementById('proveedorCompra').value = data.proveedor || '';
+          document.getElementById('comentarioCompra').value = data.comentarioCompra || '';
+          document.getElementById('medioPagoCompra').value = data.medioPago;
+          document.getElementById('origenFondosCompra').value = data.origenFondos || '';
+          document.getElementById('lineasCompra').innerHTML = '';
+          (data.lineas || []).forEach(linea => {
+            agregarLineaCompra();
+            const card = document.querySelector('#lineasCompra .compra-linea:last-child');
+            card.querySelector('.tipoItem').value = linea.tipoItem;
+            sincronizarSelectorItemCompra_(card, linea.item);
+            card.querySelector('.cantidad').value = linea.cantidad;
+            card.querySelector('.unidad').value = linea.unidad;
+            card.querySelector('.costoTotalLinea').value = linea.costoTotalLinea;
+            card.querySelector('.impactaCosto').value = String(linea.impactaCosto);
+            card.querySelector('.comentarioLinea').value = linea.comentarioLinea || '';
+          });
+          document.getElementById('guardarCompraBtn').innerText = 'Guardar cambios C' + compraId;
+          document.getElementById('cancelarEdicionCompraBtn').classList.remove('hidden');
+          document.getElementById('estadoCompra').innerText =
+            'Editando C' + compraId + '. Conserva ID; se recalculan fondos y costos derivados.';
+          actualizarEstadoOrigenFondosCompra();
+          recalcularCompra();
+          document.getElementById('fechaCompra').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        })
+        .withFailureHandler(err => {
+          document.getElementById('estadoCompra').innerText = construirMensajeEstadoError_('Error abriendo compra', err);
+        })
+        .obtenerCompraParaEdicionQTAS({ compraId: compraId });
     }
 
     function eliminarCompraReciente(compraId) {

@@ -1394,7 +1394,7 @@ export const SCENARIOS = [
         .filter(row => ctx.num(row.Venta_ID) === ctx.num(venta.ventaId));
       const stock100 = snapshot.find(row => row.Item === '100mg' && row.Unidad === 'und');
       const stockAcMed = snapshot.find(row => row.Item === 'AcMed' && row.Unidad === 'g');
-      const stockCapsulas = snapshot.find(row => row.Item === 'Capsulas' && row.Unidad === 'und');
+      const stockCapsulas = snapshot.find(row => row.Item === 'Cápsulas' && row.Unidad === 'und');
       const stockZipNegra = snapshot.find(row => row.Item === 'Bolsa_Zip_Negra' && row.Unidad === 'und');
       const stockBolsaPapel = snapshot.find(row => row.Item === 'Bolsa_Papel_0_5lb' && row.Unidad === 'und');
       const stockCalcaMicros = snapshot.find(row => row.Item === 'Calca_Micros_Logo' && row.Unidad === 'und');
@@ -1455,7 +1455,7 @@ export const SCENARIOS = [
       const produccionesBajoPedido = ctx.sheetRows(estadoBajoPedido, 'Producciones');
       const stock100BajoPedido = snapshotBajoPedido.find(row => row.Item === '100mg' && row.Unidad === 'und');
       const stockAcMedBajoPedido = snapshotBajoPedido.find(row => row.Item === 'AcMed' && row.Unidad === 'g');
-      const stockCapsulasBajoPedido = snapshotBajoPedido.find(row => row.Item === 'Capsulas' && row.Unidad === 'und');
+      const stockCapsulasBajoPedido = snapshotBajoPedido.find(row => row.Item === 'Cápsulas' && row.Unidad === 'und');
       const stockCalcaBajoPedido = snapshotBajoPedido.find(row => row.Item === 'Calca_Micros_Logo' && row.Unidad === 'und');
 
       ctx.equal(produccionesBajoPedido.length, 2, 'La venta bajo pedido debe crear una produccion adicional.');
@@ -1650,6 +1650,77 @@ export const SCENARIOS = [
       ctx.equal(ctx.num(stockGoterosMaster.Stock_Actual), 7, 'El extracto servido debe consumir un gotero adicional.');
       ctx.equal(ctx.num(stockBolsaMaster.Stock_Actual), 7, 'El extracto servido debe consumir una bolsa adicional.');
       ctx.equal(ctx.num(stockCalcaMaster.Stock_Actual), 0, 'Sin calcas disponibles, el extracto servido debe continuar sin dejar stock negativo.');
+    }
+  },
+  {
+    id: 'edicion_compras_ventas_conserva_ids',
+    title: 'Editar compra y venta recientes conserva IDs, saldos, costos e inventario',
+    tags: ['edicion', 'compras', 'ventas', 'smoke'],
+    run: async ctx => {
+      await ctx.reset();
+      const compra = await ctx.call('registrarCompraQTAS', compraPayloadBase({
+        proveedor: 'Proveedor Edicion Original',
+        lineas: [compraLinea('Insumo', 'Caja', 3, 'und', 3000, true, 'Inicial')]
+      }));
+      const actualCompra = await ctx.call('obtenerCompraParaEdicionQTAS', { compraId: compra.compraId });
+      ctx.assert(actualCompra.ok && actualCompra.version, 'Debe abrir la compra reciente para editar.');
+      const edicionCompra = await ctx.call('editarCompraQTAS', {
+        compraId: compra.compraId, version: actualCompra.version,
+        fechaCompra: actualCompra.fechaCompra,
+        proveedor: 'Proveedor Edicion Corregido',
+        medioPago: actualCompra.medioPago,
+        origenFondos: actualCompra.origenFondos,
+        comentarioCompra: 'Compra editada por prueba QA',
+        lineas: [compraLinea('Insumo', 'Caja', 5, 'und', 5000, true, 'Cantidad corregida')]
+      });
+      ctx.assert(edicionCompra.ok && ctx.num(edicionCompra.compraId) === ctx.num(compra.compraId),
+        'La edicion de compra debe conservar el ID.');
+      ctx.assert(edicionCompra.backupId, 'La compra editada debe guardar un backup verificado.');
+      const postCompra = await ctx.call('procesarColaPostCompraQTAS');
+      ctx.assert(postCompra.ok && (postCompra.results || []).some(row => row.completed),
+        'La compra editada debe completar el postproceso.');
+      const compraEstado = await snapshotLigero(ctx, {
+        sheetNames: ['Compras', 'Compra_Detalle', 'Inventario_Snapshot']
+      });
+      ctx.equal(ctx.sheetRows(compraEstado, 'Compras').length, 1, 'No debe duplicarse la compra.');
+      ctx.equal(ctx.num(ctx.sheetRows(compraEstado, 'Compras')[0].Total_Compra), 5000,
+        'El total de la compra editada debe ser 5000.');
+      ctx.equal(ctx.num(ctx.sheetRows(compraEstado, 'Compra_Detalle')[0].Cantidad), 5,
+        'El detalle de compra debe registrar la cantidad corregida.');
+
+      await ctx.reset();
+      const venta = await ctx.call('registrarVentaQTAS', ventaPayloadBase({
+        cliente: { nombre: 'Cliente Edicion Original' },
+        lineas: [ventaLinea('AcSup', 1, 'g', 10000)]
+      }));
+      const actualVenta = await ctx.call('obtenerVentaParaEdicionQTAS', { ventaId: venta.ventaId });
+      ctx.assert(actualVenta.ok && actualVenta.version, 'Debe abrir la venta reciente para editar.');
+      const edicionVenta = await ctx.call('editarVentaQTAS', {
+        ventaId: venta.ventaId, version: actualVenta.version,
+        fechaVenta: actualVenta.fechaVenta,
+        cliente: actualVenta.cliente,
+        comentarioVenta: 'Venta editada por prueba QA',
+        lineas: [ventaLinea('AcSup', 2, 'g', 12000)],
+        pagos: []
+      });
+      ctx.assert(edicionVenta.ok && ctx.num(edicionVenta.ventaId) === ctx.num(venta.ventaId),
+        'La edicion de venta debe conservar el ID.');
+      ctx.assert(edicionVenta.backupId, 'La venta editada debe guardar un backup verificado.');
+      const postVenta = await ctx.call('procesarColaPostVentaQTAS');
+      ctx.assert(postVenta.ok && (postVenta.results || []).some(row => row.completed),
+        'La venta editada debe completar el postproceso.');
+      const ventaEstado = await snapshotLigero(ctx, {
+        sheetNames: ['Ventas', 'Venta_Detalle', 'Inventario_Movimientos']
+      });
+      ctx.equal(ctx.sheetRows(ventaEstado, 'Ventas').length, 1, 'No debe duplicarse la venta.');
+      ctx.equal(ctx.num(ctx.sheetRows(ventaEstado, 'Ventas')[0].Total_Venta), 24000,
+        'El total de la venta editada debe ser 24000.');
+      ctx.equal(ctx.num(ctx.sheetRows(ventaEstado, 'Venta_Detalle')[0].Cantidad), 2,
+        'El detalle de venta debe quedar con 2 unidades.');
+      const salidas = ctx.sheetRows(ventaEstado, 'Inventario_Movimientos')
+        .filter(row => row.Fuente_Tipo === 'Venta' && ctx.num(row.Venta_ID) === ctx.num(venta.ventaId));
+      ctx.equal(salidas.length, 1, 'La venta editada debe registrar una sola salida de inventario.');
+      ctx.equal(ctx.num(salidas[0].Cantidad), 2, 'La salida de inventario debe corresponder a la nueva cantidad.');
     }
   }
 ];
