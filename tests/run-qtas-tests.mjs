@@ -4,6 +4,7 @@ import process from 'node:process';
 import { google } from 'googleapis';
 import { SCENARIOS } from './scenarios.mjs';
 import { createGoogleAuthClient, DEFAULT_GOOGLE_SCOPES } from './google-auth.mjs';
+import { retryQaReset } from './reset-retry.mjs';
 
 const DEFAULT_CONFIG = {
   credentialsPath: './tests/google-oauth.credentials.json',
@@ -265,11 +266,21 @@ function createScenarioContext(config, scriptClient) {
     },
 
     async reset(options = {}) {
-      return this.call('testResetEntornoQTAS', {
+      const payload = {
         includeSnapshot: false,
         asegurarModelo: false,
         ...options
-      });
+      };
+      return retryQaReset(
+        () => this.call('testResetEntornoQTAS', payload),
+        {
+          attempts: 2,
+          onRetry: () => console.warn(
+            '[QA RESET RETRY] Apps Script agoto el tiempo durante el reset. ' +
+            'Reintentando solo testResetEntornoQTAS (2/2), nunca compras o ventas.'
+          )
+        }
+      );
     },
 
     async snapshot(options = {}) {
