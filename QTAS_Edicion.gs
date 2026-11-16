@@ -73,7 +73,7 @@ function editarCompraQTAS(payload) {
   if (!version || compraId <= 0) throw new Error('Abre primero la compra desde Editar.');
   validarCompraQTAS_(payload);
   // Copia nativa verificada antes del primer cambio. Si falla, no se modifica nada.
-  const backup = crearBackupManualQTAS();
+  const backup = crearBackupEdicionQTAS_();
   if (!backup || !backup.ok || !backup.backupFileId) throw new Error('No se pudo verificar el respaldo de la edicion.');
   return withScriptLock_('editar compra reciente', () => {
     const ss = validarModeloSoloLecturaQTAS_({
@@ -193,7 +193,7 @@ function editarVentaQTAS(payload) {
   const version = texto_(payload && payload.version);
   if (!version || ventaId <= 0) throw new Error('Abre primero la venta desde Editar.');
   validarVenta_(payload);
-  const backup = crearBackupManualQTAS();
+  const backup = crearBackupEdicionQTAS_();
   if (!backup || !backup.ok || !backup.backupFileId) throw new Error('No se pudo verificar el respaldo de la edicion.');
   return withScriptLock_('editar venta reciente', () => {
     const ss = validarModeloSoloLecturaQTAS_({
