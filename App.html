@@ -726,6 +726,9 @@
             <button class="btn ghost app-nav-btn" type="button" data-view="ventas" onclick="mostrarVistaApp('ventas')">
               Ventas
             </button>
+            <button class="btn ghost app-nav-btn" type="button" data-view="historial" onclick="mostrarVistaApp('historial')">
+              Historial
+            </button>
             <button class="btn ghost app-nav-btn" type="button" data-view="compras" onclick="mostrarVistaApp('compras')">
               Compras
             </button>
@@ -881,6 +884,41 @@
             <div id="pagos"></div>
           </section>
 
+
+        </aside>
+      </div>
+    </section>
+
+    <section class="app-view hidden" data-view="historial">
+      <div class="layout">
+        <main>
+          <div id="estadoHistorial" class="helper" role="status"></div>
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <h2>Ventas recientes</h2>
+              </div>
+              <button class="btn ghost" type="button" onclick="cargarPaneles()">Recargar</button>
+            </div>
+
+            <div id="ventasRecientes" class="list">
+              <div class="muted">Cargando...</div>
+            </div>
+          </section>
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <h2>Cuadres pendientes</h2>
+              </div>
+              <button class="btn ghost" type="button" onclick="cargarPaneles()">Recargar</button>
+            </div>
+            <div id="cuadresPendientes" class="list">
+              <div class="muted">Cargando...</div>
+            </div>
+            <div id="estadoCuadresPendientes" class="status-box">Las ventas resueltas dejan de aparecer aqui.</div>
+          </section>
+        </main>
+        <aside>
           <section class="card">
             <div class="section-head">
               <div>
@@ -925,7 +963,6 @@
             </button>
             <div id="estadoPagoPendiente" class="status-box">Selecciona una venta para registrar el pago.</div>
           </section>
-
           <section class="card">
             <div class="section-head">
               <div>
@@ -938,7 +975,6 @@
               <div class="muted">Cargando...</div>
             </div>
           </section>
-
           <section class="card">
             <div class="section-head">
               <div>
@@ -952,20 +988,6 @@
             </div>
             <div id="estadoEnviosPendientes" class="status-box">Selecciona una venta del panel para revisar su estado.</div>
           </section>
-
-          <section class="card">
-            <div class="section-head">
-              <div>
-                <h2>Ventas recientes</h2>
-              </div>
-              <button class="btn ghost" type="button" onclick="cargarPaneles()">Recargar</button>
-            </div>
-
-            <div id="ventasRecientes" class="list">
-              <div class="muted">Cargando...</div>
-            </div>
-          </section>
-
           <section class="card" id="cuadreVentaPanel">
             <div class="section-head">
               <div>
@@ -981,20 +1003,7 @@
             <button id="guardarCuadreVentaBtn" class="btn full" type="button" disabled onclick="guardarCuadreVenta()">
               Dejar pendiente de cuadrar
             </button>
-            <div id="estadoCuadreVenta" class="status-box">El cuadre no modifica dinero, pagos ni distribucion automaticamente.</div>
-          </section>
-
-          <section class="card">
-            <div class="section-head">
-              <div>
-                <h2>Cuadres pendientes</h2>
-              </div>
-              <button class="btn ghost" type="button" onclick="cargarPaneles()">Recargar</button>
-            </div>
-            <div id="cuadresPendientes" class="list">
-              <div class="muted">Cargando...</div>
-            </div>
-            <div id="estadoCuadresPendientes" class="status-box">Las ventas resueltas dejan de aparecer aqui.</div>
+            <div id="estadoCuadreVenta" class="status-box">Selecciona una venta para cuadrar.</div>
           </section>
         </aside>
       </div>
@@ -1576,7 +1585,11 @@
     const APP_VIEWS = {
       ventas: {
         eyebrow: 'Psylo Scibio | SuperQTAS',
-        title: 'Ventas y cartera'
+        title: 'Registrar venta'
+      },
+      historial: {
+        eyebrow: 'Psylo Scibio | SuperQTAS',
+        title: 'Historial de ventas'
       },
       compras: {
         eyebrow: 'Psylo Scibio | SuperQTAS',
@@ -1600,6 +1613,7 @@
       currentView: '',
       started: {
         ventas: false,
+        historial: false,
         compras: false,
         inventario: false,
         reportes: false,
@@ -1745,6 +1759,7 @@
 
       if (!appState.started[nextView]) {
         if (nextView === 'ventas') initVentas();
+        if (nextView === 'historial') initHistorialVentas();
         if (nextView === 'compras') initCompras();
         if (nextView === 'inventario') initInventario();
         if (nextView === 'config') initConfig();
@@ -1759,6 +1774,10 @@
     function recargarVistaActualApp() {
       if (appState.currentView === 'ventas') {
         cargarCatalogo(false);
+        return;
+      }
+
+      if (appState.currentView === 'historial') {
         cargarPaneles();
         return;
       }
@@ -1817,6 +1836,14 @@
       document.getElementById('fechaPagoPendiente').value = '';
       actualizarResumenEnvioVenta();
       cargarCatalogo(true);
+    }
+
+    function initHistorialVentas() {
+      if (!appState.started.ventas) {
+        initVentas();
+        appState.started.ventas = true;
+      }
+      cargarPaneles();
     }
 
     function claveCacheCatalogoVentas_(fechaVenta) {
@@ -1880,9 +1907,6 @@
       actualizarResumenEnvioVenta();
       recalcular();
 
-      if (inicial) {
-        cargarPaneles();
-      }
     }
 
     function cargarCatalogo(inicial) {
@@ -2948,25 +2972,18 @@
             limpiarFormulario();
             document.getElementById('guardarVentaBtn').innerText = 'Guardar venta';
             document.getElementById('cancelarEdicionVentaBtn').classList.add('hidden');
-            document.getElementById('estado').innerText = 'Venta V' + resp.ventaId +
-              ' editada. Respaldo: ' + resp.backupId + '. Actualizando inventario y costos.';
             if (guardarButton) guardarButton.disabled = false;
+            mostrarVistaApp('historial');
+            document.getElementById('estadoHistorial').innerText = 'Venta V' + resp.ventaId + ' actualizada.';
             cargarPaneles();
             solicitarProcesamientoPostVenta_();
             return;
           }
           sincronizarClienteCatalogoLocal_(resp.clienteId, resp.nombre);
           const dashboard = resp.dashboard || construirDashboardLocalTrasVenta_(resp);
-          document.getElementById('estado').innerText = [
-            `Venta ${resp.ventaId} guardada. Total ${moneda_(resp.totalVenta)}. Saldo ${moneda_(resp.saldo)}.` +
-              (resp.estadoEnvio === 'Pendiente'
-                ? ` Seguimiento de ${resp.tipoEntrega === 'Recoge' ? 'recogida' : 'envio'} activo.`
-                : ''),
-            resp.postProceso && resp.postProceso.queued
-              ? 'Costos e inventario se actualizan en segundo plano.'
-              : '',
-            formatearRendimientoOperacion_(resp.performance)
-          ].filter(Boolean).join('\n');
+          document.getElementById('estado').innerText =
+            'Venta V' + resp.ventaId + ' registrada. Total ' + moneda_(resp.totalVenta) +
+            '. Saldo ' + moneda_(resp.saldo) + '.';
           registrarRendimientoOperacion_('registrarVentaQTAS', resp.performance);
           limpiarFormulario();
           aplicarDashboardVentas_(dashboard);
@@ -3192,18 +3209,20 @@
       `).join('');
     }
 
-    function cancelarEdicionVenta() {
+    function cancelarEdicionVenta(options) {
+      const estabaEditando = Boolean(edicionVenta);
       edicionVenta = null;
       limpiarFormulario();
       document.getElementById('guardarVentaBtn').innerText = 'Guardar venta';
       document.getElementById('cancelarEdicionVentaBtn').classList.add('hidden');
+      if (estabaEditando && !(options && options.sinNavegar)) mostrarVistaApp('historial');
     }
 
     function iniciarEdicionVenta(ventaId) {
-      document.getElementById('estado').innerText = 'Cargando venta V' + ventaId + '...';
+      document.getElementById('estadoHistorial').innerText = 'Cargando venta V' + ventaId + '...';
       google.script.run
         .withSuccessHandler(data => {
-          cancelarEdicionVenta();
+          cancelarEdicionVenta({ sinNavegar: true });
           edicionVenta = data;
           document.getElementById('fechaVenta').value = data.fechaVenta;
           document.getElementById('clienteId').value = data.cliente.clienteId || '';
@@ -3232,13 +3251,13 @@
           });
           document.getElementById('guardarVentaBtn').innerText = 'Guardar cambios V' + ventaId;
           document.getElementById('cancelarEdicionVentaBtn').classList.remove('hidden');
-          document.getElementById('estado').innerText =
-            'Editando V' + ventaId + '. Se conservan IDs y fechas de pagos. Se hará respaldo verificado.';
+          document.getElementById('estado').innerText = 'Editando venta V' + ventaId + '.';
+          mostrarVistaApp('ventas');
           recalcular();
           document.getElementById('fechaVenta').scrollIntoView({ behavior: 'smooth', block: 'center' });
         })
         .withFailureHandler(err => {
-          document.getElementById('estado').innerText = construirMensajeEstadoError_('Error abriendo venta', err);
+          document.getElementById('estadoHistorial').innerText = construirMensajeEstadoError_('Error abriendo venta', err);
         })
         .obtenerVentaParaEdicionQTAS({ ventaId: ventaId });
     }
@@ -3246,22 +3265,22 @@
     function eliminarVentaReciente(ventaId) {
       const venta = (ventasRecientes || []).find(item => String(item.ventaId) === String(ventaId));
       if (!venta) {
-        document.getElementById('estado').innerText = 'La venta ya no aparece en recientes.';
+        document.getElementById('estadoHistorial').innerText = 'La venta ya no aparece en recientes.';
         return;
       }
 
       if (!confirm(`Se eliminara la venta V${ventaId} y sus registros asociados. Deseas continuar?`)) return;
 
-      document.getElementById('estado').innerText = `Eliminando V${ventaId}...`;
+      document.getElementById('estadoHistorial').innerText = `Eliminando V${ventaId}...`;
 
       google.script.run
         .withSuccessHandler(resp => {
-          document.getElementById('estado').innerText = `Venta V${ventaId} eliminada.`;
+          document.getElementById('estadoHistorial').innerText = `Venta V${ventaId} eliminada.`;
           aplicarDashboardVentas_(resp.dashboard || {});
           cargarCuadresPendientes_(++cargaVentasRecientesId);
         })
         .withFailureHandler(err => {
-          document.getElementById('estado').innerText = construirMensajeEstadoError_('No se pudo eliminar la venta', err);
+          document.getElementById('estadoHistorial').innerText = construirMensajeEstadoError_('No se pudo eliminar la venta', err);
         })
         .eliminarVentaRecienteQTAS({
           ventaId: ventaId
@@ -3338,7 +3357,7 @@
       document.getElementById('ventaCuadreInfo').innerHTML = 'Selecciona <b>Cuadrar</b> en una venta reciente para revisar sus datos.';
       document.getElementById('motivoCuadreVenta').value = '';
       document.getElementById('guardarCuadreVentaBtn').disabled = true;
-      document.getElementById('estadoCuadreVenta').innerText = 'El cuadre no modifica dinero, pagos ni distribucion automaticamente.';
+      document.getElementById('estadoCuadreVenta').innerText = 'Selecciona una venta para cuadrar.';
     }
 
     function guardarCuadreVenta() {
@@ -4032,23 +4051,14 @@
             limpiarFormularioCompra();
             document.getElementById('guardarCompraBtn').innerText = 'Guardar compra';
             document.getElementById('cancelarEdicionCompraBtn').classList.add('hidden');
-            document.getElementById('estadoCompra').innerText = 'Compra C' + resp.compraId +
-              ' editada. Respaldo: ' + resp.backupId + '. Actualizando inventario y costos.';
+            document.getElementById('estadoCompra').innerText = 'Compra C' + resp.compraId + ' actualizada.';
             if (guardarButton) guardarButton.disabled = false;
             cargarCatalogoCompras(false);
             solicitarProcesamientoPostCompra_();
             return;
           }
           document.getElementById('estadoCompra').innerText =
-            [
-              `Compra ${resp.compraId} guardada. Total ${moneda_(resp.totalCompra)}. Costos actualizados: ${resp.costosActualizados}.`,
-              resp.origenFondos
-                ? `Origen de fondos: ${resp.origenFondos}. Asignaciones: ${resp.origenesFondosAsignados || 0}.`
-                : 'Compra guardada sin origen de fondos asignado.',
-              resp.postProceso && resp.postProceso.queued
-                ? 'Inventario y costo de productos se actualizan en segundo plano.'
-                : ''
-            ].join(' ');
+            'Compra C' + resp.compraId + ' registrada. Total ' + moneda_(resp.totalCompra) + '.';
           limpiarFormularioCompra();
           if (resp.compraReciente) {
             catalogoCompras.comprasRecientes = [resp.compraReciente]
@@ -4277,8 +4287,7 @@
           });
           document.getElementById('guardarCompraBtn').innerText = 'Guardar cambios C' + compraId;
           document.getElementById('cancelarEdicionCompraBtn').classList.remove('hidden');
-          document.getElementById('estadoCompra').innerText =
-            'Editando C' + compraId + '. Conserva ID; se recalculan fondos y costos derivados.';
+          document.getElementById('estadoCompra').innerText = 'Editando compra C' + compraId + '.';
           actualizarEstadoOrigenFondosCompra();
           recalcularCompra();
           document.getElementById('fechaCompra').scrollIntoView({ behavior: 'smooth', block: 'center' });
